@@ -40,24 +40,29 @@ export default function Leaderboard({ ctx }) {
 
   const activeCategory = categories[category]
 
+  // Always calculate the official ranking from the complete member list first.
+  // Search only filters what is displayed; it must never change a member's rank.
+  const allRankedMembers = useMemo(() => {
+    return [...visibleMembers].sort(
+      (a, b) =>
+        (Number(b[activeCategory.field]) || 0) -
+        (Number(a[activeCategory.field]) || 0)
+    )
+  }, [visibleMembers, activeCategory.field])
+
   const rankedMembers = useMemo(() => {
     const query = search.trim().toLowerCase()
 
-    return [...visibleMembers]
-      .filter(member => {
-        if (!query) return true
-        return (
-          String(member.name || '').toLowerCase().includes(query) ||
-          String(member.cls || '').toLowerCase().includes(query) ||
-          String(member.role || '').toLowerCase().includes(query)
-        )
-      })
-      .sort(
-        (a, b) =>
-          (Number(b[activeCategory.field]) || 0) -
-          (Number(a[activeCategory.field]) || 0)
+    if (!query) return allRankedMembers
+
+    return allRankedMembers.filter(member => {
+      return (
+        String(member.name || '').toLowerCase().includes(query) ||
+        String(member.cls || '').toLowerCase().includes(query) ||
+        String(member.role || '').toLowerCase().includes(query)
       )
-  }, [visibleMembers, search, activeCategory.field])
+    })
+  }, [allRankedMembers, search])
 
   const totalPages = Math.max(1, Math.ceil(rankedMembers.length / pageSize))
   const safePage = Math.min(page, totalPages)
@@ -65,7 +70,7 @@ export default function Leaderboard({ ctx }) {
   const pageMembers = rankedMembers.slice(startIndex, startIndex + pageSize)
 
   const getRank = member => {
-    const index = rankedMembers.findIndex(m => m.id === member.id)
+    const index = allRankedMembers.findIndex(m => m.id === member.id)
     return index + 1
   }
 
@@ -159,8 +164,15 @@ export default function Leaderboard({ ctx }) {
             </div>
           </div>
 
-          <div className="text-[10px] uppercase tracking-wider text-text-dim">
-            {rankedMembers.length} results
+          <div className="text-[10px] uppercase tracking-wider text-text-dim text-right">
+            {search.trim()
+              ? `${rankedMembers.length} result${rankedMembers.length === 1 ? '' : 's'}`
+              : `${rankedMembers.length} results`}
+            {search.trim() && (
+              <div className="normal-case tracking-normal mt-0.5 text-[10px]">
+                Official ranks preserved
+              </div>
+            )}
           </div>
         </div>
 
