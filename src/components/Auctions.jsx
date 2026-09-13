@@ -1525,18 +1525,18 @@ function EndedAuctionRow({
 
         {isExpanded && totalBids > 0 && (
           <div className="mt-3 rounded-xl border border-white/[.06] bg-black/20 overflow-hidden">
-            <div className="grid grid-cols-[80px_minmax(0,1fr)_100px_auto] gap-3 border-b border-white/[.05] px-3 py-2 text-[9px] font-bold uppercase tracking-[.12em] text-text-dim">
+            <div className="hidden sm:grid sm:grid-cols-[80px_minmax(0,1fr)_100px_auto] gap-3 border-b border-white/[.05] px-3 py-2 text-[9px] font-bold uppercase tracking-[.12em] text-text-dim">
               <span>Time</span><span>Bidder</span><span className="text-right">Amount</span><span />
             </div>
             <ul className="divide-y divide-white/[.04]">
               {bids.map((b, idx) => {
                 const isLast = idx === bids.length - 1
                 return (
-                  <li key={b.time || idx} className={`grid grid-cols-[80px_minmax(0,1fr)_100px_auto] items-center gap-3 px-3 py-2 text-[11px] ${isLast ? 'bg-green-500/[.035]' : ''}`}>
-                    <span className={`font-mono tabular-nums ${isLast ? 'text-green-400' : 'text-text-dim'}`}>{formatClock(b.time)}</span>
-                    <span className={`truncate font-semibold ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
-                    <span className={`text-right font-mono font-bold tabular-nums ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-green-400">{isLast ? 'Winner' : ''}</span>
+                  <li key={b.time || idx} className={`grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[80px_minmax(0,1fr)_100px_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2.5 sm:py-2 text-[11px] ${isLast ? 'bg-green-500/[.035]' : ''}`}>
+                    <span className={`col-start-1 row-start-2 sm:col-auto sm:row-auto font-mono tabular-nums text-[9px] sm:text-[11px] ${isLast ? 'text-green-400' : 'text-text-dim'}`}>{formatClock(b.time)}</span>
+                    <span className={`col-start-1 row-start-1 sm:col-auto sm:row-auto min-w-0 truncate font-semibold text-xs sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
+                    <span className={`col-start-2 row-start-1 row-span-2 sm:col-auto sm:row-auto text-right font-mono font-bold tabular-nums text-sm sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
+                    <span className="col-start-1 row-start-3 sm:col-auto sm:row-auto text-[9px] font-bold uppercase tracking-wider text-green-400">{isLast ? 'Winner' : ''}</span>
                   </li>
                 )
               })}
