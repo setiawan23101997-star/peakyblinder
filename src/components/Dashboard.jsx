@@ -37,11 +37,11 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
-const URGENT_MS = 5 * 60 * 1000 // shared "about to happen" threshold for events + auctions
-const RECENT_WIN_MS = 7 * 24 * 60 * 60 * 1000 // 7 days — how long a finished auction stays on the dashboard
-const JUST_ENDED_MS = 5 * 60 * 1000 // a finished auction younger than this gets the "just ended" pulse
-const MAX_RECENT_WINS = 6 // how many finished auctions to show (each win is its own card, even for the same user)
-const DEBUG_WINS = false // flip to true to log why auctions are filtered out of "Recently won"
+const URGENT_MS = 5 * 60 * 1000
+const RECENT_WIN_MS = 7 * 24 * 60 * 60 * 1000
+const JUST_ENDED_MS = 5 * 60 * 1000
+const MAX_RECENT_WINS = 6
+const DEBUG_WINS = false
 
 const TYPE = {
   boss:     { color: '#ef4444', icon: '👾', label: 'World Boss' },
@@ -60,7 +60,6 @@ const RARITY_COLORS = {
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-// Non-breaking space (U+00A0) so "10:00 PM" never wraps between the time and the period.
 const NBSP = '\u00A0'
 
 function to12h(hhmm) {
@@ -109,7 +108,6 @@ function formatAuctionTime(ms) {
   return `${s}s`
 }
 
-/** "12m ago", "3h ago", "1d ago" — for the recently-won strip. */
 function formatRelativePast(ms) {
   if (ms <= 0) return 'just now'
   const totalSec = Math.floor(ms / 1000)
@@ -130,9 +128,6 @@ function getGreeting(hour) {
   return 'Good evening'
 }
 
-/**
- * Normalize a finished auction into a "winner" record.
- */
 function readWinner(a, now = Date.now()) {
   const name = a.winner || a.winnerName || a.topBidder || a.soldTo || null
   const price = a.finalBid ?? a.currentBid ?? a.winningBid ?? 0
@@ -361,6 +356,17 @@ export default function Dashboard({ ctx, setPage }) {
 
 /* ──────────────────────────────────────────────────────────────────── */
 
+/**
+ * Live auctions — redesigned.
+ *
+ * Layout: two-column card.
+ *   Left  = square image (72×72). If no image, a colored placeholder with the
+ *           rarity initial.
+ *   Right = tight vertical stack: rarity + timer, name, then a stats row
+ *           (Top bid / Bidder) with a divider above it.
+ *
+ * Cards read top-to-bottom now instead of as two disjoint blocks.
+ */
 function LiveAuctionsStrip({ auctions, totalCount, now, onOpenAll, currentUser }) {
   if (totalCount === 0) return null
 
@@ -400,58 +406,95 @@ function LiveAuctionsStrip({ auctions, totalCount, now, onOpenAll, currentUser }
               type="button"
               onClick={onOpenAll}
               aria-label={cardLabel}
-              className="group text-left rounded-xl border bg-void/40 px-4 py-3 transition-colors hover:bg-gold/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+              className="group text-left rounded-xl border bg-void/40 p-3 flex gap-3 transition-colors hover:bg-gold/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
               style={{
                 borderColor: isLeading ? 'rgba(34,197,94,0.5)' : rarity.border,
               }}
             >
-              <div className="flex items-center justify-between gap-2 mb-2" aria-hidden="true">
-                <span
-                  className="text-[10px] font-bold uppercase tracking-widest"
+              {/* Left: image or placeholder */}
+              <div className="flex-shrink-0">
+                {a.imageUrl ? (
+                  <img
+                    src={a.imageUrl}
+                    alt=""
+                    width={72}
+                    height={72}
+                    loading="lazy"
+                    className="rounded-lg border border-gold/25 object-cover bg-void/60"
+                    style={{ width: 72, height: 72 }}
+                    onError={(e) => { e.currentTarget.style.display = 'none' }}
+                  />
+                ) : (
+                  <div
+                    className="rounded-lg border flex items-center justify-center font-spectral font-bold"
+                    style={{
+                      width: 72,
+                      height: 72,
+                      borderColor: rarity.border,
+                      backgroundColor: `${rarity.color}15`,
+                      color: rarity.color,
+                      fontSize: 24,
+                    }}
+                    aria-hidden="true"
+                  >
+                    {a.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              {/* Right: info stack */}
+              <div className="min-w-0 flex-1 flex flex-col">
+                {/* Top row: rarity + timer */}
+                <div className="flex items-center justify-between gap-2 mb-1" aria-hidden="true">
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-widest"
+                    style={{ color: rarity.color }}
+                  >
+                    {a.rarity}
+                  </span>
+                  <span
+                    className={`text-[10px] font-mono tabular-nums font-semibold whitespace-nowrap ${
+                      isEnding ? 'text-red-400 motion-safe:animate-pulse' : 'text-text-dim'
+                    }`}
+                  >
+                    {timeLabel}
+                  </span>
+                </div>
+
+                {/* Name */}
+                <div
+                  className="text-sm font-semibold truncate mb-2"
                   style={{ color: rarity.color }}
+                  aria-hidden="true"
                 >
-                  {a.rarity}
-                </span>
-                <span
-                  className={`text-[11px] font-mono tabular-nums font-semibold whitespace-nowrap ${
-                    isEnding ? 'text-red-400 motion-safe:animate-pulse' : 'text-text-dim'
-                  }`}
-                >
-                  {timeLabel}
-                </span>
-              </div>
+                  {a.name}
+                </div>
 
-              <div
-                className="text-sm font-semibold truncate mb-2"
-                style={{ color: rarity.color }}
-                aria-hidden="true"
-              >
-                {a.name}
-              </div>
-
-              <div className="flex items-end justify-between gap-2" aria-hidden="true">
-                <div className="min-w-0">
-                  <div className="text-[10px] text-text-dim">Top bid</div>
-                  <div className="font-mono text-lg font-bold text-gold-bright tabular-nums leading-tight">
-                    {(a.currentBid || 0).toLocaleString()}
+                {/* Stats row pinned to the bottom */}
+                <div className="mt-auto flex items-end justify-between gap-3 pt-2 border-t border-gold/10" aria-hidden="true">
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-text-dim leading-none">Top bid</div>
+                    <div className="font-mono text-lg font-bold text-gold-bright tabular-nums leading-tight mt-1">
+                      {(a.currentBid || 0).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="text-right min-w-0">
+                    <div className="text-[10px] text-text-dim leading-none">Bidder</div>
+                    <div className={`text-xs font-semibold truncate mt-1 ${isLeading ? 'text-green-400' : 'text-text-bright'}`}>
+                      {a.topBidder || '—'}
+                    </div>
+                    <div className="text-[10px] text-text-dim mt-0.5">
+                      {bidCount} {bidCount === 1 ? 'bid' : 'bids'}
+                    </div>
                   </div>
                 </div>
-                <div className="text-right min-w-0">
-                  <div className="text-[10px] text-text-dim">Bidder</div>
-                  <div className={`text-xs font-semibold truncate ${isLeading ? 'text-green-400' : 'text-text-bright'}`}>
-                    {a.topBidder || '—'}
-                  </div>
-                  <div className="text-[10px] text-text-dim mt-0.5">
-                    {bidCount} {bidCount === 1 ? 'bid' : 'bids'}
-                  </div>
-                </div>
-              </div>
 
-              {isLeading && (
-                <div className="mt-2 text-[10px] font-bold uppercase tracking-wider text-green-400" aria-hidden="true">
-                  ✓ You're leading
-                </div>
-              )}
+                {isLeading && (
+                  <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-green-400" aria-hidden="true">
+                    ✓ You're leading
+                  </div>
+                )}
+              </div>
             </button>
           )
         })}
@@ -466,6 +509,9 @@ function LiveAuctionsStrip({ auctions, totalCount, now, onOpenAll, currentUser }
   )
 }
 
+/**
+ * Recently won — same two-column layout as live auctions, with sold styling.
+ */
 function RecentWinsStrip({ wins, now, onOpenAll, currentUser }) {
   if (wins.length === 0) return null
 
@@ -513,7 +559,7 @@ function RecentWinsStrip({ wins, now, onOpenAll, currentUser }) {
               type="button"
               onClick={onOpenAll}
               aria-label={cardLabel}
-              className={`group relative text-left rounded-xl border px-4 py-3 transition-colors hover:bg-gold/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${
+              className={`group relative text-left rounded-xl border p-3 flex gap-3 transition-colors hover:bg-gold/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${
                 isMe ? 'bg-green-500/[0.06]' : 'bg-void/40'
               }`}
               style={{
@@ -529,54 +575,88 @@ function RecentWinsStrip({ wins, now, onOpenAll, currentUser }) {
                 />
               )}
 
-              <div className="flex items-center justify-between gap-2 mb-2" aria-hidden="true">
-                <span
-                  className="text-[10px] font-bold uppercase tracking-widest"
+              {/* Left: image or placeholder */}
+              <div className="flex-shrink-0">
+                {a.imageUrl ? (
+                  <img
+                    src={a.imageUrl}
+                    alt=""
+                    width={72}
+                    height={72}
+                    loading="lazy"
+                    className="rounded-lg border border-gold/25 object-cover bg-void/60"
+                    style={{ width: 72, height: 72 }}
+                    onError={(e) => { e.currentTarget.style.display = 'none' }}
+                  />
+                ) : (
+                  <div
+                    className="rounded-lg border flex items-center justify-center font-spectral font-bold"
+                    style={{
+                      width: 72,
+                      height: 72,
+                      borderColor: rarity.border,
+                      backgroundColor: `${rarity.color}15`,
+                      color: rarity.color,
+                      fontSize: 24,
+                    }}
+                    aria-hidden="true"
+                  >
+                    {a.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              {/* Right: info stack */}
+              <div className="min-w-0 flex-1 flex flex-col">
+                <div className="flex items-center justify-between gap-2 mb-1" aria-hidden="true">
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-widest"
+                    style={{ color: rarity.color }}
+                  >
+                    {a.rarity}
+                  </span>
+                  <span className="text-[10px] font-mono tabular-nums font-semibold text-text-dim whitespace-nowrap">
+                    {justEnded ? 'Just ended' : agoLabel}
+                  </span>
+                </div>
+
+                <div
+                  className="text-sm font-semibold truncate mb-2"
                   style={{ color: rarity.color }}
+                  aria-hidden="true"
                 >
-                  {a.rarity}
-                </span>
-                <span className="text-[11px] font-mono tabular-nums font-semibold text-text-dim whitespace-nowrap">
-                  {justEnded ? 'Just ended' : agoLabel}
-                </span>
-              </div>
-
-              <div
-                className="text-sm font-semibold truncate mb-2"
-                style={{ color: rarity.color }}
-                aria-hidden="true"
-              >
-                {a.name}
-              </div>
-
-              <div className="flex items-end justify-between gap-2" aria-hidden="true">
-                <div className="min-w-0">
-                  <div className="text-[10px] text-text-dim">Final price</div>
-                  <div className="font-mono text-lg font-bold text-gold-bright tabular-nums leading-tight">
-                    {price.toLocaleString()}
-                  </div>
+                  {a.name}
                 </div>
-                <div className="text-right min-w-0">
-                  <div className="text-[10px] text-text-dim">Won by</div>
-                  <div className={`text-xs font-semibold truncate ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
-                    {winnerName}
-                  </div>
-                  {hasMultipleWins && (
-                    <div className="text-[10px] text-gold-light mt-0.5">
-                      {totalWins} wins this week
+
+                <div className="mt-auto flex items-end justify-between gap-3 pt-2 border-t border-gold/10" aria-hidden="true">
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-text-dim leading-none">Final price</div>
+                    <div className="font-mono text-lg font-bold text-gold-bright tabular-nums leading-tight mt-1">
+                      {price.toLocaleString()}
                     </div>
-                  )}
+                  </div>
+                  <div className="text-right min-w-0">
+                    <div className="text-[10px] text-text-dim leading-none">Won by</div>
+                    <div className={`text-xs font-semibold truncate mt-1 ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
+                      {winnerName}
+                    </div>
+                    {hasMultipleWins && (
+                      <div className="text-[10px] text-gold-light mt-0.5">
+                        {totalWins} wins this week
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <div
-                className={`mt-2 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                  isMe ? 'text-green-400' : 'text-text-dim'
-                }`}
-                aria-hidden="true"
-              >
-                <span>{isMe ? '🎉' : '🏆'}</span>
-                <span>{isMe ? 'Congratulations!' : 'Sold'}</span>
+                <div
+                  className={`mt-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                    isMe ? 'text-green-400' : 'text-text-dim'
+                  }`}
+                  aria-hidden="true"
+                >
+                  <span>{isMe ? '🎉' : '🏆'}</span>
+                  <span>{isMe ? 'Congratulations!' : 'Sold'}</span>
+                </div>
               </div>
             </button>
           )
@@ -586,16 +666,6 @@ function RecentWinsStrip({ wins, now, onOpenAll, currentUser }) {
   )
 }
 
-/**
- * "Coming up next" card.
- *
- * Desktop (≥ md): two-column layout — icon + name on the left, big countdown
- *   on the right. Full name is always visible.
- *
- * Mobile (< md): stacked layout — icon + "Coming up next" label + full name
- *   + day/time at the top, then a full-width countdown block below. Nothing
- *   truncates; the name wraps naturally to 2 lines if needed.
- */
 function NextEventCard({ event, now }) {
   const t = TYPE[event.type]
   const remaining = event.nextTs - now
@@ -610,9 +680,7 @@ function NextEventCard({ event, now }) {
         aria-hidden="true"
       />
 
-      {/* ── Mobile / narrow layout (< md) ── */}
       <div className="md:hidden relative p-4">
-        {/* Header: icon + label */}
         <div className="flex items-center gap-3 mb-3">
           <div
             className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
@@ -626,12 +694,10 @@ function NextEventCard({ event, now }) {
           </div>
         </div>
 
-        {/* Name — full width, wraps naturally */}
         <div className="font-spectral text-xl font-bold text-text-bright leading-tight mb-2">
           {event.name}
         </div>
 
-        {/* Boss + day/time */}
         <div className="flex flex-col gap-1 text-sm text-text-dim">
           {event.boss && (
             <div className="truncate">👾 {event.boss}</div>
@@ -641,7 +707,6 @@ function NextEventCard({ event, now }) {
           </div>
         </div>
 
-        {/* Countdown block — full width, right aligned */}
         <div className="mt-3 pt-3 border-t border-gold/10 flex items-center justify-between gap-3">
           <div className="text-[11px] text-text-dim font-semibold uppercase tracking-wider">
             Starts in
@@ -655,7 +720,6 @@ function NextEventCard({ event, now }) {
         </div>
       </div>
 
-      {/* ── Desktop layout (≥ md) ── */}
       <div className="hidden md:flex relative p-6 items-center gap-6">
         <div
           className="flex-shrink-0 w-16 h-16 rounded-xl flex items-center justify-center text-3xl"
@@ -699,11 +763,6 @@ function NextEventCard({ event, now }) {
   )
 }
 
-/**
- * Horizontal day-tab bar (ARIA "tabs" pattern) + a single panel below it
- * showing that day's events. Arrow keys move focus/selection between
- * tabs, Home/End jump to the first/last day.
- */
 function WeeklyEventTabs({ scheduleByDay, todayDow, activeDay, onSelect, now, idPrefix }) {
   const tabRefs = useRef({})
 
@@ -790,9 +849,6 @@ function WeeklyEventTabs({ scheduleByDay, todayDow, activeDay, onSelect, now, id
   )
 }
 
-/**
- * Responsive event row.
- */
 function EventRow({ ev, dow, now }) {
   const t = TYPE[ev.type]
   const startTs = useMemo(() => nextOccurrence(dow, ev.time, now), [dow, ev.time, now])
@@ -800,7 +856,6 @@ function EventRow({ ev, dow, now }) {
 
   return (
     <div className="rounded-lg bg-void/50 border border-gold/10 p-3 sm:p-0 sm:px-4 sm:py-3 hover:border-gold/25 transition-colors">
-      {/* ── Mobile layout ── */}
       <div className="sm:hidden">
         <div className="flex items-start gap-3">
           <div
@@ -843,7 +898,6 @@ function EventRow({ ev, dow, now }) {
         </div>
       </div>
 
-      {/* ── Desktop layout ── */}
       <div className="hidden sm:flex items-center gap-4">
         <div className="flex-shrink-0 w-16 text-center border-r border-gold/15 pr-4">
           <div className="font-mono font-bold text-base tabular-nums leading-tight whitespace-nowrap" style={{ color: t.color }}>

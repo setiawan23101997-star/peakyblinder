@@ -49,6 +49,7 @@ function App() {
     startedAt: Number(a.started_at ?? a.startedAt) || 0,
     endedAt: Number(a.ended_at ?? a.endedAt) || 0,
     distributedBy: a.distributed_by ?? a.distributedBy ?? null,
+    imageUrl: a.image_url ?? a.imageUrl ?? null,
     bids: (() => {
       try {
         if (typeof a.bids === 'string') return JSON.parse(a.bids)
@@ -349,13 +350,14 @@ function App() {
   // ---------- auth ----------
 
   /**
-   * Login. Searches the FULL roster (allMembers), not the filtered `members`.
-   * The filter exists so unauthenticated viewers can't SEE Admin rows in the
-   * UI — but it must never gate who is allowed to authenticate.
+   * Login. Searches the FULL roster from the DB, never the filtered `members`
+   * state — the filter exists so unauthenticated viewers don't SEE Admin rows,
+   * but it must never gate who is allowed to authenticate.
+   *
+   * No toast on failure — the Login page shows the error inline.
    */
   const handleLogin = async (username, password) => {
     try {
-      // Fetch fresh from DB so we're not dependent on allMembers being populated
       const { data, error } = await supabase
         .from('members')
         .select('*')
@@ -367,7 +369,6 @@ function App() {
       )
 
       if (!target) {
-        addToast('Invalid username or password.', 'red', 'Login Failed')
         return false
       }
 
@@ -375,7 +376,6 @@ function App() {
       setCurrentUser(user)
       localStorage.setItem('currentUser', JSON.stringify(user))
 
-      // Refresh full roster and re-apply the visibility filter for this viewer
       const normalized = (data || []).map(normalizeMember)
       setAllMembers(normalized)
       setMembers(filterVisibleMembers(normalized, user))
@@ -384,7 +384,6 @@ function App() {
       return true
     } catch (error) {
       console.error('Login failed:', error)
-      addToast('Could not connect to database.', 'red', 'Login Failed')
       return false
     }
   }
