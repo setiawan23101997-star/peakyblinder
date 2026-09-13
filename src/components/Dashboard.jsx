@@ -360,7 +360,7 @@ export default function Dashboard({ ctx, setPage }) {
   const goAttendance = useCallback(() => setPage('attendance'), [setPage])
 
   return (
-    <div className="w-full min-w-0 max-w-full overflow-x-clip space-y-5 sm:space-y-7 pb-8 sm:pb-10">
+    <div className="w-full min-w-0 max-w-full overflow-x-clip space-y-4 sm:space-y-7 pb-8 sm:pb-10">
       <HeroSection
         currentUser={currentUser}
         activeRegion={activeRegion}
@@ -452,7 +452,7 @@ const HeroSection = React.memo(function HeroSection({
               <span className="text-text-bright">{greeting}, </span>
               <span className="text-gold-bright">{firstName}</span>
             </h1>
-            <p className="text-text-dim text-xs sm:text-sm md:text-[15px] mt-2 leading-relaxed max-w-3xl">
+            <p className="mt-2 flex max-w-3xl flex-wrap items-center gap-x-2 gap-y-1 text-text-dim text-[11px] leading-relaxed sm:text-sm md:text-[15px]">
               {todayEvents.length > 0
                 ? <>
                     <span className="text-text-bright/85">{todayEvents.length}</span>{' '}
@@ -470,7 +470,7 @@ const HeroSection = React.memo(function HeroSection({
           </div>
 
           <div className="grid grid-cols-2 gap-2 min-w-0 w-full xl:w-auto xl:min-w-[330px]">
-            <div className="rounded-xl border border-gold/15 bg-black/25 px-3.5 py-3 min-w-0">
+            <div className="min-w-0 rounded-xl border border-gold/15 bg-black/25 px-2.5 py-2.5 sm:px-3.5 sm:py-3">
               <div className="text-[8px] sm:text-[9px] text-text-dim font-bold uppercase tracking-[0.12em] sm:tracking-[0.16em] truncate">
                 Server · {SERVER_TZ_LABEL}
               </div>
@@ -528,7 +528,7 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
 
   return (
     <section className="relative">
-      <div className="flex items-end justify-between mb-3 flex-wrap gap-2">
+      <div className="flex min-w-0 flex-col gap-2 mb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-2">
         <div className="flex items-center gap-3">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-dim mb-0.5">Market</div>
@@ -585,7 +585,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
       type="button"
       onClick={onOpenAll}
       aria-label={cardLabel}
-      className="group text-left rounded-2xl border bg-[#0c0b0a]/80 p-3.5 flex gap-3 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#11100e] hover:border-gold/40 hover:shadow-[0_14px_35px_rgba(0,0,0,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+      className="group grid min-w-0 grid-cols-[56px_minmax(0,1fr)] gap-2.5 rounded-2xl border bg-[#0c0b0a]/80 p-2.5 text-left transition-all duration-200 sm:flex sm:gap-3 sm:p-3.5 hover:-translate-y-0.5 hover:bg-[#11100e] hover:border-gold/40 hover:shadow-[0_14px_35px_rgba(0,0,0,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
       style={{ borderColor: isLeading ? 'rgba(34,197,94,0.5)' : rarity.border }}
     >
       <div className="flex-shrink-0">
@@ -596,15 +596,14 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
             width={64}
             height={64}
             loading="lazy"
-            className="rounded-xl border border-white/10 object-cover bg-black/30 shadow-inner"
-            style={{ width: 64, height: 64 }}
+            className="h-14 w-14 rounded-xl border border-white/10 object-cover bg-black/30 shadow-inner sm:h-16 sm:w-16"
             onError={(e) => { e.currentTarget.style.display = 'none' }}
           />
         ) : (
           <div
-            className="rounded-xl border flex items-center justify-center font-spectral font-bold bg-black/25"
+            className="flex h-14 w-14 items-center justify-center rounded-xl border bg-black/25 font-spectral font-bold sm:h-16 sm:w-16"
             style={{
-              width: 64, height: 64,
+              
               borderColor: rarity.border,
               backgroundColor: `${rarity.color}15`,
               color: rarity.color,
@@ -620,7 +619,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
       <div className="min-w-0 flex-1 flex flex-col">
         {/* Top row: rarity + countdown */}
         <div className="flex items-center justify-between gap-2 mb-1" aria-hidden="true">
-          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: rarity.color }}>
+          <span className="min-w-0 text-[9px] font-bold uppercase tracking-[0.16em] sm:text-[10px] sm:tracking-widest" style={{ color: rarity.color }}>
             {a.rarity}
           </span>
           <span className={`text-[10px] font-mono tabular-nums font-semibold whitespace-nowrap ${
@@ -630,7 +629,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
           </span>
         </div>
 
-        <div className="text-[15px] font-semibold truncate mb-1.5 leading-tight" style={{ color: rarity.color }} aria-hidden="true">
+        <div className="break-words text-[14px] font-semibold leading-tight sm:text-[15px]" style={{ color: rarity.color }} aria-hidden="true">
           {a.name}
         </div>
 
@@ -643,7 +642,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
           </div>
           <div className="text-right min-w-0">
             <div className="text-[10px] text-text-dim leading-none">Bidder</div>
-            <div className={`text-xs font-semibold truncate mt-1 ${isLeading ? 'text-green-400' : 'text-text-bright'}`}>
+            <div className={`mt-1 break-words text-[11px] font-semibold leading-tight sm:text-xs ${isLeading ? 'text-green-400' : 'text-text-bright'}`}>
               {a.topBidder || '—'}
             </div>
           </div>
@@ -742,7 +741,7 @@ const RecentWinCard = React.memo(function RecentWinCard({
       type="button"
       onClick={onOpenAll}
       aria-label={cardLabel}
-      className={`group relative text-left rounded-2xl border p-3.5 flex gap-3 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#11100e] hover:shadow-[0_14px_35px_rgba(0,0,0,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${
+      className={`group relative grid min-w-0 grid-cols-[56px_minmax(0,1fr)] gap-2.5 rounded-2xl border p-2.5 text-left transition-all duration-200 sm:flex sm:gap-3 sm:p-3.5 hover:-translate-y-0.5 hover:bg-[#11100e] hover:shadow-[0_14px_35px_rgba(0,0,0,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${
         isMe ? 'bg-green-500/[0.06]' : 'bg-void/40'
       }`}
       style={{
@@ -766,15 +765,14 @@ const RecentWinCard = React.memo(function RecentWinCard({
             width={64}
             height={64}
             loading="lazy"
-            className="rounded-xl border border-white/10 object-cover bg-black/30 shadow-inner"
-            style={{ width: 64, height: 64 }}
+            className="h-14 w-14 rounded-xl border border-white/10 object-cover bg-black/30 shadow-inner sm:h-16 sm:w-16"
             onError={(e) => { e.currentTarget.style.display = 'none' }}
           />
         ) : (
           <div
-            className="rounded-xl border flex items-center justify-center font-spectral font-bold bg-black/25"
+            className="flex h-14 w-14 items-center justify-center rounded-xl border bg-black/25 font-spectral font-bold sm:h-16 sm:w-16"
             style={{
-              width: 64, height: 64,
+              
               borderColor: rarity.border,
               backgroundColor: `${rarity.color}15`,
               color: rarity.color,
@@ -789,15 +787,15 @@ const RecentWinCard = React.memo(function RecentWinCard({
 
       <div className="min-w-0 flex-1 flex flex-col">
         <div className="flex items-center justify-between gap-2 mb-1" aria-hidden="true">
-          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: rarity.color }}>
+          <span className="min-w-0 text-[9px] font-bold uppercase tracking-[0.16em] sm:text-[10px] sm:tracking-widest" style={{ color: rarity.color }}>
             {a.rarity}
           </span>
-          <span className="text-[11px] font-mono tabular-nums font-semibold text-text-dim whitespace-nowrap">
+          <span className="min-w-0 text-[10px] font-mono tabular-nums font-semibold text-text-dim whitespace-nowrap sm:text-[11px]">
             {justEnded ? 'Just ended' : agoLabel}
           </span>
         </div>
 
-        <div className="text-[15px] font-semibold truncate mb-1.5 leading-tight" style={{ color: rarity.color }} aria-hidden="true">
+        <div className="break-words text-[14px] font-semibold leading-tight sm:text-[15px]" style={{ color: rarity.color }} aria-hidden="true">
           {a.name}
         </div>
 
@@ -810,7 +808,7 @@ const RecentWinCard = React.memo(function RecentWinCard({
           </div>
           <div className="text-right min-w-0">
             <div className="text-[10px] text-text-dim leading-none">Won By</div>
-            <div className={`text-xs font-semibold truncate mt-1 ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
+            <div className={`mt-1 break-words text-[11px] font-semibold leading-tight sm:text-xs ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
               {winnerName}
             </div>
             {hasMultipleWins && (
@@ -933,9 +931,9 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
         aria-hidden="true"
       />
 
-      <div className="relative p-3.5 sm:p-4 md:p-5 grid grid-cols-[44px_minmax(0,1fr)] sm:flex sm:items-center gap-3 sm:gap-4 min-w-0">
+      <div className="relative grid min-w-0 grid-cols-[40px_minmax(0,1fr)] gap-2.5 p-3 sm:flex sm:items-center sm:gap-4 sm:p-4 md:p-5">
         <div
-          className="flex-shrink-0 w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl bg-black/20"
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-black/20 text-lg sm:h-12 sm:w-12 sm:rounded-2xl sm:text-2xl"
           style={{ background: `${t.color}15`, border: `1px solid ${t.color}40` }}
           aria-hidden="true"
         >
@@ -969,7 +967,7 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
           </div>
         </div>
 
-        <div className="col-span-2 sm:col-span-1 sm:text-right flex-shrink-0 pt-2 sm:pt-0 border-t border-white/[0.06] sm:border-0 min-w-0">
+        <div className="min-w-0 flex-shrink-0 text-right">
           <div className="text-[10px] text-text-dim font-semibold uppercase tracking-wider mb-0.5 whitespace-nowrap">
             Starts In
           </div>
@@ -1121,7 +1119,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
           </div>
         </div>
 
-        <div className="mt-2 pt-2 border-t border-gold/10 flex items-center justify-between gap-3">
+        <div className="mt-2 flex items-center justify-between gap-2 border-t border-gold/10 pt-2">
           <div className="flex items-baseline gap-2 min-w-0">
             <span
               className="font-mono font-bold text-sm tabular-nums leading-none whitespace-nowrap"
@@ -1174,7 +1172,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-text-bright truncate">{ev.name}</div>
+          <div className="break-words text-[13px] font-semibold leading-tight text-text-bright sm:text-sm">{ev.name}</div>
           {(ev.boss || ev.subtitle) && (
             <div className="text-xs text-text-dim truncate mt-0.5">
               {ev.boss ? `👾 ${ev.boss}` : ev.subtitle}
@@ -1219,7 +1217,7 @@ const StatTile = React.memo(function StatTile({
     <Tag
       type={clickable ? 'button' : undefined}
       onClick={onClick}
-      className={`group relative min-w-0 overflow-hidden rounded-xl border bg-[#0a0908]/80 px-3.5 py-3 md:px-4 md:py-3.5 text-left transition-all duration-200 ${
+      className={`group relative min-w-0 overflow-hidden rounded-xl border bg-[#0a0908]/80 px-2.5 py-2.5 sm:px-3.5 sm:py-3 md:px-4 md:py-3.5 text-left transition-all duration-200 ${
         clickable
           ? 'cursor-pointer hover:-translate-y-0.5 hover:bg-[#100e0b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60'
           : ''
@@ -1237,7 +1235,7 @@ const StatTile = React.memo(function StatTile({
 
       <div className="flex items-center gap-3 min-w-0">
         <span
-          className="flex h-9 w-9 md:h-10 md:w-10 flex-shrink-0 items-center justify-center rounded-lg border text-sm md:text-base font-semibold"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border text-sm font-semibold sm:h-9 sm:w-9 md:h-10 md:w-10 md:text-base"
           style={{
             color: accent,
             borderColor: `${accent}32`,
@@ -1249,10 +1247,10 @@ const StatTile = React.memo(function StatTile({
         </span>
 
         <div className="min-w-0 flex-1">
-          <div className="text-[9px] md:text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim truncate">
+          <div className="break-words text-[8px] leading-tight font-bold uppercase tracking-[0.10em] text-text-dim sm:text-[9px] sm:tracking-[0.14em] md:text-[10px]">
             {label}
           </div>
-          <div className="mt-1 font-mono text-xl md:text-2xl font-bold leading-none tracking-tight tabular-nums text-text-bright truncate">
+          <div className="mt-1 break-words font-mono text-lg font-bold leading-none tracking-tight tabular-nums text-text-bright sm:text-xl md:text-2xl">
             {value}
           </div>
         </div>
@@ -1275,12 +1273,12 @@ const ActionTile = React.memo(function ActionTile({ icon, label, hint, onClick }
     <button
       type="button"
       onClick={onClick}
-      className="group flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-[#0b0a09]/70 px-4 py-3.5 hover:-translate-y-0.5 hover:border-gold/30 hover:bg-gold/[0.035] hover:shadow-[0_12px_30px_rgba(0,0,0,0.18)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 transition-all text-left"
+      className="group flex min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.07] bg-[#0b0a09]/70 px-3 py-3 sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3.5 hover:-translate-y-0.5 hover:border-gold/30 hover:bg-gold/[0.035] hover:shadow-[0_12px_30px_rgba(0,0,0,0.18)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 transition-all text-left"
     >
-      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-gold/15 bg-gold/[0.05] text-base text-gold-light opacity-90 group-hover:opacity-100" aria-hidden="true">{icon}</span>
+      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.05] text-sm text-gold-light opacity-90 sm:h-9 sm:w-9 sm:rounded-xl sm:text-base group-hover:opacity-100" aria-hidden="true">{icon}</span>
       <div className="min-w-0">
-        <div className="text-sm font-semibold text-text-bright truncate">{label}</div>
-        <div className="text-xs text-text-dim truncate">{hint}</div>
+        <div className="break-words text-[13px] font-semibold leading-tight text-text-bright sm:text-sm">{label}</div>
+        <div className="mt-0.5 break-words text-[10px] leading-tight text-text-dim sm:text-xs">{hint}</div>
       </div>
     </button>
   )
