@@ -109,6 +109,7 @@ export default function Attendance({ ctx }) {
   const [search, setSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [expandedLogs, setExpandedLogs] = useState({})
+  const [detailLog, setDetailLog] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
   const [now, setNow] = useState(Date.now())
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -331,328 +332,477 @@ export default function Attendance({ ctx }) {
     return tb - ta
   })
 
+  const selectedCount = Object.values(selectedMembers).filter(Boolean).length
+  const allFilteredSelected = filtered.length > 0 && filtered.every(m => selectedMembers[m.id])
+  const selectedTotalCoins = selectedCount * (Number(coinAmount) || 0)
+
+  const toggleAllFiltered = () => {
+    setSelectedMembers(prev => {
+      const next = { ...prev }
+      if (allFilteredSelected) {
+        filtered.forEach(m => delete next[m.id])
+      } else {
+        filtered.forEach(m => { next[m.id] = true })
+      }
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedMembers({})
+
   return (
-    <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="font-spectral text-2xl font-bold text-gold-light mb-2">Attendance</h1>
-          <p className="text-text-dim text-sm">
-            {isElder ? 'Record attendance for events and award coins' : 'Attendance history for clan events'}
-          </p>
-        </div>
-
-        <div className="flex items-stretch gap-2 flex-wrap">
-          {/* Region picker */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setPickerOpen(o => !o)}
-              className={`card px-3 py-2 border-gold/30 flex items-center gap-3 h-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 min-w-[190px] ${
-                pickerOpen ? 'border-gold/60 bg-gold/[0.06]' : 'hover:border-gold/50'
-              }`}
-              aria-expanded={pickerOpen}
-              aria-label={`Region: ${activeRegion.name}. Click to change.`}
-            >
-              <span className="text-base leading-none" aria-hidden="true">🌍</span>
-              <FlagImage code={activeRegion.code} flag={activeRegion.flag} name={activeRegion.name} width={20} height={15} />
-              <div className="text-left flex-1 min-w-0">
-                <div className="text-[9px] font-bold uppercase tracking-widest text-gold-dim leading-tight">
-                  Your local
-                </div>
-                <div className="font-mono text-xs text-gold-bright tabular-nums whitespace-nowrap leading-tight">
-                  {formatInZone(now, activeRegion.tz)}
-                </div>
+    <div className="space-y-5">
+      {/* Simple Auction-style header */}
+      <header className="relative z-30 overflow-visible rounded-2xl border border-gold/15 bg-[#0c0a09]/90">
+        <div
+          className="absolute inset-0 rounded-2xl pointer-events-none"
+          aria-hidden="true"
+          style={{
+            background: 'radial-gradient(circle at 0% 0%, rgba(242,204,96,.06), transparent 38%), linear-gradient(120deg, rgba(255,255,255,.018), transparent 42%)',
+          }}
+        />
+        <div className="relative p-5 md:p-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-gold-bright" />
+                <span className="text-[10px] font-bold uppercase tracking-[.22em] text-gold-dim">Clan Management</span>
               </div>
-              <span
-                className={`text-[10px] text-text-dim transition-transform ${pickerOpen ? 'rotate-180' : ''}`}
-                aria-hidden="true"
-              >
-                ▾
-              </span>
-            </button>
+              <h1 className="font-spectral text-3xl font-bold tracking-tight text-text-bright">Attendance</h1>
+              <p className="mt-1 text-sm text-text-dim">
+                {isElder ? 'Mark the members who attended and record their reward.' : 'View clan attendance and event participation.'}
+              </p>
+            </div>
 
-            {pickerOpen && (
-              <div
-                className="absolute right-0 top-full mt-2 w-[260px] rounded-lg border border-gold/30 bg-dark shadow-xl overflow-hidden z-50"
-                style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.9)' }}
-              >
-                <div className="px-4 py-2 border-b border-gold/15 bg-void/40">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-gold-light">
-                    🌍 Region
-                  </div>
+            <div className="flex flex-wrap items-stretch gap-2">
+              <div className="rounded-xl border border-white/[.07] bg-black/20 px-4 py-2.5 min-w-[100px]">
+                <div className="text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Members</div>
+                <div className="mt-1 text-xl font-mono font-bold tabular-nums text-text-bright">{members.length}</div>
+              </div>
+              {isElder && (
+                <div className="rounded-xl border border-gold/20 bg-gold/[.04] px-4 py-2.5 min-w-[100px]">
+                  <div className="text-[9px] font-bold uppercase tracking-[.15em] text-gold-dim">Selected</div>
+                  <div className="mt-1 text-xl font-mono font-bold tabular-nums text-gold-bright">{selectedCount}</div>
                 </div>
-                <ul>
+              )}
+              <div className="rounded-xl border border-gold/20 bg-gold/[.04] px-4 py-2.5 min-w-[210px]">
+                <div className="text-[9px] font-bold uppercase tracking-[.15em] text-gold-dim">Server Time · {SERVER_TZ_LABEL}</div>
+                <div className="mt-1 text-sm font-mono font-bold tabular-nums text-gold-light whitespace-nowrap">{formatGMT8(now)}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-white/[.07] bg-black/20 px-3 py-2 text-[11px] text-text-dim">
+              <span className="text-green-400">●</span>
+              <span><span className="text-text-bright font-semibold">{attendanceLogs.length}</span> attendance log{attendanceLogs.length === 1 ? '' : 's'}</span>
+            </div>
+
+            <div className="relative ml-auto">
+              <button
+                type="button"
+                onClick={() => setPickerOpen(o => !o)}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${pickerOpen ? 'border-gold/60 bg-gold/[.06] text-gold-bright' : 'border-white/[.08] bg-black/20 text-text-dim hover:border-gold/35 hover:text-text-bright'}`}
+                aria-expanded={pickerOpen}
+              >
+                <FlagImage code={activeRegion.code} flag={activeRegion.flag} name={activeRegion.name} width={20} height={15} />
+                <span className="font-semibold">{activeRegion.name}</span>
+                <span className="font-mono text-[10px] text-text-dim">{formatInZone(now, activeRegion.tz)}</span>
+                <span className={`transition-transform ${pickerOpen ? 'rotate-180' : ''}`}>⌄</span>
+              </button>
+
+              {pickerOpen && (
+                <div className="absolute right-0 top-full mt-2 w-[260px] max-h-[420px] rounded-xl border border-gold/25 bg-[#0c0a09] shadow-2xl overflow-auto z-[100]">
+                  <div className="sticky top-0 px-4 py-2.5 border-b border-white/[.06] bg-[#0c0a09]">
+                    <div className="text-[9px] font-bold uppercase tracking-[.18em] text-gold-dim">Local Region</div>
+                    <div className="mt-0.5 text-[10px] text-text-dim">Choose the timezone used for local times.</div>
+                  </div>
                   {regions.map(r => {
                     const isActive = r.id === activeRegion.id
                     return (
-                      <li key={r.id}>
-                        <button
-                          type="button"
-                          onClick={() => pickRegion(r.id)}
-                          className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${
-                            isActive
-                              ? 'bg-gold/15 text-gold-bright'
-                              : 'text-text hover:bg-gold/10 hover:text-gold-light'
-                          }`}
-                          aria-pressed={isActive}
-                        >
-                          <FlagImage code={r.code} flag={r.flag} name={r.name} />
-                          <span className="flex-1 min-w-0 text-xs font-semibold truncate">
-                            {r.name || r.label || r.id}
-                          </span>
-                          <span className={`flex-shrink-0 text-[10px] font-mono ${isActive ? 'text-gold-bright' : 'text-text-dim'}`}>
-                            {r.label || ''}
-                          </span>
-                          {isActive && (
-                            <span className="text-gold-bright text-xs flex-shrink-0" aria-hidden="true">✓</span>
-                          )}
-                        </button>
-                      </li>
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => pickRegion(r.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${isActive ? 'bg-gold/10 text-gold-bright' : 'text-text hover:bg-white/[.03] hover:text-text-bright'}`}
+                      >
+                        <FlagImage code={r.code} flag={r.flag} name={r.name} />
+                        <span className="flex-1 min-w-0 text-xs font-semibold truncate">{r.name || r.label || r.id}</span>
+                        <span className="text-[10px] font-mono text-text-dim">{r.label || ''}</span>
+                        {isActive && <span className="text-gold-bright text-xs">✓</span>}
+                      </button>
                     )
                   })}
-                </ul>
-              </div>
-            )}
-          </div>
-
-          {/* Server clock — includes seconds */}
-          <div className="card px-3 py-2 border-gold/30 flex items-center gap-3 min-w-[190px]">
-            <div className="text-lg leading-none" aria-hidden="true">🕒</div>
-            <div className="text-left">
-              <div className="text-[9px] font-bold uppercase tracking-widest text-gold-dim leading-tight">
-                Server · {SERVER_TZ_LABEL}
-              </div>
-              <div className="font-mono text-xs text-gold-bright tabular-nums whitespace-nowrap leading-tight">
-                {formatGMT8(now)}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Recent Logs — everyone can see */}
-      {sortedLogs.length > 0 ? (
-        <div className="card mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-bold text-text-dim uppercase tracking-wider">
-              Recent Logs ({sortedLogs.length})
+      {/* One-step recording workspace */}
+      {isElder && (
+        <section className="rounded-2xl border border-gold/20 bg-[#0c0a09]/85 overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/[.06] flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-text-bright">Record Attendance</h2>
+              <p className="mt-1 text-[11px] text-text-dim">Choose the event, set the reward, then mark the members who attended.</p>
             </div>
-            <div className="text-[10px] text-text-dim uppercase tracking-wider">
-              Newest first · {SERVER_TZ_LABEL}
+            <div className="text-[10px] text-text-dim font-mono">Maximum clan size: 50 members</div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-0 border-b border-white/[.06]">
+            <div className="p-5 border-b lg:border-b-0 lg:border-r border-white/[.06]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-[.16em] text-text-dim">Event</span>
+                  <select className="input w-full h-10" value={selectedEvent} onChange={e => setSelectedEvent(e.target.value)}>
+                    {eventTypes.map(e => <option key={e}>{e}</option>)}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-[.16em] text-text-dim">Coins Per Member</span>
+                  <div className="flex gap-2">
+                    <input
+                      className="input w-full h-10 font-mono tabular-nums"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={coinAmount}
+                      onChange={e => setCoinAmount(e.target.value)}
+                      placeholder="25"
+                    />
+                    <span className="self-center text-[10px] text-text-dim">coins</span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {[10, 25, 50, 100, 200].map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setCoinAmount(v)}
+                    className={`rounded-md border px-2.5 py-1.5 text-[10px] font-mono transition-colors ${Number(coinAmount) === v ? 'border-gold/50 bg-gold/10 text-gold-bright' : 'border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light'}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-5 rounded-xl border border-white/[.06] bg-black/15 px-4 py-3">
+                <div className="flex items-center justify-between gap-3 text-[10px] text-text-dim">
+                  <span>Selected members</span>
+                  <strong className="font-mono text-text-bright">{selectedCount} / {members.length}</strong>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3 text-[10px] text-text-dim">
+                  <span>Reward per member</span>
+                  <strong className="font-mono text-gold-light">+{(Number(coinAmount) || 0).toLocaleString()}</strong>
+                </div>
+                <div className="mt-2 pt-2 border-t border-white/[.06] flex items-center justify-between gap-3 text-[10px] text-text-dim">
+                  <span>Total reward</span>
+                  <strong className="font-mono text-gold-bright">{selectedTotalCoins.toLocaleString()} coins</strong>
+                </div>
+              </div>
+
+              <div className="mt-3 text-[9px] text-text-dim">
+                Attendance will be recorded at <span className="font-mono text-gold-light">{formatGMT8(now)}</span> server time.
+              </div>
+            </div>
+
+            <div className="p-5 min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-[.16em] text-text-dim">Members</div>
+                  <div className="mt-0.5 text-xs text-text-bright"><span className="font-mono">{selectedCount}</span> selected</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={toggleAllFiltered} className="text-[10px] font-semibold text-gold-light hover:text-gold-bright">
+                    {allFilteredSelected ? 'Clear Visible' : `Select ${filtered.length === members.length ? 'All' : 'Visible'}`}
+                  </button>
+                  {selectedCount > 0 && (
+                    <button type="button" onClick={clearSelection} className="text-[10px] text-text-dim hover:text-red-300">Clear All</button>
+                  )}
+                </div>
+              </div>
+
+              <div className="relative mb-3">
+                <input
+                  className="input w-full h-10 pl-9"
+                  placeholder="Search member name..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim text-xs">⌕</span>
+              </div>
+
+              <div className="rounded-xl border border-white/[.07] overflow-hidden">
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_90px] items-center gap-2 px-3 py-2 border-b border-white/[.06] bg-black/20 text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">
+                  <span />
+                  <span>Member</span>
+                  <span className="text-right">Attendance</span>
+                </div>
+                <div className="max-h-[360px] overflow-y-auto divide-y divide-white/[.045]">
+                  {filtered.map(m => {
+                    const checked = !!selectedMembers[m.id]
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => toggleMember(m.id)}
+                        aria-pressed={checked}
+                        className={`w-full grid grid-cols-[34px_minmax(0,1fr)_90px] items-center gap-2 px-3 py-2.5 text-left transition-colors ${checked ? 'bg-gold/[.055]' : 'hover:bg-white/[.025]'}`}
+                      >
+                        <span className={`flex h-5 w-5 items-center justify-center rounded-md border text-[11px] ${checked ? 'border-gold bg-gold text-black' : 'border-white/15 bg-black/20 text-transparent'}`}>✓</span>
+                        <span className="min-w-0">
+                          <span className={`block truncate text-xs font-semibold ${checked ? 'text-gold-light' : 'text-text-bright'}`}>{m.name}</span>
+                          <span className="block mt-0.5 truncate text-[9px] text-text-dim">{m.cls || 'Member'}</span>
+                        </span>
+                        <span className="text-right text-[10px] font-mono tabular-nums text-text-dim">{m.attendance || 0}</span>
+                      </button>
+                    )
+                  })}
+                  {filtered.length === 0 && (
+                    <div className="px-4 py-10 text-center text-xs text-text-dim">No members found.</div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto">
+
+          <div className={`px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${selectedCount > 0 ? 'bg-gold/[.035]' : 'bg-black/10'}`}>
+            <div>
+              <div className="text-xs font-semibold text-text-bright">
+                {selectedCount > 0 ? `${selectedCount} member${selectedCount === 1 ? '' : 's'} ready` : 'No members selected'}
+              </div>
+              <div className="mt-0.5 text-[10px] text-text-dim">
+                {selectedCount > 0 ? `${selectedEvent} · +${(Number(coinAmount) || 0).toLocaleString()} coins each` : 'Select the members who attended this event.'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={recordAttendance}
+              disabled={submitting || selectedCount === 0}
+              className="btn-gold min-h-10 px-6 text-sm font-bold whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Saving…' : selectedCount > 0 ? `Record ${selectedCount} Member${selectedCount === 1 ? '' : 's'}` : 'Select Members First'}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Attendance history — compact for up to 50 attendees */}
+      <section className="rounded-2xl border border-white/[.07] bg-[#0c0a09]/70 overflow-hidden">
+        <div className="px-5 py-4 border-b border-white/[.06] flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold text-text-bright">Recent Attendance</h2>
+            <p className="mt-0.5 text-[10px] text-text-dim">Event records · open a record to view attendees</p>
+          </div>
+          <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-1 text-[10px] font-mono text-text-dim">
+            {sortedLogs.length} log{sortedLogs.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        {sortedLogs.length > 0 ? (
+          <div className="divide-y divide-white/[.05]">
             {sortedLogs.slice(0, 30).map(log => {
-              const isExpanded = !!expandedLogs[log.id]
               const attendees = log.attendees || []
               const coinEach = attendees[0]?.earned ?? 0
               const logTs = log.ts || Number(log.id) || new Date(log.date).getTime() || 0
               const isDeleting = deletingId === log.id
+              const totalAwarded = attendees.reduce((sum, a) => sum + (a.earned || 0), 0)
 
               return (
-                <div key={log.id} className="rounded border border-gold/15 bg-void/40">
-                  <div
-                    onClick={() => toggleLog(log.id)}
-                    className="flex flex-wrap items-center justify-between gap-2 py-2.5 px-3 cursor-pointer hover:bg-gold/5 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-wrap">
-                      <span className="text-xs text-gold-dim">{isExpanded ? '▾' : '▸'}</span>
-                      <span className="font-semibold text-gold-light">{log.event}</span>
-                      <span className="text-xs text-text-dim font-mono tabular-nums">
-                        {formatGMT8Short(logTs)}
-                      </span>
-                      {logTs > 0 && (
-                        <span className="text-[10px] text-gold-light/70 tabular-nums inline-flex items-center gap-1">
-                          <FlagImage code={activeRegion.code} flag={activeRegion.flag} name={activeRegion.name} width={14} height={10} />
-                          <span>{formatInZone(logTs, activeRegion.tz)}</span>
+                <div key={log.id} className="px-5 py-3.5 hover:bg-white/[.015] transition-colors">
+                  <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-text-bright">{log.event}</span>
+                        <span className="rounded-md border border-white/[.07] bg-black/20 px-1.5 py-0.5 text-[9px] font-mono text-text-dim">
+                          {log.members || attendees.length}/50
                         </span>
-                      )}
+                        <span className="rounded-md border border-green-500/15 bg-green-500/[.035] px-1.5 py-0.5 text-[9px] font-semibold text-green-400">
+                          +{coinEach.toLocaleString()} each
+                        </span>
+                      </div>
+
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-text-dim">
+                        <span className="font-mono tabular-nums">
+                          {formatGMT8Short(logTs)} · {SERVER_TZ_LABEL}
+                        </span>
+
+                        {logTs > 0 && (
+                          <span className="inline-flex items-center gap-1.5 text-gold-light/75">
+                            <FlagImage
+                              code={activeRegion.code}
+                              flag={activeRegion.flag}
+                              name={activeRegion.name}
+                              width={14}
+                              height={10}
+                            />
+                            <span>{formatInZone(logTs, activeRegion.tz)}</span>
+                          </span>
+                        )}
+
+                        <span>
+                          by <strong className="text-gold-light">{log.recorded_by || log.recordedBy || 'System'}</strong>
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="text-xs text-green-400 font-semibold">
-                        +{coinEach.toLocaleString()} coins each
+
+                    <div className="flex items-center gap-2 lg:flex-shrink-0">
+                      <span className="text-[10px] text-text-dim">
+                        {totalAwarded.toLocaleString()} total
                       </span>
-                      <span className="text-xs text-text-dim">{log.members} members</span>
-                      <span className="text-xs text-text-dim">
-                        by <span className="text-gold">{log.recorded_by || log.recordedBy}</span>
-                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => setDetailLog(log)}
+                        className="rounded-lg border border-gold/20 bg-gold/[.035] px-3 py-1.5 text-[10px] font-semibold text-gold-light hover:border-gold/40 hover:bg-gold/[.08] transition-colors"
+                      >
+                        View {attendees.length}/50
+                      </button>
+
                       {isElder && (
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            deleteLog(log)
-                          }}
+                          type="button"
+                          onClick={() => deleteLog(log)}
                           disabled={isDeleting}
-                          className="text-[10px] px-2 py-1 rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
-                          title="Reverse & delete this attendance"
+                          className="rounded-lg border border-red-500/20 px-2.5 py-1.5 text-[10px] font-semibold text-red-400 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
                         >
-                          {isDeleting ? '…' : '🗑 Delete'}
+                          {isDeleting ? 'Deleting…' : 'Delete'}
                         </button>
                       )}
                     </div>
                   </div>
-
-                  {isExpanded && (
-                    <div className="border-t border-gold/10 px-3 py-3 bg-void/60">
-                      <div className="text-[10px] font-bold uppercase tracking-widest text-gold-light mb-2">
-                        Attendees ({attendees.length})
-                      </div>
-                      {attendees.length === 0 ? (
-                        <div className="text-xs text-text-dim italic">No attendee details saved for this log.</div>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                          {attendees.map((a, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center justify-between gap-2 rounded border border-gold/15 bg-gold/5 px-3 py-2"
-                            >
-                              <div className="min-w-0">
-                                <div className="font-semibold text-text text-sm truncate">{a.name}</div>
-                                {a.cls && <div className="text-[10px] text-text-dim">{a.cls}</div>}
-                              </div>
-                              <div className="text-right flex-shrink-0">
-                                <div className="text-xs font-bold text-green-400">
-                                  +{(a.earned || 0).toLocaleString()}
-                                </div>
-                                <div className="text-[9px] uppercase tracking-wider text-text-dim">
-                                  {a.qualifier || 'full'}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <div className="mt-3 pt-3 border-t border-gold/10 flex flex-wrap justify-between items-center gap-2 text-[10px] uppercase tracking-wider text-text-dim">
-                        <span>
-                          Total awarded:{' '}
-                          <span className="text-gold-light font-bold normal-case">
-                            {attendees.reduce((s, a) => s + (a.earned || 0), 0).toLocaleString()} coins
-                          </span>
-                        </span>
-                        <span>
-                          Recorded by{' '}
-                          <span className="text-gold-light normal-case">
-                            {log.recorded_by || log.recordedBy}
-                          </span>
-                          {' · '}
-                          <span className="text-gold-light normal-case font-mono">
-                            {formatGMT8(logTs)}
-                          </span>
-                        </span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )
             })}
           </div>
-        </div>
-      ) : (
-        <div className="card text-center py-12 mb-6">
-          <div className="text-3xl mb-3 opacity-50">📋</div>
-          <div className="text-text-dim">No attendance recorded yet.</div>
-        </div>
-      )}
-
-      {/* Record form — Elder / Master only, hidden entirely for members */}
-      {isElder && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="card md:col-span-1">
-            <div className="text-sm font-bold text-text-dim uppercase tracking-wider mb-3">Event</div>
-            <select
-              className="input"
-              value={selectedEvent}
-              onChange={e => setSelectedEvent(e.target.value)}
-            >
-              {eventTypes.map(e => <option key={e}>{e}</option>)}
-            </select>
-
-            <div className="text-sm font-bold text-text-dim uppercase tracking-wider mb-3 mt-5">
-              Coins per Member
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                className="input flex-1"
-                type="number"
-                min="0"
-                step="1"
-                value={coinAmount}
-                onChange={e => setCoinAmount(e.target.value)}
-                placeholder="25"
-              />
-              <span className="text-xs text-text-dim">coins</span>
-            </div>
-            <div className="flex flex-wrap gap-1 mt-2">
-              {[10, 25, 50, 100, 200].map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setCoinAmount(v)}
-                  className={`text-xs px-2 py-1 rounded border transition-colors ${
-                    Number(coinAmount) === v
-                      ? 'bg-gold/20 border-gold text-gold-bright'
-                      : 'border-gold/20 text-text-dim hover:text-gold-light hover:border-gold/40'
-                  }`}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-
-            <div className="text-xs text-text-dim mt-3">
-              Each selected member will receive <span className="text-gold-light font-bold">{coinAmount || 0}</span> coins.
-            </div>
-
-            <div className="mt-5 pt-4 border-t border-gold/20 text-[10px] text-text-dim uppercase tracking-wider">
-              Session time: <span className="text-gold-light font-mono normal-case">{formatGMT8(now)}</span>
-            </div>
+        ) : (
+          <div className="px-5 py-14 text-center">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-white/[.07] bg-black/20 text-gold-light">✓</div>
+            <div className="mt-3 text-sm font-semibold text-text-dim">No attendance recorded yet.</div>
+            {isElder && (
+              <div className="mt-1 text-[10px] text-text-dim">
+                Use the recording panel above when an event is completed.
+              </div>
+            )}
           </div>
+        )}
+      </section>
 
-          <div className="card md:col-span-2">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <div className="text-sm font-bold text-text-dim uppercase tracking-wider">Members</div>
-              <span className="text-xs text-gold-light">
-                {Object.values(selectedMembers).filter(Boolean).length} selected
-              </span>
-            </div>
-            <input
-              className="input mb-3"
-              placeholder="Search members..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            <div className="max-h-[300px] overflow-y-auto space-y-1">
-              {filtered.map(m => (
-                <div
-                  key={m.id}
-                  onClick={() => toggleMember(m.id)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer transition-colors ${
-                    selectedMembers[m.id] ? 'bg-gold/10 border border-gold/30' : 'hover:bg-gold/5'
-                  }`}
-                >
-                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                    selectedMembers[m.id] ? 'bg-gold border-gold' : 'border-gold/40'
-                  }`}>
-                    {selectedMembers[m.id] && <span className="text-black text-xs">✓</span>}
+      {/* Attendee details — fixed-size modal so 50 members never make the page excessively long */}
+      {detailLog && (() => {
+        const attendees = detailLog.attendees || []
+        const logTs = detailLog.ts || Number(detailLog.id) || new Date(detailLog.date).getTime() || 0
+        const coinEach = attendees[0]?.earned ?? 0
+        const totalAwarded = attendees.reduce((sum, a) => sum + (a.earned || 0), 0)
+
+        return (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${detailLog.event} attendance`}
+            onMouseDown={e => {
+              if (e.target === e.currentTarget) setDetailLog(null)
+            }}
+          >
+            <div className="w-full max-w-4xl max-h-[88vh] overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
+              <div className="flex items-start justify-between gap-4 border-b border-white/[.06] px-5 py-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-bold text-text-bright">{detailLog.event}</h3>
+                    <span className="rounded-md border border-white/[.07] bg-black/20 px-1.5 py-0.5 text-[9px] font-mono text-text-dim">
+                      {attendees.length}/50
+                    </span>
+                    <span className="rounded-md border border-green-500/15 bg-green-500/[.035] px-1.5 py-0.5 text-[9px] font-semibold text-green-400">
+                      +{coinEach.toLocaleString()} each
+                    </span>
                   </div>
-                  <span className="font-medium">{m.name}</span>
-                  <span className="text-xs text-text-dim ml-auto">{m.cls}</span>
+
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-text-dim">
+                    <span className="font-mono tabular-nums">
+                      {formatGMT8Short(logTs)} · {SERVER_TZ_LABEL}
+                    </span>
+
+                    {logTs > 0 && (
+                      <span className="inline-flex items-center gap-1.5 text-gold-light/75">
+                        <FlagImage
+                          code={activeRegion.code}
+                          flag={activeRegion.flag}
+                          name={activeRegion.name}
+                          width={14}
+                          height={10}
+                        />
+                        <span>{formatInZone(logTs, activeRegion.tz)}</span>
+                      </span>
+                    )}
+
+                    <span>
+                      by <strong className="text-gold-light">{detailLog.recorded_by || detailLog.recordedBy || 'System'}</strong>
+                    </span>
+                  </div>
                 </div>
-              ))}
-              {filtered.length === 0 && (
-                <div className="text-text-dim text-sm py-4">No members found.</div>
-              )}
+
+                <button
+                  type="button"
+                  onClick={() => setDetailLog(null)}
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light transition-colors"
+                  aria-label="Close attendee details"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[.06] px-5 py-3">
+                <div className="text-[10px] font-bold uppercase tracking-[.15em] text-gold-dim">
+                  Attendees · {attendees.length} / 50
+                </div>
+                <div className="text-[10px] text-text-dim">
+                  Total awarded <strong className="text-gold-light">{totalAwarded.toLocaleString()}</strong> coins
+                </div>
+              </div>
+
+              <div className="max-h-[58vh] overflow-y-auto p-4 md:p-5">
+                {attendees.length === 0 ? (
+                  <div className="py-10 text-center text-xs text-text-dim italic">
+                    No attendee details saved for this log.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
+                    {attendees.map((a, idx) => (
+                      <div
+                        key={`${a.name}-${idx}`}
+                        className="min-w-0 rounded-lg border border-white/[.06] bg-black/15 px-3 py-2.5"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-gold/[.06] text-[9px] font-mono text-gold-dim">
+                            {idx + 1}
+                          </span>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-xs font-semibold text-text-bright">{a.name}</div>
+                            {a.cls && (
+                              <div className="mt-0.5 truncate text-[9px] text-text-dim">{a.cls}</div>
+                            )}
+                          </div>
+
+                          <span className="flex-shrink-0 text-[10px] font-mono font-bold text-green-400">
+                            +{(a.earned || 0).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <button
-              onClick={recordAttendance}
-              disabled={submitting}
-              className="btn-gold w-full mt-3"
-            >
-              {submitting ? 'Saving...' : 'Submit Attendance'}
-            </button>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
