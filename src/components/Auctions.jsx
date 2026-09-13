@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo, useId } from 'react'
+import React, { useState, useEffect, useMemo, useId, useRef } from 'react'
 
 const RARITY = {
   material:   { label: 'Common',    color: '#4ade80', rgb: '74,222,128' },
   uncommon:   { label: 'Uncommon',  color: '#ffffff', rgb: '255,255,255' },
   rare:       { label: 'Rare',      color: '#60a5fa', rgb: '96,165,250' },
   epic:       { label: 'Epic',      color: '#f87171', rgb: '248,113,113' },
-  legendary:  { label: 'Legendary', color: '#f2cc60', rgb: '242,204,96' },
+  legendary:  { label: 'Legendary', color: '#f2cc60', rgb: '242,204,76' },
 }
 
 const GLOW_RARITIES = new Set(['legendary'])
@@ -39,6 +39,8 @@ const presetDescriptions = [
   'Ranking Prize',
   'Custom...',
 ]
+
+const IMAGE_BUCKET = 'auction-images'
 
 function rgba(rgb, alpha) { return `rgba(${rgb}, ${alpha})` }
 function getRarityMeta(rarity) { return RARITY[rarity] || RARITY.epic }
@@ -113,10 +115,8 @@ function minNextBidFor(auction) {
   return (auction?.currentBid || 0) + MIN_BID_INCREMENT
 }
 
-/** Small flag image with emoji fallback (matches Attendance). */
 function FlagImage({ code, flag, name, width = 20, height = 15 }) {
   const [failed, setFailed] = useState(false)
-
   if (!code || failed) {
     if (!flag) return null
     return (
@@ -129,7 +129,6 @@ function FlagImage({ code, flag, name, width = 20, height = 15 }) {
       </span>
     )
   }
-
   return (
     <img
       src={`https://flagcdn.com/w20/${code}.png`}
@@ -209,6 +208,11 @@ export default function Auctions({ ctx }) {
   const [customDesc, setCustomDesc] = useState('')
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
+  const [pickedLibraryUrl, setPickedLibraryUrl] = useState(null)
+  const [libraryImages, setLibraryImages] = useState([])
+  const [libraryLoading, setLibraryLoading] = useState(false)
+  const [libraryError, setLibraryError] = useState(null)
+  const [deletingImageName, setDeletingImageName] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [bidAmounts, setBidAmounts] = useState({})
   const [expandedBids, setExpandedBids] = useState({})
@@ -216,6 +220,7 @@ export default function Auctions({ ctx }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const formId = useId()
   const fileInputId = `${formId}-image`
+  const libraryLoadRef = useRef(false)
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
@@ -237,6 +242,76 @@ export default function Auctions({ ctx }) {
       return changed ? next : prev
     })
   }, [auctions])
+
+  useEffect(() => {
+    if (!showCreate) return
+    if (libraryLoadRef.current) return
+    libraryLoadRef.current = true
+    loadLibrary()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCreate])
+
+  const loadLibrary = async () => {
+    if (!supabase) return
+    setLibraryLoading(true)
+    setLibraryError(null)
+    try {
+      const { data, error } = await supabase.storage
+        .from(IMAGE_BUCKET)
+        .list('', {
+          limit: 200,
+          sortBy: { column: 'created_at', order: 'desc' },
+        })
+      if (error) throw error
+
+      const items = (data || [])
+        .filter(f => f.name && !f.name.startsWith('.'))
+        .map(f => {
+          const { data: urlData } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(f.name)
+          return {
+            name: f.name,
+            url: urlData?.publicUrl || '',
+            createdAt: f.created_at || f.updated_at || null,
+          }
+        })
+        .filter(f => f.url)
+
+      setLibraryImages(items)
+    } catch (err) {
+      console.error('Load image library failed:', err)
+      setLibraryError(err.message || 'Failed to load image library')
+    } finally {
+      setLibraryLoading(false)
+    }
+  }
+
+  const deleteLibraryImage = async (img) => {
+    if (!supabase) return
+    const fileName = img?.name
+    if (!fileName) return
+
+    if (!window.confirm(`Delete this image permanently?\n\n${fileName}\n\nThis removes it from storage. Any auction already using it will keep its picture, but you won't be able to reuse it here.`)) {
+      return
+    }
+
+    setDeletingImageName(fileName)
+    try {
+      const { error } = await supabase.storage.from(IMAGE_BUCKET).remove([fileName])
+      if (error) throw error
+
+      setLibraryImages(prev => prev.filter(p => p.name !== fileName))
+      if (pickedLibraryUrl === img.url) {
+        setPickedLibraryUrl(null)
+        setImagePreview(prev => (prev === img.url ? null : prev))
+      }
+      addToast('Image deleted from library.', 'red', 'Deleted')
+    } catch (err) {
+      console.error('Delete image failed:', err)
+      addToast(`Couldn't delete image: ${err.message}`, 'red', 'Delete Failed')
+    } finally {
+      setDeletingImageName(null)
+    }
+  }
 
   const regions = useMemo(() => {
     const list = Array.isArray(ctxRegions) && ctxRegions.length > 0 ? ctxRegions : FALLBACK_REGIONS
@@ -288,24 +363,34 @@ export default function Auctions({ ctx }) {
       addToast('Image must be under 2 MB.', 'red', 'Too Large')
       return
     }
-    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    if (imagePreview && imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
+    setPickedLibraryUrl(null)
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
   }
 
-  const clearImage = () => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview)
+  const pickFromLibrary = (img) => {
+    if (imagePreview && imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
     setImageFile(null)
+    setPickedLibraryUrl(img.url)
+    setImagePreview(img.url)
+  }
+
+  const clearImage = () => {
+    if (imagePreview && imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
+    setImageFile(null)
+    setPickedLibraryUrl(null)
     setImagePreview(null)
   }
 
   const uploadImage = async () => {
+    if (pickedLibraryUrl) return pickedLibraryUrl
     if (!imageFile) return null
     const ext = imageFile.name.split('.').pop()?.toLowerCase() || 'png'
     const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
 
     const { error } = await supabase.storage
-      .from('auction-images')
+      .from(IMAGE_BUCKET)
       .upload(path, imageFile, {
         cacheControl: '3600',
         upsert: false,
@@ -314,8 +399,15 @@ export default function Auctions({ ctx }) {
 
     if (error) throw error
 
-    const { data } = supabase.storage.from('auction-images').getPublicUrl(path)
-    return data?.publicUrl || null
+    const { data } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(path)
+    const url = data?.publicUrl || null
+    if (url) {
+      setLibraryImages(prev => [
+        { name: path, url, createdAt: new Date().toISOString() },
+        ...prev.filter(p => p.url !== url),
+      ])
+    }
+    return url
   }
 
   const createAuction = async () => {
@@ -554,7 +646,6 @@ export default function Auctions({ ctx }) {
         </div>
 
         <div className="flex items-stretch gap-2 flex-wrap">
-          {/* Region picker */}
           <div className="relative">
             <button
               type="button"
@@ -627,7 +718,6 @@ export default function Auctions({ ctx }) {
             )}
           </div>
 
-          {/* Server clock */}
           <div className="card px-3 py-2 border-gold/30 flex items-center gap-3 min-w-[190px]">
             <div className="text-lg leading-none" aria-hidden="true">🕒</div>
             <div className="text-left">
@@ -761,12 +851,64 @@ export default function Auctions({ ctx }) {
             )}
           </div>
 
+          {/* ── Item image: compact upload + library grid ── */}
           <div className="mb-4">
-            <label htmlFor={fileInputId} className="block text-xs text-text-dim font-semibold mb-1">
-              Item image (optional)
-            </label>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label htmlFor={fileInputId} className="text-[11px] font-bold uppercase tracking-widest text-gold-dim">
+                Item image
+              </label>
+              <button
+                type="button"
+                onClick={loadLibrary}
+                disabled={libraryLoading}
+                className="text-[10px] font-semibold text-gold-light hover:text-gold-bright disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 rounded px-1.5 py-0.5"
+              >
+                {libraryLoading ? '↻ Loading…' : '↻ Refresh'}
+              </button>
+            </div>
 
-            <div className="flex items-center gap-3 rounded border border-gold/25 bg-void/40 px-3 py-2">
+            {/* Compact selected preview + upload row */}
+            <div className="flex items-center gap-2 rounded border border-gold/25 bg-void/40 px-2 py-1.5">
+              {imagePreview ? (
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  className="rounded border border-gold/25 object-cover bg-void/60 flex-shrink-0"
+                  style={{ width: 40, height: 40 }}
+                />
+              ) : (
+                <div
+                  className="rounded border border-dashed border-gold/25 flex items-center justify-center text-sm text-text-dim/50 bg-void/40 flex-shrink-0"
+                  style={{ width: 40, height: 40 }}
+                  aria-hidden="true"
+                >
+                  🖼
+                </div>
+              )}
+
+              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {pickedLibraryUrl && (
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-gold-light bg-gold/10 border border-gold/30 rounded-full px-1.5 py-0.5">
+                      From library
+                    </span>
+                  )}
+                  {imageFile && (
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-blue-300 bg-blue-500/10 border border-blue-500/30 rounded-full px-1.5 py-0.5">
+                      New upload
+                    </span>
+                  )}
+                  {!imagePreview && (
+                    <span className="text-[11px] text-text-dim italic">No image selected</span>
+                  )}
+                  {imageFile && (
+                    <span className="text-[11px] text-text-dim truncate max-w-[200px]" title={imageFile.name}>
+                      {imageFile.name}
+                    </span>
+                  )}
+                </div>
+              </div>
+
               <input
                 id={fileInputId}
                 type="file"
@@ -775,10 +917,9 @@ export default function Auctions({ ctx }) {
                 disabled={uploading}
                 className="sr-only"
               />
-
               <label
                 htmlFor={fileInputId}
-                className={`inline-flex items-center gap-1.5 text-xs font-semibold rounded border px-3 py-1.5 cursor-pointer transition-colors ${
+                className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded border px-2 py-1 cursor-pointer transition-colors flex-shrink-0 ${
                   uploading
                     ? 'border-gold/20 text-text-dim cursor-not-allowed'
                     : 'border-gold/40 text-gold-light hover:bg-gold/10 hover:text-gold-bright'
@@ -786,35 +927,98 @@ export default function Auctions({ ctx }) {
                 aria-disabled={uploading}
               >
                 <span aria-hidden="true">📁</span>
-                <span>Choose file</span>
+                <span>{imageFile ? 'Change' : 'Upload'}</span>
               </label>
 
-              <span className="text-xs text-text-dim truncate flex-1 min-w-0">
-                {imageFile ? imageFile.name : 'No file chosen'}
-              </span>
-
-              {imageFile && (
+              {(imageFile || pickedLibraryUrl) && (
                 <button
                   type="button"
                   onClick={clearImage}
                   disabled={uploading}
-                  className="text-[11px] font-semibold rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300 px-2.5 py-1 transition-colors disabled:opacity-40 flex-shrink-0"
+                  className="text-[11px] font-semibold rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300 px-2 py-1 transition-colors disabled:opacity-40 flex-shrink-0"
                   aria-label="Clear selected image"
                 >
-                  ✕ Clear
+                  ✕
                 </button>
               )}
             </div>
 
-            {imagePreview && (
-              <div className="mt-3 flex justify-start">
-                <img
-                  src={imagePreview}
-                  alt="Preview"
-                  className="max-h-[200px] w-auto h-auto max-w-full rounded border border-gold/25"
-                />
+            {/* Compact library grid — small square thumbnails */}
+            <div className="mt-2">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gold-dim">
+                  Reuse from library
+                </div>
+                <div className="text-[10px] text-text-dim">
+                  {libraryLoading
+                    ? 'Loading…'
+                    : libraryError
+                      ? <span className="text-red-400">{libraryError}</span>
+                      : `${libraryImages.length} image${libraryImages.length === 1 ? '' : 's'}`}
+                </div>
               </div>
-            )}
+
+              {libraryImages.length === 0 && !libraryLoading && !libraryError && (
+                <div className="text-[11px] text-text-dim italic py-2 text-center border border-dashed border-gold/15 rounded">
+                  No images in your library yet.
+                </div>
+              )}
+
+              {libraryImages.length > 0 && (
+                <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
+                  {libraryImages.map(img => {
+                    const isPicked = pickedLibraryUrl === img.url
+                    const isDeleting = deletingImageName === img.name
+                    return (
+                      <div
+                        key={img.name}
+                        className={`group relative rounded overflow-hidden border transition-colors ${
+                          isPicked
+                            ? 'border-gold-bright ring-1 ring-gold/50'
+                            : 'border-gold/20 hover:border-gold/60'
+                        } ${isDeleting ? 'opacity-40 pointer-events-none' : ''}`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => pickFromLibrary(img)}
+                          title={img.name}
+                          className="block w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+                          aria-pressed={isPicked}
+                          aria-label={`Use image ${img.name}`}
+                        >
+                          <img
+                            src={img.url}
+                            alt={img.name}
+                            loading="lazy"
+                            className="w-full aspect-square object-cover bg-void/60"
+                          />
+                        </button>
+
+                        {isPicked && (
+                          <span className="absolute top-0.5 left-0.5 text-[8px] bg-gold text-black font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none shadow">
+                            ✓
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteLibraryImage(img)
+                          }}
+                          disabled={isDeleting}
+                          title="Delete image from library"
+                          aria-label={`Delete image ${img.name}`}
+                          className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-black/75 border border-red-500/60 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center text-[8px] font-bold leading-none transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
+                        >
+                          {isDeleting ? '…' : '✕'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
