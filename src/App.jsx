@@ -77,6 +77,11 @@ function App() {
     endedAt: Number(a.ended_at ?? a.endedAt) || 0,
     distributedBy: a.distributed_by ?? a.distributedBy ?? null,
     imageUrl: a.image_url ?? a.imageUrl ?? null,
+    // Keep the featured flag when normalizing Supabase rows.
+    // Auctions.jsx uses the camelCase `isFeatured` property, while
+    // Supabase stores it as `is_featured`. Without this mapping,
+    // the 5-second refresh overwrites the local featured state.
+    isFeatured: Boolean(a.is_featured ?? a.isFeatured),
     bids: (() => {
       try {
         if (typeof a.bids === 'string') return JSON.parse(a.bids)
@@ -232,6 +237,7 @@ function App() {
             status: 'ended',
             ended_at: endedAt,
             distributed_by: distributedBy,
+            is_featured: false,
           })
           .eq('id', a.id)
 
@@ -243,7 +249,7 @@ function App() {
 
         setAuctions(prev => prev.map(x =>
           x.id === a.id
-            ? { ...x, status: 'ended', topBidder: winner, currentBid: finalBid, endsAt: endedAt, endedAt, distributedBy }
+            ? { ...x, status: 'ended', topBidder: winner, currentBid: finalBid, endsAt: endedAt, endedAt, distributedBy, isFeatured: false }
             : x
         ))
 
