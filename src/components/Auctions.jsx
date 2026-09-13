@@ -115,6 +115,15 @@ function minNextBidFor(auction) {
   return (auction?.currentBid || 0) + MIN_BID_INCREMENT
 }
 
+function displayNameForLibraryImage(img) {
+  if (!img) return ''
+  if (img.displayName) return img.displayName
+  const base = (img.name || '').split('/').pop()
+  const m = base.match(/^(\d+)-[a-z0-9]+\.([a-z0-9]+)$/i)
+  if (m) return `image-${m[1]}.${m[2]}`
+  return base
+}
+
 function FlagImage({ code, flag, name, width = 20, height = 15 }) {
   const [failed, setFailed] = useState(false)
   if (!code || failed) {
@@ -208,7 +217,7 @@ export default function Auctions({ ctx }) {
   const [customDesc, setCustomDesc] = useState('')
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
-  const [pickedLibraryUrl, setPickedLibraryUrl] = useState(null)
+  const [pickedLibraryImg, setPickedLibraryImg] = useState(null)
   const [libraryImages, setLibraryImages] = useState([])
   const [libraryLoading, setLibraryLoading] = useState(false)
   const [libraryError, setLibraryError] = useState(null)
@@ -270,6 +279,7 @@ export default function Auctions({ ctx }) {
           const { data: urlData } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(f.name)
           return {
             name: f.name,
+            displayName: displayNameForLibraryImage({ name: f.name }),
             url: urlData?.publicUrl || '',
             createdAt: f.created_at || f.updated_at || null,
           }
@@ -290,7 +300,7 @@ export default function Auctions({ ctx }) {
     const fileName = img?.name
     if (!fileName) return
 
-    if (!window.confirm(`Delete this image permanently?\n\n${fileName}\n\nThis removes it from storage. Any auction already using it will keep its picture, but you won't be able to reuse it here.`)) {
+    if (!window.confirm(`Delete this image permanently?\n\n${displayNameForLibraryImage(img)}\n\nThis removes it from storage. Any auction already using it will keep its picture, but you won't be able to reuse it here.`)) {
       return
     }
 
@@ -300,8 +310,8 @@ export default function Auctions({ ctx }) {
       if (error) throw error
 
       setLibraryImages(prev => prev.filter(p => p.name !== fileName))
-      if (pickedLibraryUrl === img.url) {
-        setPickedLibraryUrl(null)
+      if (pickedLibraryImg?.name === fileName) {
+        setPickedLibraryImg(null)
         setImagePreview(prev => (prev === img.url ? null : prev))
       }
       addToast('Image deleted from library.', 'red', 'Deleted')
@@ -364,7 +374,7 @@ export default function Auctions({ ctx }) {
       return
     }
     if (imagePreview && imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
-    setPickedLibraryUrl(null)
+    setPickedLibraryImg(null)
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
   }
@@ -372,19 +382,19 @@ export default function Auctions({ ctx }) {
   const pickFromLibrary = (img) => {
     if (imagePreview && imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
     setImageFile(null)
-    setPickedLibraryUrl(img.url)
+    setPickedLibraryImg({ name: img.name, url: img.url, displayName: img.displayName })
     setImagePreview(img.url)
   }
 
   const clearImage = () => {
     if (imagePreview && imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
     setImageFile(null)
-    setPickedLibraryUrl(null)
+    setPickedLibraryImg(null)
     setImagePreview(null)
   }
 
   const uploadImage = async () => {
-    if (pickedLibraryUrl) return pickedLibraryUrl
+    if (pickedLibraryImg) return pickedLibraryImg.url
     if (!imageFile) return null
     const ext = imageFile.name.split('.').pop()?.toLowerCase() || 'png'
     const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
@@ -403,7 +413,7 @@ export default function Auctions({ ctx }) {
     const url = data?.publicUrl || null
     if (url) {
       setLibraryImages(prev => [
-        { name: path, url, createdAt: new Date().toISOString() },
+        { name: path, url, createdAt: new Date().toISOString(), displayName: imageFile.name },
         ...prev.filter(p => p.url !== url),
       ])
     }
@@ -637,6 +647,14 @@ export default function Auctions({ ctx }) {
     [endedAuctions]
   )
 
+  const selectedImageLabel = imageFile
+    ? imageFile.name
+    : pickedLibraryImg
+      ? (pickedLibraryImg.displayName || displayNameForLibraryImage(pickedLibraryImg))
+      : ''
+
+  const hasSelectedImage = !!(imageFile || pickedLibraryImg)
+
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
@@ -851,9 +869,9 @@ export default function Auctions({ ctx }) {
             )}
           </div>
 
-          {/* ── Item image: compact upload + library grid ── */}
+          {/* ── ITEM IMAGE — compact inline picker ── */}
           <div className="mb-4">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
+            <div className="flex items-center justify-between gap-2 mb-2">
               <label htmlFor={fileInputId} className="text-[11px] font-bold uppercase tracking-widest text-gold-dim">
                 Item image
               </label>
@@ -867,85 +885,96 @@ export default function Auctions({ ctx }) {
               </button>
             </div>
 
-            {/* Compact selected preview + upload row */}
-            <div className="flex items-center gap-2 rounded border border-gold/25 bg-void/40 px-2 py-1.5">
-              {imagePreview ? (
-                <img
-                  src={imagePreview}
-                  alt="Preview"
-                  className="rounded border border-gold/25 object-cover bg-void/60 flex-shrink-0"
-                  style={{ width: 40, height: 40 }}
-                />
-              ) : (
-                <div
-                  className="rounded border border-dashed border-gold/25 flex items-center justify-center text-sm text-text-dim/50 bg-void/40 flex-shrink-0"
-                  style={{ width: 40, height: 40 }}
-                  aria-hidden="true"
-                >
-                  🖼
-                </div>
-              )}
-
-              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {pickedLibraryUrl && (
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-gold-light bg-gold/10 border border-gold/30 rounded-full px-1.5 py-0.5">
-                      From library
-                    </span>
-                  )}
-                  {imageFile && (
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-blue-300 bg-blue-500/10 border border-blue-500/30 rounded-full px-1.5 py-0.5">
-                      New upload
-                    </span>
-                  )}
-                  {!imagePreview && (
-                    <span className="text-[11px] text-text-dim italic">No image selected</span>
-                  )}
-                  {imageFile && (
-                    <span className="text-[11px] text-text-dim truncate max-w-[200px]" title={imageFile.name}>
-                      {imageFile.name}
-                    </span>
-                  )}
-                </div>
+            {/* Selection row: thumbnail + name + actions all grouped tightly */}
+            <div className="flex items-center gap-2">
+              {/* Preview thumb */}
+              <div className="flex-shrink-0">
+                {imagePreview ? (
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    className="rounded border border-gold/25 object-cover bg-void/60"
+                    style={{ width: 44, height: 44 }}
+                  />
+                ) : (
+                  <div
+                    className="rounded border border-dashed border-gold/25 flex items-center justify-center text-sm text-text-dim/50 bg-void/40"
+                    style={{ width: 44, height: 44 }}
+                    aria-hidden="true"
+                  >
+                    🖼
+                  </div>
+                )}
               </div>
 
-              <input
-                id={fileInputId}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                onChange={handleImageChange}
-                disabled={uploading}
-                className="sr-only"
-              />
-              <label
-                htmlFor={fileInputId}
-                className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded border px-2 py-1 cursor-pointer transition-colors flex-shrink-0 ${
-                  uploading
-                    ? 'border-gold/20 text-text-dim cursor-not-allowed'
-                    : 'border-gold/40 text-gold-light hover:bg-gold/10 hover:text-gold-bright'
-                }`}
-                aria-disabled={uploading}
-              >
-                <span aria-hidden="true">📁</span>
-                <span>{imageFile ? 'Change' : 'Upload'}</span>
-              </label>
+              {/* Name + badge area (fixed, doesn't stretch full width) */}
+              <div className="min-w-0 max-w-[320px] flex items-center gap-2">
+                {hasSelectedImage ? (
+                  <>
+                    {pickedLibraryImg && (
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-gold-light bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5 flex-shrink-0">
+                        Library
+                      </span>
+                    )}
+                    {imageFile && (
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-blue-300 bg-blue-500/10 border border-blue-500/30 rounded-full px-2 py-0.5 flex-shrink-0">
+                        New
+                      </span>
+                    )}
+                    <span
+                      className="text-[11px] text-text-bright truncate"
+                      title={selectedImageLabel}
+                    >
+                      {selectedImageLabel}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[11px] text-text-dim italic">
+                    No image selected
+                  </span>
+                )}
+              </div>
 
-              {(imageFile || pickedLibraryUrl) && (
-                <button
-                  type="button"
-                  onClick={clearImage}
+              {/* Action buttons grouped right after the name */}
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <input
+                  id={fileInputId}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={handleImageChange}
                   disabled={uploading}
-                  className="text-[11px] font-semibold rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300 px-2 py-1 transition-colors disabled:opacity-40 flex-shrink-0"
-                  aria-label="Clear selected image"
+                  className="sr-only"
+                />
+                <label
+                  htmlFor={fileInputId}
+                  className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded border px-2 py-1 cursor-pointer transition-colors ${
+                    uploading
+                      ? 'border-gold/20 text-text-dim cursor-not-allowed'
+                      : 'border-gold/40 text-gold-light hover:bg-gold/10 hover:text-gold-bright'
+                  }`}
+                  aria-disabled={uploading}
                 >
-                  ✕
-                </button>
-              )}
+                  <span aria-hidden="true">📁</span>
+                  <span>{hasSelectedImage ? 'Change' : 'Upload'}</span>
+                </label>
+
+                {hasSelectedImage && (
+                  <button
+                    type="button"
+                    onClick={clearImage}
+                    disabled={uploading}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300 px-2 py-1 transition-colors disabled:opacity-40"
+                    aria-label="Clear selected image"
+                  >
+                    ✕ Clear
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Compact library grid — small square thumbnails */}
-            <div className="mt-2">
-              <div className="flex items-center justify-between gap-2 mb-1">
+            {/* Library grid */}
+            <div className="mt-3 pt-3 border-t border-gold/10">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
                 <div className="text-[10px] font-bold uppercase tracking-widest text-gold-dim">
                   Reuse from library
                 </div>
@@ -967,8 +996,9 @@ export default function Auctions({ ctx }) {
               {libraryImages.length > 0 && (
                 <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
                   {libraryImages.map(img => {
-                    const isPicked = pickedLibraryUrl === img.url
+                    const isPicked = pickedLibraryImg?.name === img.name
                     const isDeleting = deletingImageName === img.name
+                    const title = img.displayName || displayNameForLibraryImage(img)
                     return (
                       <div
                         key={img.name}
@@ -981,14 +1011,14 @@ export default function Auctions({ ctx }) {
                         <button
                           type="button"
                           onClick={() => pickFromLibrary(img)}
-                          title={img.name}
+                          title={title}
                           className="block w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
                           aria-pressed={isPicked}
-                          aria-label={`Use image ${img.name}`}
+                          aria-label={`Use image ${title}`}
                         >
                           <img
                             src={img.url}
-                            alt={img.name}
+                            alt={title}
                             loading="lazy"
                             className="w-full aspect-square object-cover bg-void/60"
                           />
@@ -1008,7 +1038,7 @@ export default function Auctions({ ctx }) {
                           }}
                           disabled={isDeleting}
                           title="Delete image from library"
-                          aria-label={`Delete image ${img.name}`}
+                          aria-label={`Delete image ${title}`}
                           className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-black/75 border border-red-500/60 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center text-[8px] font-bold leading-none transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
                         >
                           {isDeleting ? '…' : '✕'}
