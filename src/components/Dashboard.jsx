@@ -452,21 +452,52 @@ const HeroSection = React.memo(function HeroSection({
               <span className="text-text-bright">{greeting}, </span>
               <span className="text-gold-bright">{firstName}</span>
             </h1>
-            <p className="mt-2 flex max-w-3xl flex-wrap items-center gap-x-2 gap-y-1 text-text-dim text-[11px] leading-relaxed sm:text-sm md:text-[15px]">
-              {todayEvents.length > 0
-                ? <>
-                    <span className="text-text-bright/85">{todayEvents.length}</span>{' '}
-                    {todayEvents.length === 1 ? 'Event' : 'Events'} Today
-                    <span className="mx-2 text-gold-dim/45">·</span>
-                    <span className="text-text-dim">First Event At</span>{' '}
-                    <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(todayEvents[0].time)}</span>{' '}
-                    <span className="text-text-dim">Server Time</span>
-                    <span className="mx-2 text-gold-dim/45">·</span>
-                    <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(firstEventLocalTime)}</span>{' '}
-                    <span className="text-text-dim">Local Time</span>
-                  </>
-                : <>Nothing Scheduled Today.</>}
-            </p>
+            {todayEvents.length > 0 ? (
+              <>
+                {/* Mobile: deliberately stack event information so it never collides or
+                    wraps into an unreadable sentence on narrow screens. */}
+                <div className="mt-2 sm:hidden text-[11px] leading-relaxed">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-text-bright/90 font-semibold">
+                      {todayEvents.length} {todayEvents.length === 1 ? 'Event' : 'Events'} Today
+                    </span>
+                  </div>
+
+                  <div className="mt-1.5 grid grid-cols-1 gap-1.5">
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-gold/10 bg-black/20 px-2.5 py-1.5">
+                      <span className="text-text-dim">First Event · Server</span>
+                      <span className="text-gold-light font-semibold font-mono whitespace-nowrap">
+                        {to12h(todayEvents[0].time)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-gold/10 bg-black/20 px-2.5 py-1.5">
+                      <span className="text-text-dim">First Event · Local</span>
+                      <span className="text-gold-light font-semibold font-mono whitespace-nowrap">
+                        {to12h(firstEventLocalTime)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Desktop/tablet: keep the compact inline summary. */}
+                <p className="mt-2 hidden max-w-3xl flex-wrap items-center gap-x-2 gap-y-1 text-text-dim text-sm leading-relaxed sm:flex md:text-[15px]">
+                  <span className="text-text-bright/85">{todayEvents.length}</span>{' '}
+                  {todayEvents.length === 1 ? 'Event' : 'Events'} Today
+                  <span className="mx-2 text-gold-dim/45">·</span>
+                  <span className="text-text-dim">First Event At</span>{' '}
+                  <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(todayEvents[0].time)}</span>{' '}
+                  <span className="text-text-dim">Server Time</span>
+                  <span className="mx-2 text-gold-dim/45">·</span>
+                  <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(firstEventLocalTime)}</span>{' '}
+                  <span className="text-text-dim">Local Time</span>
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-text-dim text-[11px] leading-relaxed sm:text-sm md:text-[15px]">
+                Nothing Scheduled Today.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2 min-w-0 w-full xl:w-auto xl:min-w-[330px]">
