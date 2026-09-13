@@ -146,35 +146,37 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
   return (
     <div className="min-h-screen flex flex-col bg-transparent">
       <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-void/95 border-b border-gold/15 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.22)]">
-        <div className="h-full px-3.5 sm:px-4 flex items-center justify-between">
-          {/* Mobile menu trigger — intentionally on the LEFT for easier one-hand reach */}
-          <button
-            type="button"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden w-10 h-10 shrink-0 rounded-xl border border-gold/20 bg-gold/[0.04] text-gold-light flex items-center justify-center transition-colors hover:bg-gold/10"
-            aria-label="Toggle menu"
-            aria-expanded={mobileOpen}
-          >
-            {mobileOpen ? '✕' : '☰'}
-          </button>
+        <div className="h-full px-3 sm:px-4 flex items-center justify-start md:justify-between">
+          {/* Mobile app header: menu + brand stay together on the LEFT */}
+          <div className="flex min-w-0 items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              className="md:hidden w-10 h-10 shrink-0 rounded-xl border border-gold/20 bg-gold/[0.04] text-gold-light flex items-center justify-center transition-colors hover:bg-gold/10"
+              aria-label="Toggle menu"
+              aria-expanded={mobileOpen}
+            >
+              {mobileOpen ? '✕' : '☰'}
+            </button>
 
-          {/* Brand */}
-          <button
-            type="button"
-            onClick={() => setPage('dashboard')}
-            className="group flex min-w-0 items-center gap-2.5 shrink-0"
-            aria-label="Go to Dashboard"
-          >
-            <span className="w-9 h-9 rounded-lg border border-gold/30 bg-gold/[0.07] flex items-center justify-center text-lg group-hover:border-gold/50 group-hover:bg-gold/10 transition-all">
-              🪙
-            </span>
-            <span className="font-spectral font-bold text-gold-light text-lg tracking-wider group-hover:text-gold-bright transition-colors truncate">
-              PeakyBlinder
-            </span>
-          </button>
+            {/* Brand */}
+            <button
+              type="button"
+              onClick={() => setPage('dashboard')}
+              className="group flex min-w-0 items-center gap-2.5 shrink-0"
+              aria-label="Go to Dashboard"
+            >
+              <span className="w-9 h-9 rounded-lg border border-gold/30 bg-gold/[0.07] flex items-center justify-center text-lg group-hover:border-gold/50 group-hover:bg-gold/10 transition-all">
+                🪙
+              </span>
+              <span className="font-spectral font-bold text-[18px] sm:text-lg tracking-wide sm:tracking-wider text-gold-light group-hover:text-gold-bright transition-colors truncate">
+                PeakyBlinder
+              </span>
+            </button>
+          </div>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden md:flex items-center gap-1 ml-auto">
             <div className="flex items-center gap-0.5 rounded-xl border border-gold/10 bg-black/20 p-1">
               {navItems.map(item => {
                 const active = page === item.id
