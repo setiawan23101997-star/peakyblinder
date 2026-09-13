@@ -254,7 +254,11 @@ function useNow(intervalMs = 1000) {
 const FlagImage = React.memo(function FlagImage({ code, flag, name, width = 20, height = 15 }) {
   const [failed, setFailed] = useState(false)
 
-  if (!code || failed) {
+  // FlagCDN uses lowercase ISO 3166-1 alpha-2 country codes.
+  // Normalize here because region data may contain "ID", "PH", etc.
+  const normalizedCode = String(code || '').trim().toLowerCase()
+
+  if (!normalizedCode || failed) {
     if (!flag) return null
     return (
       <span
@@ -269,15 +273,15 @@ const FlagImage = React.memo(function FlagImage({ code, flag, name, width = 20, 
 
   return (
     <img
-      src={`https://flagcdn.com/w20/${code}.png`}
-      srcSet={`https://flagcdn.com/w20/${code}.png 1x, https://flagcdn.com/w40/${code}.png 2x`}
+      src={`https://flagcdn.com/w20/${normalizedCode}.png`}
+      srcSet={`https://flagcdn.com/w20/${normalizedCode}.png 1x, https://flagcdn.com/w40/${normalizedCode}.png 2x`}
       width={width}
       height={height}
       alt={name ? `${name} flag` : ''}
       loading="lazy"
       decoding="async"
       className="rounded-[2px] border border-gold/20 object-cover flex-shrink-0"
-      style={{ width, height }}
+      style={{ width, height, minWidth: width, minHeight: height }}
       onError={() => setFailed(true)}
     />
   )
@@ -307,8 +311,8 @@ export default function Dashboard({ ctx, setPage }) {
     if (!region) return DEFAULT_REGION
     return {
       ...region,
-      code: region.code || region.id,
-      flag: region.flag || '',
+      code: String(region.code || region.id || '').trim().toLowerCase(),
+      flag: region.flag || (String(region.code || region.id || '').trim().toLowerCase() === 'id' ? '🇮🇩' : ''),
       name: region.name || region.label || region.id,
       label: region.label || '',
     }
@@ -380,11 +384,14 @@ export default function Dashboard({ ctx, setPage }) {
         currentUser={currentUser}
       />
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatTile icon="♙" label="Warriors" value={visibleMembers.length} />
-        <StatTile icon="✦" label="Coins in play" value={totalCoins.toLocaleString()} />
-        <StatTile icon="⚔" label="Total power" value={totalPower.toLocaleString()} />
-        <StatTile icon="◇" label="Live Auctions" value={totalActiveAuctions} onClick={goAuctions} />
+      <section
+        aria-label="Clan Overview"
+        className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3"
+      >
+        <StatTile icon="♟" label="Warriors" value={visibleMembers.length} accent="#d6b45b" />
+        <StatTile icon="✦" label="Coins In Play" value={totalCoins.toLocaleString()} accent="#e7c86e" />
+        <StatTile icon="⚔" label="Total Power" value={totalPower.toLocaleString()} accent="#c99b43" />
+        <StatTile icon="◇" label="Live Auctions" value={totalActiveAuctions} accent="#8fb7e8" onClick={goAuctions} />
       </section>
 
       <ScheduleSection activeRegion={activeRegion} idPrefix={idPrefix} />
@@ -406,8 +413,26 @@ const HeroSection = React.memo(function HeroSection({
     () => String(getZoneParts(now, SERVER_TZ).ss).padStart(2, '0'),
     [now]
   )
-  const todayDowServer = useMemo(() => getZoneParts(now, SERVER_TZ).dow, [now])
+  const serverNowParts = useMemo(() => getZoneParts(now, SERVER_TZ), [now])
+  const todayDowServer = serverNowParts.dow
   const todayEvents = SCHEDULE_BY_DAY[todayDowServer] || []
+
+  // Convert the first event's SERVER wall-clock time into the user's actual local timezone.
+  // The schedule is defined in SERVER_TZ, so we first turn today's server date + event time
+  // into a real UTC timestamp, then format that same instant in activeRegion.tz.
+  const firstEventLocalTime = useMemo(() => {
+    if (!todayEvents.length) return ''
+    const [hh, mm] = todayEvents[0].time.split(':').map(Number)
+    const eventTs = zoneWallTimeToUtc(
+      serverNowParts.y,
+      serverNowParts.m,
+      serverNowParts.d,
+      hh,
+      mm,
+      SERVER_TZ
+    )
+    return formatInZone(eventTs, activeRegion.tz).time
+  }, [todayEvents, serverNowParts.y, serverNowParts.m, serverNowParts.d, activeRegion.tz])
 
   const greeting = getGreeting(getZoneParts(now, activeRegion.tz).hh)
   const firstName = currentUser?.name?.split(' ')[0] || 'Warrior'
@@ -427,11 +452,19 @@ const HeroSection = React.memo(function HeroSection({
               <span className="text-text-bright">{greeting}, </span>
               <span className="text-gold-bright">{firstName}</span>
             </h1>
-            <p className="text-text-dim text-xs sm:text-sm md:text-[15px] mt-2 leading-relaxed max-w-2xl">
+            <p className="text-text-dim text-xs sm:text-sm md:text-[15px] mt-2 leading-relaxed max-w-3xl">
               {todayEvents.length > 0
-                ? <>{todayEvents.length} {todayEvents.length === 1 ? 'event' : 'events'} Today — First At{' '}
-                    <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(todayEvents[0].time)}</span>
-                    {' '}Server Time.</>
+                ? <>
+                    <span className="text-text-bright/85">{todayEvents.length}</span>{' '}
+                    {todayEvents.length === 1 ? 'Event' : 'Events'} Today
+                    <span className="mx-2 text-gold-dim/45">·</span>
+                    <span className="text-text-dim">First Event At</span>{' '}
+                    <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(todayEvents[0].time)}</span>{' '}
+                    <span className="text-text-dim">Server Time</span>
+                    <span className="mx-2 text-gold-dim/45">·</span>
+                    <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(firstEventLocalTime)}</span>{' '}
+                    <span className="text-text-dim">Local Time</span>
+                  </>
                 : <>Nothing Scheduled Today.</>}
             </p>
           </div>
@@ -1172,22 +1205,67 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
   )
 })
 
-const StatTile = React.memo(function StatTile({ icon, label, value, onClick }) {
+const StatTile = React.memo(function StatTile({
+  icon,
+  label,
+  value,
+  accent = '#d6b45b',
+  onClick,
+}) {
   const clickable = !!onClick
   const Tag = clickable ? 'button' : 'div'
+
   return (
     <Tag
       type={clickable ? 'button' : undefined}
       onClick={onClick}
-      className={`text-left rounded-2xl border border-white/[0.07] bg-[#0b0a09]/70 px-4 py-3.5 transition-all ${
-        clickable ? 'hover:border-gold/40 hover:bg-gold/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 cursor-pointer' : ''
+      className={`group relative min-w-0 overflow-hidden rounded-xl border bg-[#0a0908]/80 px-3.5 py-3 md:px-4 md:py-3.5 text-left transition-all duration-200 ${
+        clickable
+          ? 'cursor-pointer hover:-translate-y-0.5 hover:bg-[#100e0b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60'
+          : ''
       }`}
+      style={{
+        borderColor: `${accent}22`,
+        boxShadow: `inset 0 1px 0 ${accent}08`,
+      }}
     >
-      <div className="flex items-center gap-2.5 mb-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.05] text-sm text-gold-light" aria-hidden="true">{icon}</span>
-        <span className="text-[10px] text-text-dim font-semibold uppercase tracking-wider">{label}</span>
+      <span
+        aria-hidden="true"
+        className="absolute left-0 top-3 bottom-3 w-[2px] rounded-full opacity-75"
+        style={{ background: accent }}
+      />
+
+      <div className="flex items-center gap-3 min-w-0">
+        <span
+          className="flex h-9 w-9 md:h-10 md:w-10 flex-shrink-0 items-center justify-center rounded-lg border text-sm md:text-base font-semibold"
+          style={{
+            color: accent,
+            borderColor: `${accent}32`,
+            background: `linear-gradient(145deg, ${accent}12, transparent)`,
+          }}
+          aria-hidden="true"
+        >
+          {icon}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="text-[9px] md:text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim truncate">
+            {label}
+          </div>
+          <div className="mt-1 font-mono text-xl md:text-2xl font-bold leading-none tracking-tight tabular-nums text-text-bright truncate">
+            {value}
+          </div>
+        </div>
+
+        {clickable && (
+          <span
+            className="hidden sm:block text-[9px] font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ color: accent }}
+          >
+            Open
+          </span>
+        )}
       </div>
-      <div className="font-mono text-xl sm:text-2xl font-bold text-text-bright tabular-nums leading-none">{value}</div>
     </Tag>
   )
 })
