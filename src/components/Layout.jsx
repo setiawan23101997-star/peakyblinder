@@ -20,6 +20,29 @@ const FALLBACK_REGIONS = [
   { id: 'id', code: 'id', flag: '🇮🇩', name: 'Indonesia',   tz: 'Asia/Jakarta',      label: 'GMT+7' },
 ]
 
+// Automatically use the timezone configured on the player's browser/device.
+// Server/game time remains authoritative; this only changes local-time presentation.
+const AUTO_LOCAL_TZ = (() => {
+  try {
+    return new Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local'
+  } catch {
+    return 'Local'
+  }
+})()
+
+function getLocalZoneLabel() {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, {
+      timeZone: AUTO_LOCAL_TZ,
+      timeZoneName: 'shortOffset',
+    }).formatToParts(new Date())
+    return parts.find(p => p.type === 'timeZoneName')?.value || AUTO_LOCAL_TZ
+  } catch {
+    return AUTO_LOCAL_TZ
+  }
+}
+
+
 /**
  * Flag image from flagcdn.com.
  * `code` is the ISO 3166-1 alpha-2 country code (e.g. "ph", "us", "id").
@@ -75,59 +98,35 @@ function FlagIcon({ code, name, width = 20, height = 15, fallbackFlag }) {
 }
 
 export default function Layout({ ctx, page, setPage, children, toasts }) {
-  const { currentUser, setCurrentUser, addToast, region, setRegionId, regions: ctxRegions } = ctx
-
-  // Normalize regions: always have `code` and `flag` fields.
-  const regions = (Array.isArray(ctxRegions) && ctxRegions.length > 0 ? ctxRegions : FALLBACK_REGIONS)
-    .map(r => ({
-      ...r,
-      code: r.code || r.id,
-      flag: r.flag || '',
-    }))
-
-  const activeRegion = (() => {
-    if (!region) return regions[0]
-    // Normalize the incoming region the same way.
-    return {
-      ...region,
-      code: region.code || region.id,
-      flag: region.flag || '',
-      name: region.name || region.label || region.id,
-      label: region.label || '',
-    }
-  })()
+  const { currentUser, setCurrentUser, addToast } = ctx
 
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const [regionMenuOpen, setRegionMenuOpen] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
 
   const userMenuRef = useRef(null)
-  const regionMenuRef = useRef(null)
 
   useEffect(() => {
-    if (!userMenuOpen && !regionMenuOpen) return
+    if (!userMenuOpen) return
+
     const handleClickOutside = (e) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
         setUserMenuOpen(false)
       }
-      if (regionMenuRef.current && !regionMenuRef.current.contains(e.target)) {
-        setRegionMenuOpen(false)
-      }
     }
+
     const handleEscape = (e) => {
-      if (e.key === 'Escape') {
-        setUserMenuOpen(false)
-        setRegionMenuOpen(false)
-      }
+      if (e.key === 'Escape') setUserMenuOpen(false)
     }
+
     document.addEventListener('mousedown', handleClickOutside)
     document.addEventListener('keydown', handleEscape)
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [userMenuOpen, regionMenuOpen])
+  }, [userMenuOpen])
 
   const handleLogout = () => {
     setCurrentUser(null)
@@ -136,14 +135,6 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
     setUserMenuOpen(false)
   }
 
-  const pickRegion = (id) => {
-    if (typeof setRegionId === 'function') {
-      setRegionId(id)
-    } else {
-      try { localStorage.setItem('peakyblader:localRegion', id) } catch {}
-    }
-    setRegionMenuOpen(false)
-  }
 
   const roleBadgeClass = (role) => {
     if (role === 'Admin') return 'bg-red-500/20 text-red-400 border border-red-500/40'
@@ -198,84 +189,21 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               })}
             </div>
 
-            {/* Region */}
-            <div ref={regionMenuRef} className="relative ml-2">
-              <button
-                type="button"
-                onClick={() => { setRegionMenuOpen(o => !o); setUserMenuOpen(false) }}
-                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 transition-all ${
-                  regionMenuOpen
-                    ? 'border-gold/45 bg-gold/10 shadow-[0_0_18px_rgba(212,175,55,0.07)]'
-                    : 'border-gold/15 bg-black/15 hover:border-gold/30 hover:bg-gold/[0.04]'
-                }`}
-                aria-expanded={regionMenuOpen}
-                aria-label={`Region: ${activeRegion.name}. Click to change.`}
+            {/* Automatic local timezone */}
+            <div className="relative ml-2">
+              <div
+                className="inline-flex items-center gap-2 rounded-xl border border-gold/15 bg-black/15 px-3 py-1.5"
+                title="Automatically detected from your browser/device timezone"
               >
-                <span className="flex items-center justify-center w-6 h-6 rounded-md bg-white/[0.03] border border-gold/10">
-                  <FlagIcon code={activeRegion.code} name={activeRegion.name} width={20} height={15} fallbackFlag={activeRegion.flag} />
+                <span className="flex h-6 w-6 items-center justify-center rounded-md border border-gold/10 bg-gold/[0.04] text-[12px]">
+                  ◷
                 </span>
                 <span className="hidden lg:block text-left leading-tight">
-                  <span className="block text-[9px] uppercase tracking-[0.14em] text-text-dim">Local Time</span>
-                  <span className="block text-[11px] font-semibold text-text-bright truncate max-w-[82px]">
-                    {activeRegion.name}
-                  </span>
+                  <span className="block text-[9px] uppercase tracking-[0.14em] text-text-dim">Your Time</span>
+                  <span className="block max-w-[110px] truncate text-[11px] font-semibold text-text-bright">{AUTO_LOCAL_TZ}</span>
                 </span>
-                <span className="text-[10px] font-mono text-gold-light/80">{activeRegion.label}</span>
-                <span className={`text-[10px] text-text-dim transition-transform ${regionMenuOpen ? 'rotate-180' : ''}`}>▾</span>
-              </button>
-
-              {regionMenuOpen && (
-                <div
-                  className="absolute right-0 top-full mt-2 w-[280px] rounded-xl border border-gold/25 bg-dark/98 shadow-2xl overflow-hidden z-[100] pointer-events-auto"
-                  style={{ boxShadow: '0 20px 55px rgba(0,0,0,0.82)' }}
-                >
-                  <div className="px-4 py-3 border-b border-gold/10 bg-void/60">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold-light">
-                      Your Local Region
-                    </div>
-                    <div className="text-[11px] text-text-dim mt-1">
-                      Select your timezone. Game/server time stays unchanged.
-                    </div>
-                  </div>
-
-                  <ul className="py-1">
-                    {regions.map(r => {
-                      const isActive = r.id === activeRegion.id
-                      return (
-                        <li key={r.id}>
-                          <button
-                            type="button"
-                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); pickRegion(r.id) }}
-                            className={`w-full flex items-center gap-3 px-4 py-2.5 text-left cursor-pointer transition-colors ${
-                              isActive
-                                ? 'bg-gold/10 text-gold-bright'
-                                : 'text-text hover:bg-white/[0.035] hover:text-gold-light'
-                            }`}
-                            aria-pressed={isActive}
-                          >
-                            <span className="w-7 h-7 rounded-md border border-gold/10 bg-white/[0.025] flex items-center justify-center shrink-0">
-                              <FlagIcon code={r.code} name={r.name} width={20} height={15} fallbackFlag={r.flag} />
-                            </span>
-                            <span className="flex-1 min-w-0">
-                              <span className="block text-sm font-semibold truncate">{r.name || r.label || r.id}</span>
-                              <span className={`block text-[10px] font-mono mt-0.5 ${isActive ? 'text-gold-light/80' : 'text-text-dim'}`}>
-                                {r.label || ''}
-                              </span>
-                            </span>
-                            {isActive && (
-                              <span className="w-5 h-5 rounded-full border border-gold/35 bg-gold/10 flex items-center justify-center text-gold-bright text-[10px]">✓</span>
-                            )}
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </ul>
-
-                  <div className="px-4 py-2.5 border-t border-gold/10 bg-black/10 text-[10px] text-text-dim leading-snug">
-                    Local time is for your convenience. Event schedules remain based on server time.
-                  </div>
-                </div>
-              )}
+                <span className="text-[10px] font-mono text-gold-light/80">{getLocalZoneLabel()}</span>
+              </div>
             </div>
 
             {/* User */}
@@ -283,7 +211,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               <div ref={userMenuRef} className="relative ml-1 pl-2 border-l border-gold/10">
                 <button
                   type="button"
-                  onClick={() => { setUserMenuOpen(o => !o); setRegionMenuOpen(false) }}
+                  onClick={() => setUserMenuOpen(o => !o)}
                   className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition-all ${
                     userMenuOpen ? 'bg-white/[0.035]' : 'hover:bg-white/[0.025]'
                   }`}
@@ -451,68 +379,23 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                     </div>
                   </div>
 
-                  {/* Region selector */}
-                  <div className="rounded-xl border border-white/[0.07] bg-black/20 overflow-hidden mb-3">
+                  {/* Automatic local timezone */}
+                  <div className="rounded-xl border border-gold/15 bg-gold/[0.035] overflow-hidden mb-3">
                     <div className="px-3 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
                       <div>
-                        <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-gold-light">Local Region</div>
-                        <div className="text-[9px] text-text-dim mt-0.5">Game schedule stays on server time</div>
+                        <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-gold-light">Your Time</div>
+                        <div className="text-[9px] text-text-dim mt-0.5">Detected automatically from this device</div>
                       </div>
-                      <span className="text-base">🌍</span>
+                      <span className="text-base text-gold-light">◷</span>
                     </div>
-
-                    <div className="p-2">
-                      <div className="flex items-center gap-3 px-2.5 py-2 rounded-lg bg-gold/[0.08] border border-gold/15 mb-1.5">
-                        <span className="w-8 h-8 rounded-lg bg-black/20 border border-gold/10 flex items-center justify-center shrink-0">
-                          <FlagIcon
-                            code={activeRegion.code}
-                            name={activeRegion.name}
-                            width={20}
-                            height={15}
-                            fallbackFlag={activeRegion.flag}
-                          />
-                        </span>
+                    <div className="p-2.5">
+                      <div className="flex items-center gap-3 px-2.5 py-2.5 rounded-lg bg-black/20 border border-gold/10">
+                        <span className="w-8 h-8 rounded-lg bg-gold/[0.08] border border-gold/15 flex items-center justify-center shrink-0 text-gold-light">◷</span>
                         <div className="min-w-0 flex-1">
-                          <div className="text-[11px] font-bold text-gold-light truncate">{activeRegion.name}</div>
-                          <div className="text-[9px] font-mono text-gold-light/60 mt-0.5">{activeRegion.label}</div>
+                          <div className="text-[11px] font-bold text-gold-light truncate">{AUTO_LOCAL_TZ}</div>
+                          <div className="text-[9px] font-mono text-gold-light/60 mt-0.5">{getLocalZoneLabel()}</div>
                         </div>
-                        <span className="text-gold-bright text-xs">✓</span>
-                      </div>
-
-                      <div className="max-h-52 overflow-y-auto pr-0.5 space-y-0.5">
-                        {regions.map(r => {
-                          const isActive = r.id === activeRegion.id
-                          return (
-                            <button
-                              key={r.id}
-                              type="button"
-                              onPointerDown={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                pickRegion(r.id)
-                              }}
-                              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all cursor-pointer ${
-                                isActive
-                                  ? 'bg-gold/[0.06] text-gold-light'
-                                  : 'text-text-dim hover:text-gold-light hover:bg-white/[0.025]'
-                              }`}
-                              aria-pressed={isActive}
-                            >
-                              <FlagIcon
-                                code={r.code}
-                                name={r.name}
-                                width={18}
-                                height={13}
-                                fallbackFlag={r.flag}
-                              />
-                              <span className="flex-1 min-w-0 text-[11px] font-semibold truncate">
-                                {r.name || r.label || r.id}
-                              </span>
-                              <span className="text-[9px] font-mono text-text-dim shrink-0">{r.label || ''}</span>
-                              {isActive && <span className="text-gold-bright text-[10px] shrink-0">✓</span>}
-                            </button>
-                          )
-                        })}
+                        <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shrink-0" />
                       </div>
                     </div>
                   </div>
