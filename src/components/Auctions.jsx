@@ -1642,12 +1642,159 @@ function EndedAuctionRow({
 
   return (
     <li className={`${isMe ? 'bg-green-500/[.025]' : ''}`}>
-      <div className="px-4 py-3.5 md:px-5">
-        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+      {/* ── Mobile archive row ───────────────────────────────────────── */}
+      <div className="md:hidden px-3 py-3">
+        <div className="flex items-start gap-3">
+          {a.imageUrl ? (
+            <ItemImage src={a.imageUrl} alt={a.name} size={56} />
+          ) : (
+            <div
+              className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg border bg-black/20 font-spectral text-lg font-bold"
+              style={{ borderColor: rgba(rm.rgb, .25), color: rm.color }}
+            >
+              {a.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: rm.color }} />
+              <span className="min-w-0 truncate text-[13px] font-bold leading-5" style={{ color: rm.color }}>
+                {a.name}
+              </span>
+              <RarityBadge rarity={a.rarity} />
+            </div>
+
+            <div className="mt-1 flex min-w-0 items-center gap-2">
+              <span className={`min-w-0 truncate text-[11px] font-semibold ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
+                {winner || <span className="italic font-normal text-text-dim">No bids</span>}
+              </span>
+              {isMe && (
+                <span className="flex-shrink-0 rounded-full border border-green-500/20 bg-green-500/[.05] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-green-400">
+                  You Won
+                </span>
+              )}
+            </div>
+
+            {a.description && (
+              <div className="mt-0.5 truncate text-[9px] leading-4 text-text-dim">
+                {a.description}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-2.5 grid grid-cols-[1fr_auto] items-end gap-3 border-t border-white/[.045] pt-2.5">
+          <div className="min-w-0">
+            <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Distribution</div>
+            {winner ? (
+              isElder ? (
+                <select
+                  className="input mt-1 h-7 max-w-full px-2 py-0 text-[9px]"
+                  value={assignedName}
+                  onChange={e => onAssignDistributor(e.target.value)}
+                  aria-label={`Distributor for ${a.name}`}
+                >
+                  <option value="">Not yet assigned</option>
+                  {distributors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                </select>
+              ) : (
+                <div className="mt-1">
+                  <DistributorStatusBadge name={assignedName} />
+                </div>
+              )
+            ) : (
+              <div className="mt-1 text-[9px] text-text-dim">No distribution required</div>
+            )}
+          </div>
+
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Final Bid</div>
+            <div className="mt-0.5 font-mono text-[16px] font-bold tabular-nums text-gold-bright">
+              {(a.currentBid || 0).toLocaleString()}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="min-w-0 truncate text-[8px] text-text-dim">
+            {endedAt > 0 ? `${agoLabel || 'Closed'} · ${SERVER_TZ_SHORT}` : 'Closed'}
+          </div>
+
+          <div className="flex flex-shrink-0 items-center gap-1">
+            {totalBids > 0 && (
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={isExpanded}
+                className="rounded-md border border-white/[.07] bg-black/15 px-2.5 py-1.5 text-[9px] font-bold text-gold-light hover:border-gold/25"
+              >
+                {isExpanded ? 'Hide Bids' : `${totalBids} Bid${totalBids === 1 ? '' : 's'}`}
+              </button>
+            )}
+            {isElder && (
+              <button
+                type="button"
+                onClick={onDelete}
+                aria-label={`Delete auction: ${a.name}`}
+                className="rounded-md px-2 py-1.5 text-[9px] font-semibold text-red-400/75 hover:bg-red-500/[.07] hover:text-red-300"
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        </div>
+
+        {isExpanded && totalBids > 0 && (
+          <div className="mt-2.5 overflow-hidden rounded-lg border border-white/[.06] bg-black/20">
+            <ul className="divide-y divide-white/[.04]">
+              {bids.map((b, idx) => {
+                const isLast = idx === bids.length - 1
+                return (
+                  <li
+                    key={b.time || idx}
+                    className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-2.5 py-2 text-[10px] ${
+                      isLast ? 'bg-green-500/[.035]' : ''
+                    }`}
+                  >
+                    <span className={`min-w-0 truncate font-semibold ${isLast ? 'text-green-300' : 'text-text-dim'}`}>
+                      {b.bidder}
+                    </span>
+                    <span className={`text-right font-mono font-bold tabular-nums ${isLast ? 'text-green-300' : 'text-text-dim'}`}>
+                      {b.amount.toLocaleString()}
+                    </span>
+                    <span className={`font-mono text-[8px] ${isLast ? 'text-green-400' : 'text-text-dim'}`}>
+                      {formatClock(b.time)} {SERVER_TZ_SHORT} · Local {formatLocalClock(b.time)}
+                      {b.extendedByMs > 0 && <span className="ml-1 text-gold-light">↻ +2m</span>}
+                    </span>
+                    <span className="text-right text-[8px] font-bold uppercase tracking-wider text-green-400">
+                      {isLast ? 'Winner' : ''}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+            {endedAt > 0 && (
+              <div className="border-t border-white/[.05] px-2.5 py-1.5 text-[8px] leading-4 text-text-dim">
+                Closed {formatDateTime(endedAt)} {SERVER_TZ_SHORT} · Local {formatLocalDateTime(endedAt)}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Desktop/tablet archive row ───────────────────────────────── */}
+      <div className="hidden px-4 py-3.5 md:block md:px-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           {a.imageUrl ? (
             <ItemImage src={a.imageUrl} alt={a.name} size={48} />
           ) : (
-            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border bg-black/20 font-spectral text-lg font-bold" style={{ borderColor: rgba(rm.rgb,.25), color: rm.color }}>{a.name.charAt(0).toUpperCase()}</div>
+            <div
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border bg-black/20 font-spectral text-lg font-bold"
+              style={{ borderColor: rgba(rm.rgb,.25), color: rm.color }}
+            >
+              {a.name.charAt(0).toUpperCase()}
+            </div>
           )}
 
           <div className="min-w-0 flex-1">
@@ -1660,7 +1807,7 @@ function EndedAuctionRow({
             {a.description && <div className="mt-0.5 truncate text-[10px] text-text-dim">{a.description}</div>}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:items-center gap-2 sm:gap-5 lg:gap-6">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-5 lg:flex lg:items-center lg:gap-6">
             <div className="min-w-[100px]">
               <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Winner</div>
               <div className={`mt-0.5 max-w-[130px] truncate text-xs font-semibold ${isMe ? 'text-green-400' : 'text-text-bright'}`}>{winner || <span className="italic font-normal text-text-dim">No bids</span>}</div>
@@ -1685,7 +1832,7 @@ function EndedAuctionRow({
               ) : <div className="mt-0.5 text-[10px] text-text-dim">No distribution required</div>}
             </div>
 
-            <div className="hidden sm:block min-w-[120px]">
+            <div className="hidden min-w-[120px] sm:block">
               <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Closed</div>
               <div className="mt-0.5 text-[10px] font-mono text-text-bright">{endedAt > 0 ? formatDateTime(endedAt) : '—'} <span className="text-[9px] text-text-dim">{SERVER_TZ_SHORT}</span></div>
               <div className="text-[9px] text-text-dim">{endedAt > 0 ? `Local ${formatLocalDateTime(endedAt)}` : ''}</div>
@@ -1704,24 +1851,24 @@ function EndedAuctionRow({
         </div>
 
         {isExpanded && totalBids > 0 && (
-          <div className="mt-3 rounded-xl border border-white/[.06] bg-black/20 overflow-hidden">
-            <div className="hidden sm:grid sm:grid-cols-[80px_minmax(0,1fr)_100px_auto] gap-3 border-b border-white/[.05] px-3 py-2 text-[9px] font-bold uppercase tracking-[.12em] text-text-dim">
+          <div className="mt-3 overflow-hidden rounded-xl border border-white/[.06] bg-black/20">
+            <div className="hidden border-b border-white/[.05] px-3 py-2 text-[9px] font-bold uppercase tracking-[.12em] text-text-dim sm:grid sm:grid-cols-[80px_minmax(0,1fr)_100px_auto] sm:gap-3">
               <span>Time</span><span>Bidder</span><span className="text-right">Amount</span><span />
             </div>
             <ul className="divide-y divide-white/[.04]">
               {bids.map((b, idx) => {
                 const isLast = idx === bids.length - 1
                 return (
-                  <li key={b.time || idx} className={`grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[80px_minmax(0,1fr)_100px_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2.5 sm:py-2 text-[11px] ${isLast ? 'bg-green-500/[.035]' : ''}`}>
-                    <span className={`col-start-1 row-start-2 sm:col-auto sm:row-auto font-mono tabular-nums text-[9px] sm:text-[11px] ${isLast ? 'text-green-400' : 'text-text-dim'}`}>
+                  <li key={b.time || idx} className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2.5 text-[11px] sm:grid-cols-[80px_minmax(0,1fr)_100px_auto] sm:py-2 ${isLast ? 'bg-green-500/[.035]' : ''}`}>
+                    <span className={`col-start-1 row-start-2 font-mono tabular-nums text-[9px] sm:col-auto sm:row-auto sm:text-[11px] ${isLast ? 'text-green-400' : 'text-text-dim'}`}>
                       {formatClock(b.time)} <span className="text-[8px] sm:text-[9px]">{SERVER_TZ_SHORT}</span>
                       <span className="text-white/15"> · </span>
                       <span className="text-[8px] sm:text-[9px]">Local {formatLocalClock(b.time)}</span>
                       {b.extendedByMs > 0 && <span className="ml-1 text-[8px] text-gold-light">↻ +2m</span>}
                     </span>
-                    <span className={`col-start-1 row-start-1 sm:col-auto sm:row-auto min-w-0 truncate font-semibold text-xs sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
-                    <span className={`col-start-2 row-start-1 row-span-2 sm:col-auto sm:row-auto text-right font-mono font-bold tabular-nums text-sm sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
-                    <span className="col-start-1 row-start-3 sm:col-auto sm:row-auto text-[9px] font-bold uppercase tracking-wider text-green-400">{isLast ? 'Winner' : ''}</span>
+                    <span className={`col-start-1 row-start-1 min-w-0 truncate font-semibold text-xs sm:col-auto sm:row-auto sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
+                    <span className={`col-start-2 row-start-1 row-span-2 text-right font-mono text-sm font-bold tabular-nums sm:col-auto sm:row-auto sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
+                    <span className="col-start-1 row-start-3 text-[9px] font-bold uppercase tracking-wider text-green-400 sm:col-auto sm:row-auto">{isLast ? 'Winner' : ''}</span>
                   </li>
                 )
               })}
