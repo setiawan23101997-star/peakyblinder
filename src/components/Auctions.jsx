@@ -985,24 +985,49 @@ export default function Auctions({ ctx }) {
       </header>
 
       {/* Auction rules */}
-      <div className="rounded-xl border border-white/[.06] bg-black/20">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-[11px] text-text-dim">
-          <span className="inline-flex items-center gap-2"><span className="text-gold-light">↗</span> Minimum increment <strong className="text-text-bright">+{MIN_BID_INCREMENT}</strong></span>
-          <span className="hidden sm:inline text-white/10">|</span>
-          <span className="inline-flex items-center gap-2"><span className="text-yellow-400">◷</span> Bidding locks in the final <strong className="text-text-bright">30 seconds</strong></span>
-          <span className="hidden md:inline text-white/10">|</span>
-          <span className="inline-flex items-center gap-2"><span className="text-gold-light">↻</span> Genuine outbid adds <strong className="text-text-bright">+2 minutes</strong></span>
-          <span className="hidden md:inline text-white/10">|</span>
-          <span className="inline-flex items-center gap-2"><span className="text-gold-light">◉</span> Times shown in <strong className="text-text-bright">{SERVER_TZ_LABEL}</strong> + <strong className="text-text-bright">your local time</strong></span>
-          <button
-            type="button"
-            onClick={() => setShowLegend(v => !v)}
-            aria-expanded={showLegend}
-            className="ml-auto inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.12em] text-gold-light hover:text-gold-bright transition-colors"
-          >
-            {showLegend ? 'Hide guide' : 'Auction guide'}
-            <span className={`transition-transform ${showLegend ? 'rotate-180' : ''}`}>⌄</span>
-          </button>
+      <div className="rounded-xl border border-white/[.06] bg-black/20 overflow-hidden">
+        <div className="px-3.5 py-3 sm:px-4 sm:py-3">
+          <div className="grid grid-cols-1 sm:flex sm:flex-wrap sm:items-center gap-2.5 sm:gap-x-5 sm:gap-y-2 text-[11px] text-text-dim">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↗</span>
+              <span className="min-w-0">Minimum increment <strong className="text-text-bright whitespace-nowrap">+{MIN_BID_INCREMENT}</strong></span>
+            </div>
+
+            <span className="hidden sm:inline text-white/10">|</span>
+
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-yellow-500/15 bg-yellow-500/[.04] text-yellow-400">◷</span>
+              <span className="min-w-0">Bidding locks in the final <strong className="text-text-bright whitespace-nowrap">30 seconds</strong></span>
+            </div>
+
+            <span className="hidden sm:inline text-white/10">|</span>
+
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↻</span>
+              <span className="min-w-0">Genuine outbid adds <strong className="text-text-bright whitespace-nowrap">+2 minutes</strong></span>
+            </div>
+
+            <span className="hidden sm:inline text-white/10">|</span>
+
+            <div className="flex min-w-0 items-center gap-2.5 sm:max-w-[360px]">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">◉</span>
+              <span className="min-w-0 leading-4">
+                Times shown in <strong className="text-text-bright">{SERVER_TZ_LABEL}</strong>
+                <span className="mx-1 text-text-dim">+</span>
+                <strong className="text-text-bright">your local time</strong>
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowLegend(v => !v)}
+              aria-expanded={showLegend}
+              className="w-full sm:w-auto sm:ml-auto inline-flex items-center justify-center sm:justify-start gap-1.5 pt-2 sm:pt-0 text-[10px] font-bold uppercase tracking-[.12em] text-gold-light hover:text-gold-bright transition-colors border-t border-white/[.06] sm:border-0"
+            >
+              {showLegend ? 'Hide guide' : 'Auction guide'}
+              <span className={`transition-transform ${showLegend ? 'rotate-180' : ''}`}>⌄</span>
+            </button>
+          </div>
         </div>
         {showLegend && (
           <div className="border-t border-white/[.06] px-4 py-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-text-dim">
