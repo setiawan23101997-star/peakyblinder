@@ -356,7 +356,7 @@ export default function Dashboard({ ctx, setPage }) {
   const goAttendance = useCallback(() => setPage('attendance'), [setPage])
 
   return (
-    <div className="space-y-7 pb-10">
+    <div className="w-full min-w-0 max-w-full overflow-x-clip space-y-5 sm:space-y-7 pb-8 sm:pb-10">
       <HeroSection
         currentUser={currentUser}
         activeRegion={activeRegion}
@@ -417,17 +417,17 @@ const HeroSection = React.memo(function HeroSection({
       <section className="relative overflow-hidden rounded-2xl border border-gold/20 bg-[#0b0a09]/90 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/70 to-transparent" aria-hidden="true" />
         <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gold/[0.05] blur-3xl" aria-hidden="true" />
-        <div className="relative p-5 md:p-6 grid grid-cols-1 xl:grid-cols-[1fr_auto] gap-6 items-center">
+        <div className="relative p-4 sm:p-5 md:p-6 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] gap-4 sm:gap-6 items-center min-w-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_10px_rgba(242,204,96,0.8)]" />
               <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-gold-dim">Clan command center</span>
             </div>
-            <h1 className="font-spectral text-3xl md:text-4xl font-bold leading-tight truncate">
+            <h1 className="font-spectral text-2xl sm:text-3xl md:text-4xl font-bold leading-tight break-words">
               <span className="text-text-bright">{greeting}, </span>
               <span className="text-gold-bright">{firstName}</span>
             </h1>
-            <p className="text-text-dim text-sm md:text-[15px] mt-2 truncate max-w-2xl">
+            <p className="text-text-dim text-xs sm:text-sm md:text-[15px] mt-2 leading-relaxed max-w-2xl">
               {todayEvents.length > 0
                 ? <>{todayEvents.length} {todayEvents.length === 1 ? 'event' : 'events'} today — first at{' '}
                     <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(todayEvents[0].time)}</span>
@@ -436,32 +436,32 @@ const HeroSection = React.memo(function HeroSection({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 min-w-0 xl:min-w-[330px]">
+          <div className="grid grid-cols-2 gap-2 min-w-0 w-full xl:w-auto xl:min-w-[330px]">
             <div className="rounded-xl border border-gold/15 bg-black/25 px-3.5 py-3 min-w-0">
-              <div className="text-[9px] text-text-dim font-bold uppercase tracking-[0.16em]">
+              <div className="text-[8px] sm:text-[9px] text-text-dim font-bold uppercase tracking-[0.12em] sm:tracking-[0.16em] truncate">
                 Server · {SERVER_TZ_LABEL}
               </div>
               <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-1">
-                <span className="text-xl md:text-2xl">
+                <span className="text-lg sm:text-xl md:text-2xl">
                   {serverClock.time.slice(0, 5)}
                 </span>
-                <span className="text-xs text-gold-light/60 ml-0.5">
+                <span className="text-[10px] sm:text-xs text-gold-light/60 ml-0.5">
                   :{serverSec}
                 </span>
               </div>
-              <div className="text-[10px] text-text-dim mt-1 whitespace-nowrap">
+              <div className="text-[9px] sm:text-[10px] text-text-dim mt-1 whitespace-nowrap">
                 {serverClock.day.slice(0, 3)} · {serverClock.date}
               </div>
             </div>
 
             <div className="rounded-xl border border-gold/15 bg-black/25 px-3.5 py-3 min-w-0">
-              <div className="text-[10px] text-gold-dim font-semibold uppercase tracking-wider flex items-center gap-1.5">
+              <div className="text-[8px] sm:text-[10px] text-gold-dim font-semibold uppercase tracking-[0.12em] sm:tracking-wider flex items-center gap-1.5 truncate">
                 <span>Local · {activeRegion.label}</span>
               </div>
               <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-1">
-                <span className="text-xl md:text-2xl">{localClock.time}</span>
+                <span className="text-lg sm:text-xl md:text-2xl">{localClock.time}</span>
               </div>
-              <div className="text-[10px] text-text-dim mt-1 whitespace-nowrap flex items-center gap-1.5">
+              <div className="text-[9px] sm:text-[10px] text-text-dim mt-1 whitespace-nowrap flex items-center gap-1.5">
                 <FlagImage
                   code={activeRegion.code}
                   flag={activeRegion.flag}
@@ -476,7 +476,7 @@ const HeroSection = React.memo(function HeroSection({
         </div>
       </section>
 
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-0">
         <ActionTile icon="◷" label="Attendance" hint={isElder ? 'Record & award coins' : 'View attendance history'} onClick={goAttendance} />
         <ActionTile icon="◇" label="Auctions" hint="Bid on clan items" onClick={goAuctions} />
         <ActionTile icon="♙" label={isElder ? 'Manage members' : 'View members'} hint={isElder ? 'Add, edit & remove' : 'See clan roster'} onClick={goMembers} />
@@ -816,7 +816,7 @@ const ScheduleSection = React.memo(function ScheduleSection({ activeRegion, idPr
 
   return (
     <section className="relative">
-      <div className="flex items-end justify-between mb-4 flex-wrap gap-3">
+      <div className="flex items-end justify-between mb-3 sm:mb-4 flex-wrap gap-2 sm:gap-3 min-w-0">
         <div>
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-dim mb-0.5">Clan calendar</div>
@@ -843,7 +843,7 @@ const ScheduleSection = React.memo(function ScheduleSection({ activeRegion, idPr
             )}
           </p>
         </div>
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="hidden sm:flex items-center gap-4 flex-wrap">
           {Object.entries(TYPE).map(([k, t]) => (
             <div key={k} className="flex items-center gap-1.5 text-xs text-text-dim">
               <span aria-hidden="true">{t.icon}</span>
@@ -893,31 +893,31 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
   const localEq = formatInZone(next.nextTs, activeRegion.tz)
 
   return (
-    <div className="relative rounded-2xl border border-gold/15 bg-[#0b0a09]/85 overflow-hidden mb-3 shadow-[0_14px_40px_rgba(0,0,0,0.2)]">
+    <div className="relative w-full min-w-0 rounded-2xl border border-gold/15 bg-[#0b0a09]/85 overflow-hidden mb-3 shadow-[0_14px_40px_rgba(0,0,0,0.2)]">
       <div
         className="absolute inset-0 opacity-[0.07] pointer-events-none"
         style={{ background: `radial-gradient(circle at 0% 0%, ${t.color}, transparent 60%)` }}
         aria-hidden="true"
       />
 
-      <div className="relative p-4 md:p-5 flex items-center gap-4 flex-wrap">
+      <div className="relative p-3.5 sm:p-4 md:p-5 grid grid-cols-[44px_minmax(0,1fr)] sm:flex sm:items-center gap-3 sm:gap-4 min-w-0">
         <div
-          className="flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl bg-black/20"
+          className="flex-shrink-0 w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl bg-black/20"
           style={{ background: `${t.color}15`, border: `1px solid ${t.color}40` }}
           aria-hidden="true"
         >
           {t.icon}
         </div>
 
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-[10px] font-bold uppercase tracking-widest mb-0.5" style={{ color: t.color }}>
             Coming up next
           </div>
-          <div className="font-spectral text-lg md:text-xl font-bold text-text-bright leading-tight truncate">
+          <div className="font-spectral text-base sm:text-lg md:text-xl font-bold text-text-bright leading-tight break-words">
             {next.name}
           </div>
-          <div className="flex items-center gap-3 mt-1 text-xs text-text-dim flex-wrap">
-            {next.boss && <span className="truncate">👾 {next.boss}</span>}
+          <div className="flex items-center gap-x-2 gap-y-1 mt-1 text-[10px] sm:text-xs text-text-dim flex-wrap min-w-0">
+            {next.boss && <span className="truncate max-w-full">👾 {next.boss}</span>}
             <span className="font-mono tabular-nums whitespace-nowrap">
               {DAY_NAMES[next.dow].slice(0, 3)} · {to12h(next.time)} · server
             </span>
@@ -936,12 +936,12 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
           </div>
         </div>
 
-        <div className="text-right flex-shrink-0">
+        <div className="col-span-2 sm:col-span-1 sm:text-right flex-shrink-0 pt-2 sm:pt-0 border-t border-white/[0.06] sm:border-0 min-w-0">
           <div className="text-[10px] text-text-dim font-semibold uppercase tracking-wider mb-0.5 whitespace-nowrap">
             Starts in
           </div>
           <div
-            className={`font-mono text-2xl md:text-3xl font-bold tabular-nums leading-none whitespace-nowrap ${urgent ? 'motion-safe:animate-pulse' : ''}`}
+            className={`font-mono text-2xl sm:text-2xl md:text-3xl font-bold tabular-nums leading-none whitespace-nowrap ${urgent ? 'motion-safe:animate-pulse' : ''}`}
             style={{ color: t.color }}
           >
             {formatCountdown(remaining)}
@@ -986,11 +986,11 @@ const WeeklyEventTabs = React.memo(function WeeklyEventTabs({
   const panelId = `${idPrefix}-panel`
 
   return (
-    <div className="rounded-2xl border border-gold/15 bg-[#0b0a09]/70 overflow-hidden shadow-[0_12px_35px_rgba(0,0,0,0.18)]">
+    <div className="w-full min-w-0 rounded-2xl border border-gold/15 bg-[#0b0a09]/70 overflow-hidden shadow-[0_12px_35px_rgba(0,0,0,0.18)]">
       <div
         role="tablist"
         aria-label="Day of the week (server time)"
-        className="flex overflow-x-auto no-scrollbar border-b border-white/[0.06] bg-black/20"
+        className="grid grid-cols-7 overflow-hidden border-b border-white/[0.06] bg-black/20"
       >
         {DAY_ORDER.map(dow => {
           const isActive = dow === activeDay
@@ -1009,7 +1009,7 @@ const WeeklyEventTabs = React.memo(function WeeklyEventTabs({
               tabIndex={isActive ? 0 : -1}
               onClick={() => onSelect(dow)}
               onKeyDown={e => handleKeyDown(e, dow)}
-              className={`relative flex-1 min-w-[72px] sm:min-w-[82px] flex flex-col items-center gap-0.5 px-3 py-3 text-sm font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 focus-visible:-outline-offset-2 ${
+              className={`relative min-w-0 flex flex-col items-center gap-0.5 px-0.5 sm:px-3 py-2.5 sm:py-3 text-[11px] sm:text-sm font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 focus-visible:-outline-offset-2 ${
                 isActive ? 'text-gold-bright' : 'text-text-dim hover:text-text-bright'
               }`}
             >
@@ -1033,7 +1033,7 @@ const WeeklyEventTabs = React.memo(function WeeklyEventTabs({
         role="tabpanel"
         aria-labelledby={`${idPrefix}-tab-${activeDay}`}
         tabIndex={0}
-        className="p-3 md:p-4 space-y-2.5"
+        className="p-2.5 sm:p-3 md:p-4 space-y-2 sm:space-y-2.5 min-w-0"
       >
         {events.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-text-dim italic">
@@ -1076,12 +1076,12 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
           >
             {t.icon}
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-text-bright leading-snug">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] sm:text-sm font-semibold text-text-bright leading-snug break-words">
               {ev.name}
             </div>
             {(ev.boss || ev.subtitle) && (
-              <div className="text-xs text-text-dim mt-0.5 leading-snug">
+              <div className="text-[11px] sm:text-xs text-text-dim mt-0.5 leading-snug">
                 {ev.boss ? `👾 ${ev.boss}` : ev.subtitle}
               </div>
             )}
@@ -1100,9 +1100,9 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
               {to12h(ev.time)}
             </span>
           </div>
-          <div className="text-right flex-shrink-0">
-            <div className="text-[10px] text-text-dim leading-none">Starts in</div>
-            <div className="font-mono text-xs text-gold-light tabular-nums mt-0.5 leading-none whitespace-nowrap">
+          <div className="col-span-2 sm:col-span-1 sm:text-right flex-shrink-0 pt-2 sm:pt-0 border-t border-white/[0.06] sm:border-0 min-w-0">
+            <div className="text-[9px] sm:text-[10px] text-text-dim leading-none">Starts in</div>
+            <div className="font-mono text-[11px] sm:text-xs text-gold-light tabular-nums mt-0.5 leading-none whitespace-nowrap">
               {countdown}
             </div>
           </div>
@@ -1140,7 +1140,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
           {t.icon}
         </div>
 
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-text-bright truncate">{ev.name}</div>
           {(ev.boss || ev.subtitle) && (
             <div className="text-xs text-text-dim truncate mt-0.5">
@@ -1161,7 +1161,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
           )}
         </div>
 
-        <div className="text-right flex-shrink-0">
+        <div className="col-span-2 sm:col-span-1 sm:text-right flex-shrink-0 pt-2 sm:pt-0 border-t border-white/[0.06] sm:border-0 min-w-0">
           <div className="text-[10px] text-text-dim">Starts in</div>
           <div className="font-mono text-xs text-gold-light tabular-nums mt-0.5 whitespace-nowrap">
             {countdown}
