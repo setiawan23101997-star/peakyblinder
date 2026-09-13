@@ -1710,8 +1710,11 @@ function EndedAuctionRow({
 
           <div className="text-right">
             <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Final Bid</div>
-            <div className="mt-0.5 font-mono text-[16px] font-bold tabular-nums text-gold-bright">
-              {(a.currentBid || 0).toLocaleString()}
+            <div className="mt-0.5 flex items-baseline justify-end gap-1.5">
+              <span className="font-mono text-[16px] font-bold tabular-nums text-gold-bright">
+                {(a.currentBid || 0).toLocaleString()}
+              </span>
+              <span className="text-[9px] font-semibold text-text-dim">coins</span>
             </div>
           </div>
         </div>
@@ -1761,7 +1764,7 @@ function EndedAuctionRow({
                       {b.bidder}
                     </span>
                     <span className={`text-right font-mono font-bold tabular-nums ${isLast ? 'text-green-300' : 'text-text-dim'}`}>
-                      {b.amount.toLocaleString()}
+                      {b.amount.toLocaleString()} <span className="text-[8px] font-semibold text-text-dim">coins</span>
                     </span>
                     <span className={`font-mono text-[8px] ${isLast ? 'text-green-400' : 'text-text-dim'}`}>
                       {formatClock(b.time)} {SERVER_TZ_SHORT} · Local {formatLocalClock(b.time)}
@@ -1815,7 +1818,10 @@ function EndedAuctionRow({
 
             <div>
               <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Final Bid</div>
-              <div className="mt-0.5 font-mono text-sm font-bold tabular-nums text-gold-bright">{(a.currentBid || 0).toLocaleString()}</div>
+              <div className="mt-0.5 flex items-baseline gap-1.5">
+                <span className="font-mono text-sm font-bold tabular-nums text-gold-bright">{(a.currentBid || 0).toLocaleString()}</span>
+                <span className="text-[9px] font-semibold text-text-dim">coins</span>
+              </div>
             </div>
 
             <div className="min-w-[145px]">
@@ -1867,7 +1873,9 @@ function EndedAuctionRow({
                       {b.extendedByMs > 0 && <span className="ml-1 text-[8px] text-gold-light">↻ +2m</span>}
                     </span>
                     <span className={`col-start-1 row-start-1 min-w-0 truncate font-semibold text-xs sm:col-auto sm:row-auto sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
-                    <span className={`col-start-2 row-start-1 row-span-2 text-right font-mono text-sm font-bold tabular-nums sm:col-auto sm:row-auto sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
+                    <span className={`col-start-2 row-start-1 row-span-2 text-right font-mono text-sm font-bold tabular-nums sm:col-auto sm:row-auto sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>
+                      {b.amount.toLocaleString()} <span className="text-[8px] font-semibold text-text-dim">coins</span>
+                    </span>
                     <span className="col-start-1 row-start-3 text-[9px] font-bold uppercase tracking-wider text-green-400 sm:col-auto sm:row-auto">{isLast ? 'Winner' : ''}</span>
                   </li>
                 )
