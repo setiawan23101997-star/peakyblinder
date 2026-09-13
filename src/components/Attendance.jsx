@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 
 const eventTypes = [
   'Clan Annihilation',
@@ -8,25 +8,101 @@ const eventTypes = [
   'World Boss',
 ]
 
-function formatGMT8(ts = Date.now(), opts = {}) {
-  return new Date(ts).toLocaleString('en-GB', {
-    timeZone: 'Asia/Singapore',
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-    ...opts,
-  })
+const SERVER_TZ = 'Asia/Singapore'
+const SERVER_TZ_LABEL = 'GMT+8'
+
+const FALLBACK_REGIONS = [
+  { id: 'ph', code: 'ph', flag: '🇵🇭', name: 'Philippines', tz: 'Asia/Manila',       label: 'GMT+8' },
+  { id: 'us', code: 'us', flag: '🇺🇸', name: 'New York',    tz: 'America/New_York',  label: 'ET' },
+  { id: 'br', code: 'br', flag: '🇧🇷', name: 'Brazil',      tz: 'America/Sao_Paulo', label: 'BRT' },
+  { id: 'de', code: 'de', flag: '🇩🇪', name: 'Germany',     tz: 'Europe/Berlin',     label: 'CET' },
+  { id: 'by', code: 'by', flag: '🇧🇾', name: 'Belarus',     tz: 'Europe/Minsk',      label: 'MSK' },
+  { id: 'ua', code: 'ua', flag: '🇺🇦', name: 'Ukraine',     tz: 'Europe/Kyiv',       label: 'EET' },
+  { id: 'th', code: 'th', flag: '🇹🇭', name: 'Thailand',    tz: 'Asia/Bangkok',      label: 'GMT+7' },
+  { id: 'id', code: 'id', flag: '🇮🇩', name: 'Indonesia',   tz: 'Asia/Jakarta',      label: 'GMT+7' },
+]
+
+/* ── Cached Intl formatters ───────────────────────────────────────── */
+
+const _dtfCache = new Map()
+function getDTF(locale, opts) {
+  const key = locale + '|' + JSON.stringify(opts)
+  let dtf = _dtfCache.get(key)
+  if (!dtf) {
+    dtf = new Intl.DateTimeFormat(locale, opts)
+    _dtfCache.set(key, dtf)
+  }
+  return dtf
 }
 
+const CLOCK_OPTS = {
+  day: '2-digit', month: 'short', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', second: '2-digit',
+  hour12: false,
+}
+const SHORT_OPTS = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }
+const SHORT_NO_YEAR_OPTS = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }
+
+function formatClockInZone(ts, tz) {
+  return getDTF('en-GB', { timeZone: tz, ...CLOCK_OPTS }).format(new Date(ts))
+}
+function formatShortInZone(ts, tz) {
+  return getDTF('en-GB', { timeZone: tz, ...SHORT_OPTS }).format(new Date(ts))
+}
+function formatShortNoYearInZone(ts, tz) {
+  return getDTF('en-GB', { timeZone: tz, ...SHORT_NO_YEAR_OPTS }).format(new Date(ts))
+}
+
+function formatGMT8(ts = Date.now()) {
+  return formatClockInZone(ts, SERVER_TZ)
+}
 function formatGMT8Short(ts = Date.now()) {
-  return new Date(ts).toLocaleString('en-GB', {
-    timeZone: 'Asia/Singapore',
-    day: '2-digit', month: 'short',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  })
+  return formatShortInZone(ts, SERVER_TZ)
+}
+function formatInZone(ts, tz) {
+  return formatShortNoYearInZone(ts, tz)
+}
+
+/** Small flag image from flagcdn.com with emoji fallback. */
+function FlagImage({ code, flag, name, width = 20, height = 15 }) {
+  const [failed, setFailed] = useState(false)
+
+  if (!code || failed) {
+    if (!flag) return null
+    return (
+      <span
+        className="inline-flex items-center justify-center flex-shrink-0 leading-none"
+        style={{ width, height, fontSize: Math.round(height * 1.1) }}
+        aria-hidden="true"
+      >
+        {flag}
+      </span>
+    )
+  }
+
+  return (
+    <img
+      src={`https://flagcdn.com/w20/${code}.png`}
+      srcSet={`https://flagcdn.com/w20/${code}.png 1x, https://flagcdn.com/w40/${code}.png 2x`}
+      width={width}
+      height={height}
+      alt={name ? `${name} flag` : ''}
+      loading="lazy"
+      decoding="async"
+      className="rounded-[2px] border border-gold/20 object-cover flex-shrink-0"
+      style={{ width, height }}
+      onError={() => setFailed(true)}
+    />
+  )
 }
 
 export default function Attendance({ ctx }) {
-  const { members, setMembers, attendanceLogs, setAttendanceLogs, currentUser, addToast, supabase } = ctx
+  const {
+    members, setMembers, attendanceLogs, setAttendanceLogs,
+    currentUser, addToast, supabase,
+    region, setRegionId, regions: ctxRegions,
+  } = ctx
+
   const [selectedEvent, setSelectedEvent] = useState(eventTypes[0])
   const [coinAmount, setCoinAmount] = useState(25)
   const [selectedMembers, setSelectedMembers] = useState({})
@@ -35,6 +111,7 @@ export default function Attendance({ ctx }) {
   const [expandedLogs, setExpandedLogs] = useState({})
   const [deletingId, setDeletingId] = useState(null)
   const [now, setNow] = useState(Date.now())
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
@@ -44,8 +121,30 @@ export default function Attendance({ ctx }) {
   const isElder = currentUser?.role === 'Elder' || currentUser?.role === 'Master' || currentUser?.role === 'Admin'
   const filtered = members.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
 
+  const regions = useMemo(() => {
+    const list = Array.isArray(ctxRegions) && ctxRegions.length > 0 ? ctxRegions : FALLBACK_REGIONS
+    return list.map(r => ({ ...r, code: r.code || r.id, flag: r.flag || '' }))
+  }, [ctxRegions])
+
+  const activeRegion = useMemo(() => {
+    const r = region || regions[0]
+    return {
+      ...r,
+      code: r.code || r.id,
+      flag: r.flag || '',
+      name: r.name || r.label || r.id,
+      label: r.label || '',
+    }
+  }, [region, regions])
+
   const toggleMember = (id) => setSelectedMembers(prev => ({ ...prev, [id]: !prev[id] }))
   const toggleLog = (id) => setExpandedLogs(prev => ({ ...prev, [id]: !prev[id] }))
+
+  const pickRegion = (id) => {
+    if (typeof setRegionId === 'function') setRegionId(id)
+    else try { localStorage.setItem('peakyblader:localRegion', id) } catch {}
+    setPickerOpen(false)
+  }
 
   const recordAttendance = async () => {
     const ids = Object.keys(selectedMembers).filter(k => selectedMembers[k])
@@ -242,14 +341,90 @@ export default function Attendance({ ctx }) {
           </p>
         </div>
 
-        <div className="card px-4 py-2 border-gold/30 flex items-center gap-3">
-          <div className="text-lg">🕒</div>
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-widest text-gold-dim">
-              Server Time · GMT+8
-            </div>
-            <div className="font-mono text-sm text-gold-bright tabular-nums">
-              {formatGMT8(now)}
+        <div className="flex items-stretch gap-2 flex-wrap">
+          {/* Region picker */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setPickerOpen(o => !o)}
+              className={`card px-3 py-2 border-gold/30 flex items-center gap-3 h-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 min-w-[190px] ${
+                pickerOpen ? 'border-gold/60 bg-gold/[0.06]' : 'hover:border-gold/50'
+              }`}
+              aria-expanded={pickerOpen}
+              aria-label={`Region: ${activeRegion.name}. Click to change.`}
+            >
+              <span className="text-base leading-none" aria-hidden="true">🌍</span>
+              <FlagImage code={activeRegion.code} flag={activeRegion.flag} name={activeRegion.name} width={20} height={15} />
+              <div className="text-left flex-1 min-w-0">
+                <div className="text-[9px] font-bold uppercase tracking-widest text-gold-dim leading-tight">
+                  Your local
+                </div>
+                <div className="font-mono text-xs text-gold-bright tabular-nums whitespace-nowrap leading-tight">
+                  {formatInZone(now, activeRegion.tz)}
+                </div>
+              </div>
+              <span
+                className={`text-[10px] text-text-dim transition-transform ${pickerOpen ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              >
+                ▾
+              </span>
+            </button>
+
+            {pickerOpen && (
+              <div
+                className="absolute right-0 top-full mt-2 w-[260px] rounded-lg border border-gold/30 bg-dark shadow-xl overflow-hidden z-50"
+                style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.9)' }}
+              >
+                <div className="px-4 py-2 border-b border-gold/15 bg-void/40">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-gold-light">
+                    🌍 Region
+                  </div>
+                </div>
+                <ul>
+                  {regions.map(r => {
+                    const isActive = r.id === activeRegion.id
+                    return (
+                      <li key={r.id}>
+                        <button
+                          type="button"
+                          onClick={() => pickRegion(r.id)}
+                          className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${
+                            isActive
+                              ? 'bg-gold/15 text-gold-bright'
+                              : 'text-text hover:bg-gold/10 hover:text-gold-light'
+                          }`}
+                          aria-pressed={isActive}
+                        >
+                          <FlagImage code={r.code} flag={r.flag} name={r.name} />
+                          <span className="flex-1 min-w-0 text-xs font-semibold truncate">
+                            {r.name || r.label || r.id}
+                          </span>
+                          <span className={`flex-shrink-0 text-[10px] font-mono ${isActive ? 'text-gold-bright' : 'text-text-dim'}`}>
+                            {r.label || ''}
+                          </span>
+                          {isActive && (
+                            <span className="text-gold-bright text-xs flex-shrink-0" aria-hidden="true">✓</span>
+                          )}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* Server clock — includes seconds */}
+          <div className="card px-3 py-2 border-gold/30 flex items-center gap-3 min-w-[190px]">
+            <div className="text-lg leading-none" aria-hidden="true">🕒</div>
+            <div className="text-left">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-gold-dim leading-tight">
+                Server · {SERVER_TZ_LABEL}
+              </div>
+              <div className="font-mono text-xs text-gold-bright tabular-nums whitespace-nowrap leading-tight">
+                {formatGMT8(now)}
+              </div>
             </div>
           </div>
         </div>
@@ -263,7 +438,7 @@ export default function Attendance({ ctx }) {
               Recent Logs ({sortedLogs.length})
             </div>
             <div className="text-[10px] text-text-dim uppercase tracking-wider">
-              Newest first · GMT+8
+              Newest first · {SERVER_TZ_LABEL}
             </div>
           </div>
           <div className="space-y-2 max-h-[600px] overflow-y-auto">
@@ -286,6 +461,12 @@ export default function Attendance({ ctx }) {
                       <span className="text-xs text-text-dim font-mono tabular-nums">
                         {formatGMT8Short(logTs)}
                       </span>
+                      {logTs > 0 && (
+                        <span className="text-[10px] text-gold-light/70 tabular-nums inline-flex items-center gap-1">
+                          <FlagImage code={activeRegion.code} flag={activeRegion.flag} name={activeRegion.name} width={14} height={10} />
+                          <span>{formatInZone(logTs, activeRegion.tz)}</span>
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-xs text-green-400 font-semibold">

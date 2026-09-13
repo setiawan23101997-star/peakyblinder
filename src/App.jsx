@@ -12,11 +12,25 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 const supabase = createClient(supabaseUrl, supabaseKey)
 
+// Region options shared between Layout (picker) and Dashboard (display).
+// `code` is the ISO 3166-1 alpha-2 code used to fetch flag images from
+// flagcdn.com. `flag` is the emoji fallback for platforms that support it.
+export const REGIONS = [
+  { id: 'ph', code: 'ph', flag: '🇵🇭', name: 'Philippines', tz: 'Asia/Manila',       label: 'GMT+8' },
+  { id: 'us', code: 'us', flag: '🇺🇸', name: 'New York',    tz: 'America/New_York',  label: 'ET' },
+  { id: 'br', code: 'br', flag: '🇧🇷', name: 'Brazil',      tz: 'America/Sao_Paulo', label: 'BRT' },
+  { id: 'de', code: 'de', flag: '🇩🇪', name: 'Germany',     tz: 'Europe/Berlin',     label: 'CET' },
+  { id: 'by', code: 'by', flag: '🇧🇾', name: 'Belarus',     tz: 'Europe/Minsk',      label: 'MSK' },
+  { id: 'ua', code: 'ua', flag: '🇺🇦', name: 'Ukraine',     tz: 'Europe/Kyiv',       label: 'EET' },
+  { id: 'th', code: 'th', flag: '🇹🇭', name: 'Thailand',    tz: 'Asia/Bangkok',      label: 'GMT+7' },
+  { id: 'id', code: 'id', flag: '🇮🇩', name: 'Indonesia',   tz: 'Asia/Jakarta',      label: 'GMT+7' },
+]
+const DEFAULT_REGION_ID = 'ph'
+const REGION_STORAGE_KEY = 'peakyblader:localRegion'
+
 function App() {
   const [page, setPage] = useState('dashboard')
 
-  // allMembers = the FULL roster, including Admin. Never filtered.
-  // members    = the roster as the current viewer is allowed to see it.
   const [allMembers, setAllMembers] = useState([])
   const [members, setMembers] = useState([])
 
@@ -26,15 +40,28 @@ function App() {
   const [toasts, setToasts] = useState([])
   const [loading, setLoading] = useState(true)
 
+  const [regionId, setRegionIdState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(REGION_STORAGE_KEY)
+      return saved && REGIONS.some(r => r.id === saved) ? saved : DEFAULT_REGION_ID
+    } catch { return DEFAULT_REGION_ID }
+  })
+
   const autoEndedRef = useRef(new Set())
+
+  const setRegionId = (id) => {
+    if (!REGIONS.some(r => r.id === id)) return
+    setRegionIdState(id)
+    try { localStorage.setItem(REGION_STORAGE_KEY, id) } catch {}
+  }
+
+  const region = REGIONS.find(r => r.id === regionId) || REGIONS[0]
 
   const addToast = (msg, type = 'gold', title = '') => {
     const id = Date.now() + Math.random()
     setToasts(prev => [...prev, { id, msg, type, title }])
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
   }
-
-  // ---------- normalizers ----------
 
   const normalizeAuction = (a) => ({
     id: String(a.id),
@@ -85,13 +112,10 @@ function App() {
     attend_log: toJsonArray(m.attend_log),
   })
 
-  // Filter what a viewer is allowed to SEE. Never used for auth.
   const filterVisibleMembers = (list, viewer) => {
     if (viewer?.role === 'Admin') return list
     return list.filter(m => m.role !== 'Admin')
   }
-
-  // ---------- loaders ----------
 
   const loadAllData = async () => {
     try {
@@ -141,7 +165,6 @@ function App() {
       if (logsError) throw logsError
       setAttendanceLogs(logsData || [])
 
-      // Re-hydrate session from localStorage
       if (savedUser) {
         const user = JSON.parse(savedUser)
         const currentMembers = membersData || []
@@ -166,7 +189,6 @@ function App() {
     loadAllData()
   }, [])
 
-  // 5-second poll
   useEffect(() => {
     const interval = setInterval(async () => {
       const { data: membersData } = await supabase.from('members').select('*').order('id')
@@ -183,7 +205,6 @@ function App() {
     return () => clearInterval(interval)
   }, [currentUser])
 
-  // Auto-end expired auctions (direct table write)
   useEffect(() => {
     const autoEndExpired = async () => {
       const now = Date.now()
@@ -238,8 +259,6 @@ function App() {
     const id = setInterval(autoEndExpired, 5000)
     return () => clearInterval(id)
   }, [auctions])
-
-  // ---------- mutations ----------
 
   const saveMember = async (member) => {
     try {
@@ -347,15 +366,6 @@ function App() {
     }
   }
 
-  // ---------- auth ----------
-
-  /**
-   * Login. Searches the FULL roster from the DB, never the filtered `members`
-   * state — the filter exists so unauthenticated viewers don't SEE Admin rows,
-   * but it must never gate who is allowed to authenticate.
-   *
-   * No toast on failure — the Login page shows the error inline.
-   */
   const handleLogin = async (username, password) => {
     try {
       const { data, error } = await supabase
@@ -416,6 +426,12 @@ function App() {
     handleLogout,
     loadAllData,
     supabase,
+
+    // Shared region state — Layout picker writes it, Dashboard reads it.
+    regionId,
+    region,
+    setRegionId,
+    regions: REGIONS,
   }
 
   if (loading) {

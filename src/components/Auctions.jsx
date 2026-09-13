@@ -12,6 +12,20 @@ const GLOW_RARITIES = new Set(['legendary'])
 const URGENT_MS = 5 * 60 * 1000
 const MIN_BID_INCREMENT = 5
 
+const SERVER_TZ = 'Asia/Singapore'
+const SERVER_TZ_LABEL = 'GMT+8'
+
+const FALLBACK_REGIONS = [
+  { id: 'ph', code: 'ph', flag: '🇵🇭', name: 'Philippines', tz: 'Asia/Manila',       label: 'GMT+8' },
+  { id: 'us', code: 'us', flag: '🇺🇸', name: 'New York',    tz: 'America/New_York',  label: 'ET' },
+  { id: 'br', code: 'br', flag: '🇧🇷', name: 'Brazil',      tz: 'America/Sao_Paulo', label: 'BRT' },
+  { id: 'de', code: 'de', flag: '🇩🇪', name: 'Germany',     tz: 'Europe/Berlin',     label: 'CET' },
+  { id: 'by', code: 'by', flag: '🇧🇾', name: 'Belarus',     tz: 'Europe/Minsk',      label: 'MSK' },
+  { id: 'ua', code: 'ua', flag: '🇺🇦', name: 'Ukraine',     tz: 'Europe/Kyiv',       label: 'EET' },
+  { id: 'th', code: 'th', flag: '🇹🇭', name: 'Thailand',    tz: 'Asia/Bangkok',      label: 'GMT+7' },
+  { id: 'id', code: 'id', flag: '🇮🇩', name: 'Indonesia',   tz: 'Asia/Jakarta',      label: 'GMT+7' },
+]
+
 const presetDescriptions = [
   '',
   'World Boss Drop',
@@ -29,24 +43,49 @@ const presetDescriptions = [
 function rgba(rgb, alpha) { return `rgba(${rgb}, ${alpha})` }
 function getRarityMeta(rarity) { return RARITY[rarity] || RARITY.epic }
 
-function formatServerClock(ts) {
-  return new Date(ts).toLocaleString('en-GB', {
-    timeZone: 'Asia/Singapore',
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
-  })
+/* ── Cached Intl formatters ───────────────────────────────────────── */
+
+const _dtfCache = new Map()
+function getDTF(locale, opts) {
+  const key = locale + '|' + JSON.stringify(opts)
+  let dtf = _dtfCache.get(key)
+  if (!dtf) {
+    dtf = new Intl.DateTimeFormat(locale, opts)
+    _dtfCache.set(key, dtf)
+  }
+  return dtf
 }
-function formatClock(ts) {
-  return new Date(ts).toLocaleTimeString('en-GB', {
-    timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hour12: false,
-  })
+
+const CLOCK_OPTS = {
+  day: '2-digit', month: 'short', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', second: '2-digit',
+  hour12: false,
 }
-function formatDateTime(ts) {
-  return new Date(ts).toLocaleString('en-GB', {
-    timeZone: 'Asia/Singapore', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
-  })
+const TIME_OPTS = { hour: '2-digit', minute: '2-digit', hour12: false }
+const DATETIME_OPTS = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }
+const SHORT_OPTS = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }
+const WEEKDAY_OPTS = { weekday: 'short' }
+
+function formatClockInZone(ts, tz) {
+  return getDTF('en-GB', { timeZone: tz, ...CLOCK_OPTS }).format(new Date(ts))
 }
+function formatTimeInZone(ts, tz) {
+  return getDTF('en-GB', { timeZone: tz, ...TIME_OPTS }).format(new Date(ts))
+}
+function formatDateTimeInZone(ts, tz) {
+  return getDTF('en-GB', { timeZone: tz, ...DATETIME_OPTS }).format(new Date(ts))
+}
+function formatShortInZone(ts, tz) {
+  return getDTF('en-GB', { timeZone: tz, ...SHORT_OPTS }).format(new Date(ts))
+}
+function formatWeekdayInZone(ts, tz) {
+  return getDTF('en-GB', { timeZone: tz, ...WEEKDAY_OPTS }).format(new Date(ts))
+}
+
+function formatServerClock(ts) { return formatClockInZone(ts, SERVER_TZ) }
+function formatClock(ts) { return formatTimeInZone(ts, SERVER_TZ) }
+function formatDateTime(ts) { return formatDateTimeInZone(ts, SERVER_TZ) }
+
 function formatCountdown(endsAt, now) {
   const diff = endsAt - now
   if (diff <= 0) return 'Ended'
@@ -72,6 +111,39 @@ function isBiddingOpen(auction, now) {
 }
 function minNextBidFor(auction) {
   return (auction?.currentBid || 0) + MIN_BID_INCREMENT
+}
+
+/** Small flag image with emoji fallback (matches Attendance). */
+function FlagImage({ code, flag, name, width = 20, height = 15 }) {
+  const [failed, setFailed] = useState(false)
+
+  if (!code || failed) {
+    if (!flag) return null
+    return (
+      <span
+        className="inline-flex items-center justify-center flex-shrink-0 leading-none"
+        style={{ width, height, fontSize: Math.round(height * 1.1) }}
+        aria-hidden="true"
+      >
+        {flag}
+      </span>
+    )
+  }
+
+  return (
+    <img
+      src={`https://flagcdn.com/w20/${code}.png`}
+      srcSet={`https://flagcdn.com/w20/${code}.png 1x, https://flagcdn.com/w40/${code}.png 2x`}
+      width={width}
+      height={height}
+      alt={name ? `${name} flag` : ''}
+      loading="lazy"
+      decoding="async"
+      className="rounded-[2px] border border-gold/20 object-cover flex-shrink-0"
+      style={{ width, height }}
+      onError={() => setFailed(true)}
+    />
+  )
 }
 
 function DistributorStatusBadge({ name }) {
@@ -102,7 +174,6 @@ function DistributorStatusBadge({ name }) {
   )
 }
 
-/** Small thumbnail shown on cards when the auction has an image. */
 function ItemImage({ src, alt, size = 56 }) {
   if (!src) return null
   return (
@@ -120,7 +191,11 @@ function ItemImage({ src, alt, size = 56 }) {
 }
 
 export default function Auctions({ ctx }) {
-  const { members, setMembers, auctions, setAuctions, currentUser, addToast, supabase } = ctx
+  const {
+    members, setMembers, auctions, setAuctions, currentUser, addToast, supabase,
+    region, setRegionId, regions: ctxRegions,
+  } = ctx
+
   const [showCreate, setShowCreate] = useState(false)
   const [showLegend, setShowLegend] = useState(false)
   const [newItem, setNewItem] = useState({
@@ -138,6 +213,7 @@ export default function Auctions({ ctx }) {
   const [bidAmounts, setBidAmounts] = useState({})
   const [expandedBids, setExpandedBids] = useState({})
   const [now, setNow] = useState(() => Date.now())
+  const [pickerOpen, setPickerOpen] = useState(false)
   const formId = useId()
   const fileInputId = `${formId}-image`
 
@@ -162,8 +238,30 @@ export default function Auctions({ ctx }) {
     })
   }, [auctions])
 
+  const regions = useMemo(() => {
+    const list = Array.isArray(ctxRegions) && ctxRegions.length > 0 ? ctxRegions : FALLBACK_REGIONS
+    return list.map(r => ({ ...r, code: r.code || r.id, flag: r.flag || '' }))
+  }, [ctxRegions])
+
+  const activeRegion = useMemo(() => {
+    const r = region || regions[0]
+    return {
+      ...r,
+      code: r.code || r.id,
+      flag: r.flag || '',
+      name: r.name || r.label || r.id,
+      label: r.label || '',
+    }
+  }, [region, regions])
+
   const isElder = currentUser?.role === 'Elder' || currentUser?.role === 'Master' || currentUser?.role === 'Admin'
   const isMaster = currentUser?.role === 'Master' || currentUser?.role === 'Admin'
+
+  const pickRegion = (id) => {
+    if (typeof setRegionId === 'function') setRegionId(id)
+    else try { localStorage.setItem('peakyblader:localRegion', id) } catch {}
+    setPickerOpen(false)
+  }
 
   const distributors = useMemo(() => {
     return [...members]
@@ -451,19 +549,103 @@ export default function Auctions({ ctx }) {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-spectral text-2xl font-bold text-gold-light">Auctions</h1>
+          <h1 className="font-spectral text-2xl font-bold text-gold-light mb-2">Auctions</h1>
           <p className="text-text-dim text-sm">{activeAuctions.length} active, {endedAuctions.length} ended</p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="card px-4 py-2 border-gold/30 flex items-center gap-3">
-            <div className="text-lg" aria-hidden="true">🕒</div>
-            <div>
-              <div className="text-[11px] text-gold-dim font-semibold">Server time, GMT+8</div>
-              <div className="font-mono text-sm text-gold-bright tabular-nums">{formatServerClock(now)}</div>
+
+        <div className="flex items-stretch gap-2 flex-wrap">
+          {/* Region picker */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setPickerOpen(o => !o)}
+              className={`card px-3 py-2 border-gold/30 flex items-center gap-3 h-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 min-w-[190px] ${
+                pickerOpen ? 'border-gold/60 bg-gold/[0.06]' : 'hover:border-gold/50'
+              }`}
+              aria-expanded={pickerOpen}
+              aria-label={`Region: ${activeRegion.name}. Click to change.`}
+            >
+              <span className="text-base leading-none" aria-hidden="true">🌍</span>
+              <FlagImage code={activeRegion.code} flag={activeRegion.flag} name={activeRegion.name} width={20} height={15} />
+              <div className="text-left flex-1 min-w-0">
+                <div className="text-[9px] font-bold uppercase tracking-widest text-gold-dim leading-tight">
+                  Your local
+                </div>
+                <div className="font-mono text-xs text-gold-bright tabular-nums whitespace-nowrap leading-tight">
+                  {formatShortInZone(now, activeRegion.tz)}
+                </div>
+              </div>
+              <span
+                className={`text-[10px] text-text-dim transition-transform ${pickerOpen ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              >
+                ▾
+              </span>
+            </button>
+
+            {pickerOpen && (
+              <div
+                className="absolute right-0 top-full mt-2 w-[260px] rounded-lg border border-gold/30 bg-dark shadow-xl overflow-hidden z-50"
+                style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.9)' }}
+              >
+                <div className="px-4 py-2 border-b border-gold/15 bg-void/40">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-gold-light">
+                    🌍 Region
+                  </div>
+                </div>
+                <ul>
+                  {regions.map(r => {
+                    const isActive = r.id === activeRegion.id
+                    return (
+                      <li key={r.id}>
+                        <button
+                          type="button"
+                          onClick={() => pickRegion(r.id)}
+                          className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${
+                            isActive
+                              ? 'bg-gold/15 text-gold-bright'
+                              : 'text-text hover:bg-gold/10 hover:text-gold-light'
+                          }`}
+                          aria-pressed={isActive}
+                        >
+                          <FlagImage code={r.code} flag={r.flag} name={r.name} />
+                          <span className="flex-1 min-w-0 text-xs font-semibold truncate">
+                            {r.name || r.label || r.id}
+                          </span>
+                          <span className={`flex-shrink-0 text-[10px] font-mono ${isActive ? 'text-gold-bright' : 'text-text-dim'}`}>
+                            {r.label || ''}
+                          </span>
+                          {isActive && (
+                            <span className="text-gold-bright text-xs flex-shrink-0" aria-hidden="true">✓</span>
+                          )}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* Server clock */}
+          <div className="card px-3 py-2 border-gold/30 flex items-center gap-3 min-w-[190px]">
+            <div className="text-lg leading-none" aria-hidden="true">🕒</div>
+            <div className="text-left">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-gold-dim leading-tight">
+                Server · {SERVER_TZ_LABEL}
+              </div>
+              <div className="font-mono text-xs text-gold-bright tabular-nums whitespace-nowrap leading-tight">
+                {formatServerClock(now)}
+              </div>
             </div>
           </div>
+
           {isElder && (
-            <button onClick={() => setShowCreate(!showCreate)} className="btn-gold" aria-expanded={showCreate}>
+            <button
+              onClick={() => setShowCreate(!showCreate)}
+              className="btn-gold whitespace-nowrap h-full"
+              aria-expanded={showCreate}
+            >
               {showCreate ? '✕ Cancel' : '+ Create auction'}
             </button>
           )}
@@ -579,14 +761,12 @@ export default function Auctions({ ctx }) {
             )}
           </div>
 
-          {/* Image upload — restyled */}
           <div className="mb-4">
             <label htmlFor={fileInputId} className="block text-xs text-text-dim font-semibold mb-1">
               Item image (optional)
             </label>
 
             <div className="flex items-center gap-3 rounded border border-gold/25 bg-void/40 px-3 py-2">
-              {/* Hidden native input */}
               <input
                 id={fileInputId}
                 type="file"
@@ -596,7 +776,6 @@ export default function Auctions({ ctx }) {
                 className="sr-only"
               />
 
-              {/* Styled "Choose file" trigger */}
               <label
                 htmlFor={fileInputId}
                 className={`inline-flex items-center gap-1.5 text-xs font-semibold rounded border px-3 py-1.5 cursor-pointer transition-colors ${
@@ -610,12 +789,10 @@ export default function Auctions({ ctx }) {
                 <span>Choose file</span>
               </label>
 
-              {/* Filename or placeholder */}
               <span className="text-xs text-text-dim truncate flex-1 min-w-0">
                 {imageFile ? imageFile.name : 'No file chosen'}
               </span>
 
-              {/* Clear button, only when a file is selected */}
               {imageFile && (
                 <button
                   type="button"
@@ -677,11 +854,25 @@ export default function Auctions({ ctx }) {
             <button onClick={createAuction} className="btn-gold" disabled={uploading}>
               {uploading ? 'Uploading…' : 'Start auction'}
             </button>
-            <span className="text-xs text-text-dim">
-              {parseInt(newItem.duration) > 0
-                ? `Ends ${formatClock(Date.now() + (parseInt(newItem.duration) || 60) * 60000)} (GMT+8)`
-                : ''}
-            </span>
+            {parseInt(newItem.duration) > 0 && (
+              <span className="text-xs text-text-dim flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>Ends</span>
+                <span className="font-mono text-gold-light">
+                  {formatTimeInZone(Date.now() + (parseInt(newItem.duration) || 60) * 60000, SERVER_TZ)} server
+                </span>
+                <span className="text-text-dim/50">·</span>
+                <span className="font-mono text-gold-light inline-flex items-center gap-1">
+                  <FlagImage
+                    code={activeRegion.code}
+                    flag={activeRegion.flag}
+                    name={activeRegion.name}
+                    width={14}
+                    height={10}
+                  />
+                  {formatTimeInZone(Date.now() + (parseInt(newItem.duration) || 60) * 60000, activeRegion.tz)} local
+                </span>
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -705,6 +896,7 @@ export default function Auctions({ ctx }) {
               onDelete={() => deleteAuction(auction.id)}
               isBidsExpanded={!!expandedBids[auction.id]}
               onToggleBids={() => toggleBidsExpanded(auction.id)}
+              activeRegion={activeRegion}
             />
           ))}
         </div>
@@ -737,6 +929,7 @@ export default function Auctions({ ctx }) {
                   onToggle={() => toggleBidsExpanded(a.id)}
                   onAssignDistributor={(name) => assignDistributor(a.id, name)}
                   onDelete={() => deleteAuction(a.id)}
+                  activeRegion={activeRegion}
                 />
               ))}
             </ul>
@@ -764,7 +957,7 @@ function RarityBadge({ rarity }) {
 function AuctionCard({
   auction, now, currentUser, isElder, isMaster,
   bidAmount, onBidChange, onPlaceBid, onEndEarly, onDelete,
-  isBidsExpanded, onToggleBids,
+  isBidsExpanded, onToggleBids, activeRegion,
 }) {
   const isWinning = auction.topBidder === currentUser?.name
   const bids = auction.bids || []
@@ -806,6 +999,32 @@ function AuctionCard({
 
       {auction.description && (
         <div className="text-xs text-text-dim mt-2 italic">{auction.description}</div>
+      )}
+
+      {activeRegion && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-dim">
+          <span className="inline-flex items-center gap-1 tabular-nums">
+            <span aria-hidden="true">🕒</span>
+            <span className="font-mono text-gold-light">
+              {formatDateTimeInZone(auction.endsAt, SERVER_TZ)}
+            </span>
+            <span>server</span>
+          </span>
+          <span className="text-gold/20" aria-hidden="true">·</span>
+          <span className="inline-flex items-center gap-1 tabular-nums">
+            <FlagImage
+              code={activeRegion.code}
+              flag={activeRegion.flag}
+              name={activeRegion.name}
+              width={14}
+              height={10}
+            />
+            <span className="font-mono text-gold-light">
+              {formatDateTimeInZone(auction.endsAt, activeRegion.tz)}
+            </span>
+            <span>local</span>
+          </span>
+        </div>
       )}
 
       <div className="flex items-center justify-between mt-3">
@@ -915,7 +1134,7 @@ function AuctionCard({
 
 function EndedAuctionRow({
   auction: a, now, currentUser, isElder, distributors,
-  isExpanded, onToggle, onAssignDistributor, onDelete,
+  isExpanded, onToggle, onAssignDistributor, onDelete, activeRegion,
 }) {
   const bids = a.bids || []
   const totalBids = bids.length
@@ -1065,8 +1284,21 @@ function EndedAuctionRow({
       )}
 
       {isExpanded && (
-        <div className="px-4 pb-3 text-[10px] text-text-dim">
-          Ended {endedAt > 0 ? formatDateTime(endedAt) : '—'} · GMT+8
+        <div className="px-4 pb-3 text-[10px] text-text-dim flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span>Ended {endedAt > 0 ? formatDateTime(endedAt) : '—'} (server)</span>
+          {activeRegion && endedAt > 0 && (
+            <>
+              <span className="text-gold/20" aria-hidden="true">·</span>
+              <FlagImage
+                code={activeRegion.code}
+                flag={activeRegion.flag}
+                name={activeRegion.name}
+                width={14}
+                height={10}
+              />
+              <span>{formatDateTimeInZone(endedAt, activeRegion.tz)} (local)</span>
+            </>
+          )}
         </div>
       )}
     </li>
