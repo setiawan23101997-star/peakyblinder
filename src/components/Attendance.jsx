@@ -351,7 +351,7 @@ export default function Attendance({ ctx }) {
   const clearSelection = () => setSelectedMembers({})
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3.5 sm:space-y-5 min-w-0 overflow-x-hidden">
       {/* Simple Auction-style header */}
       <header className="relative z-30 overflow-visible rounded-2xl border border-gold/15 bg-[#0c0a09]/90">
         <div
@@ -361,48 +361,48 @@ export default function Attendance({ ctx }) {
             background: 'radial-gradient(circle at 0% 0%, rgba(242,204,96,.06), transparent 38%), linear-gradient(120deg, rgba(255,255,255,.018), transparent 42%)',
           }}
         />
-        <div className="relative p-5 md:p-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+        <div className="relative p-3.5 sm:p-5 md:p-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-5">
             <div className="min-w-0">
-              <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex items-center gap-2 mb-1 sm:mb-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-gold-bright" />
-                <span className="text-[10px] font-bold uppercase tracking-[.22em] text-gold-dim">Clan Management</span>
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-[.18em] sm:tracking-[.22em] text-gold-dim">Clan Management</span>
               </div>
-              <h1 className="font-spectral text-3xl font-bold tracking-tight text-text-bright">Attendance</h1>
-              <p className="mt-1 text-sm text-text-dim">
-                {isElder ? 'Mark the members who attended and record their reward.' : 'View clan attendance and event participation.'}
+              <h1 className="font-spectral text-2xl sm:text-3xl font-bold tracking-tight text-text-bright">Attendance</h1>
+              <p className="mt-1 text-[11px] sm:text-sm leading-5 text-text-dim max-w-xl">
+                {isElder ? 'Mark attendees and record their reward.' : 'View clan attendance and event participation.'}
               </p>
             </div>
 
-            <div className="flex flex-wrap items-stretch gap-2">
-              <div className="rounded-xl border border-white/[.07] bg-black/20 px-4 py-2.5 min-w-[100px]">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-2 w-full lg:w-auto">
+              <div className="rounded-xl border border-white/[.07] bg-black/20 px-3 sm:px-4 py-2 sm:py-2.5 min-w-0 sm:min-w-[100px]">
                 <div className="text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Members</div>
                 <div className="mt-1 text-xl font-mono font-bold tabular-nums text-text-bright">{members.length}</div>
               </div>
               {isElder && (
-                <div className="rounded-xl border border-gold/20 bg-gold/[.04] px-4 py-2.5 min-w-[100px]">
+                <div className="rounded-xl border border-gold/20 bg-gold/[.04] px-3 sm:px-4 py-2 sm:py-2.5 min-w-0 sm:min-w-[100px]">
                   <div className="text-[9px] font-bold uppercase tracking-[.15em] text-gold-dim">Selected</div>
                   <div className="mt-1 text-xl font-mono font-bold tabular-nums text-gold-bright">{selectedCount}</div>
                 </div>
               )}
-              <div className="rounded-xl border border-gold/20 bg-gold/[.04] px-4 py-2.5 min-w-[210px]">
-                <div className="text-[9px] font-bold uppercase tracking-[.15em] text-gold-dim">Server Time · {SERVER_TZ_LABEL}</div>
-                <div className="mt-1 text-sm font-mono font-bold tabular-nums text-gold-light whitespace-nowrap">{formatGMT8(now)}</div>
+              <div className="col-span-2 sm:col-span-1 rounded-xl border border-gold/20 bg-gold/[.04] px-3 sm:px-4 py-2 sm:py-2.5 min-w-0 sm:min-w-[210px]">
+                <div className="text-[8px] sm:text-[9px] font-bold uppercase tracking-[.12em] sm:tracking-[.15em] text-gold-dim">Server Time · {SERVER_TZ_LABEL}</div>
+                <div className="mt-1 text-xs sm:text-sm font-mono font-bold tabular-nums text-gold-light whitespace-nowrap">{formatGMT8(now)}</div>
               </div>
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-2 rounded-lg border border-white/[.07] bg-black/20 px-3 py-2 text-[11px] text-text-dim">
+          <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-white/[.07] bg-black/20 px-3 py-2 text-[10px] sm:text-[11px] text-text-dim w-fit">
               <span className="text-green-400">●</span>
               <span><span className="text-text-bright font-semibold">{attendanceLogs.length}</span> attendance log{attendanceLogs.length === 1 ? '' : 's'}</span>
             </div>
 
-            <div className="relative ml-auto">
+            <div className="relative w-full sm:w-auto sm:ml-auto">
               <button
                 type="button"
                 onClick={() => setPickerOpen(o => !o)}
-                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${pickerOpen ? 'border-gold/60 bg-gold/[.06] text-gold-bright' : 'border-white/[.08] bg-black/20 text-text-dim hover:border-gold/35 hover:text-text-bright'}`}
+                className={`w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2 rounded-lg border px-3 py-2 text-[10px] sm:text-[11px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${pickerOpen ? 'border-gold/60 bg-gold/[.06] text-gold-bright' : 'border-white/[.08] bg-black/20 text-text-dim hover:border-gold/35 hover:text-text-bright'}`}
                 aria-expanded={pickerOpen}
               >
                 <FlagImage code={activeRegion.code} flag={activeRegion.flag} name={activeRegion.name} width={20} height={15} />
@@ -412,7 +412,7 @@ export default function Attendance({ ctx }) {
               </button>
 
               {pickerOpen && (
-                <div className="absolute right-0 top-full mt-2 w-[260px] max-h-[420px] rounded-xl border border-gold/25 bg-[#0c0a09] shadow-2xl overflow-auto z-[100]">
+                <div className="absolute left-0 sm:left-auto right-0 top-full mt-2 w-full sm:w-[260px] max-h-[55vh] sm:max-h-[420px] rounded-xl border border-gold/25 bg-[#0c0a09] shadow-2xl overflow-auto z-[100]">
                   <div className="sticky top-0 px-4 py-2.5 border-b border-white/[.06] bg-[#0c0a09]">
                     <div className="text-[9px] font-bold uppercase tracking-[.18em] text-gold-dim">Local Region</div>
                     <div className="mt-0.5 text-[10px] text-text-dim">Choose the timezone used for local times.</div>
@@ -443,7 +443,7 @@ export default function Attendance({ ctx }) {
       {/* One-step recording workspace */}
       {isElder && (
         <section className="rounded-2xl border border-gold/20 bg-[#0c0a09]/85 overflow-hidden">
-          <div className="px-5 py-4 border-b border-white/[.06] flex flex-wrap items-center justify-between gap-3">
+          <div className="px-3.5 sm:px-5 py-3.5 sm:py-4 border-b border-white/[.06] flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold text-text-bright">Record Attendance</h2>
               <p className="mt-1 text-[11px] text-text-dim">Choose the event, set the reward, then mark the members who attended.</p>
@@ -452,7 +452,7 @@ export default function Attendance({ ctx }) {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-0 border-b border-white/[.06]">
-            <div className="p-5 border-b lg:border-b-0 lg:border-r border-white/[.06]">
+            <div className="p-3.5 sm:p-5 border-b lg:border-b-0 lg:border-r border-white/[.06]">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="block">
                   <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-[.16em] text-text-dim">Event</span>
@@ -511,7 +511,7 @@ export default function Attendance({ ctx }) {
               </div>
             </div>
 
-            <div className="p-5 min-w-0">
+            <div className="p-3.5 sm:p-5 min-w-0">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <div>
                   <div className="text-[9px] font-bold uppercase tracking-[.16em] text-text-dim">Members</div>
@@ -538,7 +538,7 @@ export default function Attendance({ ctx }) {
               </div>
 
               <div className="rounded-xl border border-white/[.07] overflow-hidden">
-                <div className="grid grid-cols-[34px_minmax(0,1fr)_90px] items-center gap-2 px-3 py-2 border-b border-white/[.06] bg-black/20 text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">
+                <div className="grid grid-cols-[30px_minmax(0,1fr)_72px] sm:grid-cols-[34px_minmax(0,1fr)_90px] items-center gap-2 px-2.5 sm:px-3 py-2 border-b border-white/[.06] bg-black/20 text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">
                   <span />
                   <span>Member</span>
                   <span className="text-right">Attendance</span>
@@ -552,7 +552,7 @@ export default function Attendance({ ctx }) {
                         type="button"
                         onClick={() => toggleMember(m.id)}
                         aria-pressed={checked}
-                        className={`w-full grid grid-cols-[34px_minmax(0,1fr)_90px] items-center gap-2 px-3 py-2.5 text-left transition-colors ${checked ? 'bg-gold/[.055]' : 'hover:bg-white/[.025]'}`}
+                        className={`w-full grid grid-cols-[30px_minmax(0,1fr)_72px] sm:grid-cols-[34px_minmax(0,1fr)_90px] items-center gap-2 px-2.5 sm:px-3 py-2.5 text-left transition-colors ${checked ? 'bg-gold/[.055]' : 'hover:bg-white/[.025]'}`}
                       >
                         <span className={`flex h-5 w-5 items-center justify-center rounded-md border text-[11px] ${checked ? 'border-gold bg-gold text-black' : 'border-white/15 bg-black/20 text-transparent'}`}>✓</span>
                         <span className="min-w-0">
@@ -594,7 +594,7 @@ export default function Attendance({ ctx }) {
 
       {/* Attendance history — compact for up to 50 attendees */}
       <section className="rounded-2xl border border-white/[.07] bg-[#0c0a09]/70 overflow-hidden">
-        <div className="px-5 py-4 border-b border-white/[.06] flex flex-wrap items-center justify-between gap-2">
+        <div className="px-3.5 sm:px-5 py-3.5 sm:py-4 border-b border-white/[.06] flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-bold text-text-bright">Recent Attendance</h2>
             <p className="mt-0.5 text-[10px] text-text-dim">Event records · open a record to view attendees</p>
@@ -614,11 +614,11 @@ export default function Attendance({ ctx }) {
               const totalAwarded = attendees.reduce((sum, a) => sum + (a.earned || 0), 0)
 
               return (
-                <div key={log.id} className="px-5 py-3.5 hover:bg-white/[.015] transition-colors">
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+                <div key={log.id} className="px-3.5 sm:px-5 py-3.5 sm:py-3.5 hover:bg-white/[.015] transition-colors">
+                  <div className="flex flex-col lg:flex-row lg:items-center gap-2.5 sm:gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-text-bright">{log.event}</span>
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className="text-[13px] sm:text-sm font-semibold leading-5 text-text-bright">{log.event}</span>
                         <span className="rounded-md border border-white/[.07] bg-black/20 px-1.5 py-0.5 text-[9px] font-mono text-text-dim">
                           {log.members || attendees.length}/50
                         </span>
@@ -627,7 +627,7 @@ export default function Attendance({ ctx }) {
                         </span>
                       </div>
 
-                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-text-dim">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-[9px] sm:text-[10px] text-text-dim">
                         <span className="font-mono tabular-nums">
                           {formatGMT8Short(logTs)} · {SERVER_TZ_LABEL}
                         </span>
@@ -651,11 +651,12 @@ export default function Attendance({ ctx }) {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 lg:flex-shrink-0">
-                      <span className="text-[10px] text-text-dim">
+                    <div className="flex items-center justify-between sm:justify-start gap-2 lg:flex-shrink-0 pt-1.5 lg:pt-0 border-t border-white/[.045] lg:border-0">
+                      <span className="text-[9px] sm:text-[10px] text-text-dim">
                         {totalAwarded.toLocaleString()} total
                       </span>
 
+                      <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => setDetailLog(log)}
@@ -674,6 +675,7 @@ export default function Attendance({ ctx }) {
                           {isDeleting ? 'Deleting…' : 'Delete'}
                         </button>
                       )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -681,7 +683,7 @@ export default function Attendance({ ctx }) {
             })}
           </div>
         ) : (
-          <div className="px-5 py-14 text-center">
+          <div className="px-4 sm:px-5 py-10 sm:py-14 text-center">
             <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-white/[.07] bg-black/20 text-gold-light">✓</div>
             <div className="mt-3 text-sm font-semibold text-text-dim">No attendance recorded yet.</div>
             {isElder && (
@@ -710,8 +712,8 @@ export default function Attendance({ ctx }) {
               if (e.target === e.currentTarget) setDetailLog(null)
             }}
           >
-            <div className="w-full max-w-4xl max-h-[88vh] overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
-              <div className="flex items-start justify-between gap-4 border-b border-white/[.06] px-5 py-4">
+            <div className="w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
+              <div className="flex items-start justify-between gap-3 border-b border-white/[.06] px-3.5 sm:px-5 py-3.5 sm:py-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-base font-bold text-text-bright">{detailLog.event}</h3>
@@ -757,7 +759,7 @@ export default function Attendance({ ctx }) {
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[.06] px-5 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[.06] px-3.5 sm:px-5 py-3">
                 <div className="text-[10px] font-bold uppercase tracking-[.15em] text-gold-dim">
                   Attendees · {attendees.length} / 50
                 </div>
@@ -766,7 +768,7 @@ export default function Attendance({ ctx }) {
                 </div>
               </div>
 
-              <div className="max-h-[58vh] overflow-y-auto p-4 md:p-5">
+              <div className="max-h-[62vh] overflow-y-auto p-3.5 sm:p-4 md:p-5">
                 {attendees.length === 0 ? (
                   <div className="py-10 text-center text-xs text-text-dim italic">
                     No attendee details saved for this log.
