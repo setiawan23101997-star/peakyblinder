@@ -88,106 +88,108 @@ export default function Leaderboard({ ctx }) {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.18em] text-gold-light/70 mb-1">
+    <div className="max-w-5xl mx-auto space-y-4">
+      {/* Compact page header */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[9px] uppercase tracking-[0.18em] text-gold-light/70">
+            <span className="w-1.5 h-1.5 rounded-full bg-gold/70" />
             Clan Rankings
           </div>
-          <h1 className="font-spectral text-2xl font-bold text-gold-light">
-            Leaderboard
-          </h1>
-          <p className="text-text-dim text-sm mt-1">
-            Compare the clan's strongest and most active members.
-          </p>
+          <div className="flex items-baseline gap-3 mt-0.5">
+            <h1 className="font-spectral text-2xl font-bold text-gold-light tracking-wide">
+              Leaderboard
+            </h1>
+            <span className="hidden sm:inline text-[11px] text-text-dim">
+              {visibleMembers.length} members
+            </span>
+          </div>
         </div>
 
-        <div className="text-xs text-text-dim">
-          <span className="text-text font-semibold">{visibleMembers.length}</span>{' '}
-          members
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
+          <div className="px-2.5 py-1.5 rounded-md border border-gold/15 bg-dark/50 text-[10px]">
+            <span className="text-text-dim">Ranked by</span>
+            <span className="ml-1.5 text-gold-light font-semibold">{activeCategory.shortLabel}</span>
+          </div>
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="card p-3">
-        <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-1.5">
+      {/* Compact toolbar */}
+      <section className="rounded-lg border border-gold/15 bg-dark/75 overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2">
+          <div className="flex items-center gap-0.5 rounded-md border border-gold/10 bg-black/20 p-0.5 shrink-0">
             {Object.entries(categories).map(([key, item]) => {
               const active = category === key
-
               return (
                 <button
                   key={key}
                   type="button"
                   onClick={() => changeCategory(key)}
-                  className={[
-                    'px-3 py-2 rounded-lg text-xs font-semibold transition border',
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-semibold transition-colors ${
                     active
-                      ? 'bg-gold/10 border-gold/30 text-gold-light'
-                      : 'border-transparent text-text-dim hover:text-text hover:bg-white/5',
-                  ].join(' ')}
+                      ? 'bg-gold/10 text-gold-bright border border-gold/20'
+                      : 'border border-transparent text-text-dim hover:text-text hover:bg-white/[0.035]'
+                  }`}
                 >
-                  <span className="mr-1.5">{item.icon}</span>
-                  {item.label}
+                  <span className="text-[11px]">{item.icon}</span>
+                  <span>{item.shortLabel}</span>
                 </button>
               )
             })}
           </div>
 
-          <div className="relative w-full lg:w-64">
+          <div className="relative flex-1 sm:max-w-[240px] sm:ml-auto">
             <input
               value={search}
               onChange={e => changeSearch(e.target.value)}
-              placeholder="Search members..."
-              className="input w-full pl-9"
+              placeholder="Search member..."
+              className="input w-full h-9 pl-8 pr-8 text-xs"
+              aria-label="Search members"
             />
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim text-sm">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim text-xs">
               ⌕
             </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Main leaderboard */}
-      <section className="card overflow-hidden p-0">
-        <div className="px-4 py-4 border-b border-gold/10 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gold/10 border border-gold/15 flex items-center justify-center">
-              {activeCategory.icon}
-            </div>
-            <div>
-              <h2 className="font-semibold text-text">{activeCategory.label}</h2>
-              <p className="text-[11px] text-text-dim">
-                Ranked from highest to lowest
-              </p>
-            </div>
-          </div>
-
-          <div className="text-[10px] uppercase tracking-wider text-text-dim text-right">
-            {search.trim()
-              ? `${rankedMembers.length} result${rankedMembers.length === 1 ? '' : 's'}`
-              : `${rankedMembers.length} results`}
-            {search.trim() && (
-              <div className="normal-case tracking-normal mt-0.5 text-[10px]">
-                Official ranks preserved
-              </div>
+            {search && (
+              <button
+                type="button"
+                onClick={() => changeSearch('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded text-text-dim hover:text-text hover:bg-white/5"
+                aria-label="Clear search"
+              >
+                ×
+              </button>
             )}
           </div>
+        </div>
+      </section>
+
+      {/* Compact leaderboard */}
+      <section className="rounded-lg border border-gold/15 bg-dark/75 overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.15)]">
+        {/* Table heading */}
+        <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-gold/10 bg-black/10">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm">{activeCategory.icon}</span>
+            <span className="text-xs font-semibold text-text truncate">{activeCategory.label}</span>
+            <span className="text-[10px] text-text-dim">·</span>
+            <span className="text-[10px] text-text-dim">Highest first</span>
+          </div>
+          <span className="text-[10px] text-text-dim shrink-0">
+            {search.trim() ? `${rankedMembers.length} results` : `${visibleMembers.length} members`}
+          </span>
         </div>
 
         {pageMembers.length === 0 ? (
           <div className="py-12 text-center">
-            <div className="text-2xl mb-2">⌕</div>
-            <div className="text-sm font-medium text-text">No members found</div>
-            <div className="text-xs text-text-dim mt-1">
-              Try another name or class.
+            <div className="w-9 h-9 mx-auto rounded-full border border-gold/15 bg-gold/5 flex items-center justify-center text-text-dim mb-2">
+              ⌕
             </div>
+            <div className="text-sm font-medium text-text">No members found</div>
+            <div className="text-xs text-text-dim mt-1">Try another name, class, or role.</div>
           </div>
         ) : (
           <>
-            {/* Table header */}
-            <div className="hidden sm:grid grid-cols-[64px_minmax(0,1fr)_150px_120px] gap-3 px-4 py-2.5 bg-white/[0.02] border-b border-gold/10 text-[10px] uppercase tracking-wider text-text-dim">
+            {/* Dense table header */}
+            <div className="hidden sm:grid grid-cols-[54px_minmax(0,1fr)_125px_105px] gap-2 px-3.5 py-2 bg-white/[0.018] border-b border-gold/10 text-[9px] uppercase tracking-[0.13em] text-text-dim">
               <div>Rank</div>
               <div>Member</div>
               <div>Class</div>
@@ -202,63 +204,63 @@ export default function Leaderboard({ ctx }) {
                 return (
                   <div
                     key={member.id}
-                    className={[
-                      'grid grid-cols-[44px_minmax(0,1fr)_auto] sm:grid-cols-[64px_minmax(0,1fr)_150px_120px] gap-3 items-center px-4 py-3 border-b border-gold/10 last:border-b-0',
-                      isCurrentUser ? 'bg-gold/5' : 'hover:bg-white/[0.02]',
-                    ].join(' ')}
+                    className={`grid grid-cols-[44px_minmax(0,1fr)_auto] sm:grid-cols-[54px_minmax(0,1fr)_125px_105px] gap-2 items-center px-3.5 py-2.5 border-b border-gold/10 last:border-b-0 transition-colors ${
+                      isCurrentUser ? 'bg-gold/[0.055]' : 'hover:bg-white/[0.025]'
+                    }`}
                   >
                     {/* Rank */}
-                    <div
-                      className={[
-                        'font-bold text-sm',
-                        rank === 1
-                          ? 'text-gold-bright'
-                          : rank === 2
-                            ? 'text-text'
-                            : rank === 3
-                              ? 'text-gold-light'
-                              : 'text-text-dim',
-                      ].join(' ')}
-                    >
-                      #{rank}
+                    <div className={`text-xs font-bold tabular-nums ${
+                      rank === 1
+                        ? 'text-gold-bright'
+                        : rank === 2
+                          ? 'text-text'
+                          : rank === 3
+                            ? 'text-gold-light'
+                            : 'text-text-dim'
+                    }`}>
+                      {String(rank).padStart(2, '0')}
                     </div>
 
                     {/* Member */}
-                    <div className="min-w-0 flex items-center gap-3">
-                      <div className="w-8 h-8 shrink-0 rounded-full bg-bg-soft border border-gold/15 flex items-center justify-center text-xs font-bold text-gold-light">
+                    <div className="min-w-0 flex items-center gap-2.5">
+                      <div className={`w-8 h-8 shrink-0 rounded-md border flex items-center justify-center text-[11px] font-bold ${
+                        isCurrentUser
+                          ? 'border-gold/35 bg-gold/10 text-gold-bright'
+                          : 'border-gold/12 bg-bg-soft text-gold-light'
+                      }`}>
                         {(member.name || '?').charAt(0).toUpperCase()}
                       </div>
 
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-text truncate">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-semibold text-xs text-text truncate">
                             {member.name}
                           </span>
-
                           {isCurrentUser && (
-                            <span className="hidden xs:inline text-[9px] uppercase tracking-wider text-gold-light border border-gold/20 bg-gold/5 px-1.5 py-0.5 rounded">
+                            <span className="shrink-0 text-[8px] uppercase tracking-wider text-gold-light border border-gold/20 bg-gold/5 px-1 py-0.5 rounded">
                               You
                             </span>
                           )}
                         </div>
-
-                        <div className="text-[11px] text-text-dim truncate">
+                        <div className="text-[10px] text-text-dim truncate mt-0.5">
                           {member.role || 'Member'}
                         </div>
                       </div>
                     </div>
 
                     {/* Class */}
-                    <div className="hidden sm:block text-xs text-text-dim truncate">
+                    <div className="hidden sm:block text-[11px] text-text-dim truncate">
                       {member.cls || '—'}
                     </div>
 
                     {/* Score */}
                     <div className="text-right">
-                      <div className="font-bold text-sm text-gold-light">
+                      <span className={`font-bold text-xs tabular-nums ${
+                        rank <= 3 ? 'text-gold-light' : 'text-text'
+                      }`}>
                         {formatValue(member[activeCategory.field])}
-                      </div>
-                      <div className="sm:hidden text-[9px] uppercase tracking-wider text-text-dim">
+                      </span>
+                      <div className="sm:hidden text-[8px] uppercase tracking-wider text-text-dim mt-0.5">
                         {activeCategory.shortLabel}
                       </div>
                     </div>
@@ -268,46 +270,36 @@ export default function Leaderboard({ ctx }) {
             </div>
 
             {/* Pagination */}
-            <div className="px-4 py-3 border-t border-gold/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="text-[11px] text-text-dim">
-                Showing{' '}
-                <span className="text-text">
-                  {startIndex + 1}–{Math.min(startIndex + pageSize, rankedMembers.length)}
-                </span>{' '}
-                of <span className="text-text">{rankedMembers.length}</span>
+            <div className="px-3.5 py-2.5 bg-black/10 border-t border-gold/10 flex items-center justify-between gap-3">
+              <div className="text-[10px] text-text-dim">
+                {startIndex + 1}–{Math.min(startIndex + pageSize, rankedMembers.length)}
+                <span className="mx-1">of</span>
+                <span className="text-text">{rankedMembers.length}</span>
               </div>
 
               {totalPages > 1 && (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
                     disabled={safePage === 1}
                     onClick={() => setPage(p => Math.max(1, p - 1))}
-                    className="px-3 py-1.5 rounded border border-gold/15 text-xs text-text-dim hover:text-text hover:bg-white/5 disabled:opacity-30 disabled:pointer-events-none"
+                    className="px-2.5 py-1 rounded border border-gold/12 text-[10px] text-text-dim hover:text-text hover:bg-white/5 disabled:opacity-30 disabled:pointer-events-none"
                   >
-                    Previous
+                    Prev
                   </button>
 
                   {Array.from({ length: totalPages }, (_, index) => index + 1)
-                    .filter(p => {
-                      if (totalPages <= 5) return true
-                      return (
-                        p === 1 ||
-                        p === totalPages ||
-                        Math.abs(p - safePage) <= 1
-                      )
-                    })
+                    .filter(p => totalPages <= 5 || p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
                     .map(p => (
                       <button
                         key={p}
                         type="button"
                         onClick={() => setPage(p)}
-                        className={[
-                          'min-w-8 px-2 py-1.5 rounded border text-xs',
+                        className={`min-w-7 px-1.5 py-1 rounded border text-[10px] ${
                           p === safePage
                             ? 'border-gold/30 bg-gold/10 text-gold-light'
-                            : 'border-transparent text-text-dim hover:text-text hover:bg-white/5',
-                        ].join(' ')}
+                            : 'border-transparent text-text-dim hover:text-text hover:bg-white/5'
+                        }`}
                       >
                         {p}
                       </button>
@@ -317,7 +309,7 @@ export default function Leaderboard({ ctx }) {
                     type="button"
                     disabled={safePage === totalPages}
                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    className="px-3 py-1.5 rounded border border-gold/15 text-xs text-text-dim hover:text-text hover:bg-white/5 disabled:opacity-30 disabled:pointer-events-none"
+                    className="px-2.5 py-1 rounded border border-gold/12 text-[10px] text-text-dim hover:text-text hover:bg-white/5 disabled:opacity-30 disabled:pointer-events-none"
                   >
                     Next
                   </button>
