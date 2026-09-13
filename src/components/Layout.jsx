@@ -147,17 +147,28 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
     <div className="min-h-screen flex flex-col bg-transparent">
       <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-void/95 border-b border-gold/15 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.22)]">
         <div className="h-full px-3.5 sm:px-4 flex items-center justify-between">
+          {/* Mobile menu trigger — intentionally on the LEFT for easier one-hand reach */}
+          <button
+            type="button"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="md:hidden w-10 h-10 shrink-0 rounded-xl border border-gold/20 bg-gold/[0.04] text-gold-light flex items-center justify-center transition-colors hover:bg-gold/10"
+            aria-label="Toggle menu"
+            aria-expanded={mobileOpen}
+          >
+            {mobileOpen ? '✕' : '☰'}
+          </button>
+
           {/* Brand */}
           <button
             type="button"
             onClick={() => setPage('dashboard')}
-            className="group flex items-center gap-2.5 shrink-0"
+            className="group flex min-w-0 items-center gap-2.5 shrink-0"
             aria-label="Go to Dashboard"
           >
-            <span className="w-9 h-9 sm:w-9 sm:h-9 rounded-lg border border-gold/30 bg-gold/[0.07] flex items-center justify-center text-lg group-hover:border-gold/50 group-hover:bg-gold/10 transition-all">
+            <span className="w-9 h-9 rounded-lg border border-gold/30 bg-gold/[0.07] flex items-center justify-center text-lg group-hover:border-gold/50 group-hover:bg-gold/10 transition-all">
               🪙
             </span>
-            <span className="font-spectral font-bold text-gold-light text-lg tracking-wider group-hover:text-gold-bright transition-colors">
+            <span className="font-spectral font-bold text-gold-light text-lg tracking-wider group-hover:text-gold-bright transition-colors truncate">
               PeakyBlinder
             </span>
           </button>
@@ -260,45 +271,37 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden w-9 h-9 rounded-lg border border-gold/20 bg-gold/[0.04] text-gold-light text-xl flex items-center justify-center hover:bg-gold/10 transition-colors"
-            aria-label="Toggle menu"
-            aria-expanded={mobileOpen}
-          >
-            {mobileOpen ? '✕' : '☰'}
-          </button>
+
         </div>
       </nav>
 
-      {/* Mobile Drawer — redesigned for compact app-style navigation */}
+      {/* Mobile Drawer — compact, left-side, app-style navigation */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-[3px] md:hidden"
+          className="fixed inset-0 z-[70] bg-black/65 backdrop-blur-[2px] md:hidden"
           onClick={() => setMobileOpen(false)}
         >
           <div
-            className="absolute inset-y-0 left-0 w-[88vw] max-w-[380px] bg-[#0b0908] border-r border-gold/20 shadow-[18px_0_60px_rgba(0,0,0,0.65)] flex flex-col overflow-hidden"
+            className="absolute inset-y-0 left-0 w-[78vw] max-w-[300px] bg-[#0b0908] border-r border-gold/20 shadow-[18px_0_50px_rgba(0,0,0,0.7)] flex flex-col overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
-            {/* Mobile drawer header */}
-            <div className="shrink-0 px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3 border-b border-gold/10 bg-gradient-to-b from-[#12100d] to-[#0b0908]">
+            {/* Compact drawer header */}
+            <div className="shrink-0 px-3.5 pt-[calc(0.7rem+env(safe-area-inset-top))] pb-3 border-b border-gold/10">
               <div className="flex items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => { setPage('dashboard'); setMobileOpen(false) }}
-                  className="flex items-center gap-2.5 min-w-0"
+                  className="flex min-w-0 items-center gap-2.5 text-left"
                   aria-label="Go to Dashboard"
                 >
-                  <span className="w-10 h-10 rounded-xl border border-gold/30 bg-gold/[0.08] flex items-center justify-center text-lg shadow-[0_0_18px_rgba(212,175,55,0.06)]">
+                  <span className="w-9 h-9 shrink-0 rounded-lg border border-gold/30 bg-gold/[0.08] flex items-center justify-center text-base">
                     🪙
                   </span>
-                  <span className="min-w-0 text-left">
-                    <span className="block font-spectral font-bold text-[17px] tracking-wide text-gold-light truncate">
+                  <span className="min-w-0">
+                    <span className="block font-spectral font-bold text-[16px] tracking-wide text-gold-light truncate">
                       PeakyBlinder
                     </span>
-                    <span className="block text-[9px] uppercase tracking-[0.18em] text-text-dim mt-0.5">
+                    <span className="block text-[8px] uppercase tracking-[0.17em] text-text-dim mt-0.5">
                       Clan Command Center
                     </span>
                   </span>
@@ -307,7 +310,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                 <button
                   type="button"
                   onClick={() => setMobileOpen(false)}
-                  className="shrink-0 w-10 h-10 rounded-xl border border-gold/20 bg-white/[0.025] text-gold-light flex items-center justify-center text-xl hover:bg-gold/10 hover:border-gold/35 transition-all"
+                  className="shrink-0 w-9 h-9 rounded-lg border border-white/[0.07] bg-white/[0.02] text-gold-light flex items-center justify-center text-lg hover:bg-gold/10 transition-colors"
                   aria-label="Close menu"
                 >
                   ✕
@@ -315,15 +318,14 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               </div>
             </div>
 
-            {/* Scrollable drawer content */}
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3.5 py-3.5">
-              {/* Navigation */}
-              <div className="mb-4">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3">
+              {/* Primary navigation — one clean vertical list */}
+              <div>
                 <div className="px-1 mb-2 text-[9px] font-bold uppercase tracking-[0.18em] text-text-dim">
                   Navigation
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <nav className="space-y-1.5" aria-label="Mobile navigation">
                   {navItems.map(item => {
                     const active = page === item.id
                     return (
@@ -331,93 +333,80 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                         key={item.id}
                         type="button"
                         onClick={() => { setPage(item.id); setMobileOpen(false) }}
-                        className={`relative min-h-[58px] flex items-center gap-2.5 rounded-xl border px-3 text-left transition-all ${
+                        className={`relative flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
                           active
-                            ? 'border-gold/35 bg-gold/[0.11] text-gold-bright shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_6px_20px_rgba(212,175,55,0.05)]'
-                            : 'border-white/[0.06] bg-white/[0.018] text-text-dim hover:border-gold/20 hover:bg-gold/[0.05] hover:text-gold-light'
+                            ? 'border-gold/30 bg-gold/[0.09] text-gold-bright'
+                            : 'border-transparent bg-transparent text-text-dim hover:border-white/[0.06] hover:bg-white/[0.025] hover:text-gold-light'
                         }`}
+                        aria-current={active ? 'page' : undefined}
                       >
-                        <span className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-base ${
-                          active ? 'bg-gold/10 border border-gold/20' : 'bg-black/20 border border-white/[0.04]'
+                        <span className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-[15px] ${
+                          active
+                            ? 'bg-gold/[0.09] border border-gold/20'
+                            : 'bg-black/20 border border-white/[0.04]'
                         }`}>
                           {item.icon}
                         </span>
-                        <span className="min-w-0">
-                          <span className="block text-[12px] font-semibold leading-tight truncate">{item.label}</span>
-                          {active && (
-                            <span className="block text-[8px] uppercase tracking-[0.12em] text-gold-light/60 mt-1">
-                              Current page
-                            </span>
-                          )}
+
+                        <span className="min-w-0 flex-1 text-[12px] font-semibold truncate">
+                          {item.label}
                         </span>
+
                         {active && (
-                          <span className="absolute right-2.5 top-2.5 w-1.5 h-1.5 rounded-full bg-gold-bright shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-bright shadow-[0_0_8px_rgba(212,175,55,0.55)]" />
                         )}
                       </button>
                     )
                   })}
-                </div>
+                </nav>
               </div>
 
               {currentUser ? (
-                <>
-                  {/* Account */}
-                  <div className="rounded-xl border border-gold/15 bg-gradient-to-br from-gold/[0.07] to-transparent p-3 mb-3">
-                    <div className="flex items-center gap-3">
-                      <span className="w-10 h-10 shrink-0 rounded-xl border border-gold/30 bg-gold/10 flex items-center justify-center text-sm font-bold text-gold-light">
+                <div className="mt-5">
+                  {/* Compact account row */}
+                  <div className="rounded-lg border border-white/[0.06] bg-white/[0.018] px-3 py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-8 h-8 shrink-0 rounded-lg border border-gold/25 bg-gold/[0.07] flex items-center justify-center text-[11px] font-bold text-gold-light">
                         {(currentUser.name || 'U').charAt(0).toUpperCase()}
                       </span>
 
                       <div className="min-w-0 flex-1">
-                        <div className="text-[9px] uppercase tracking-[0.16em] text-text-dim">Signed in as</div>
-                        <div className="text-sm font-bold text-gold-light truncate mt-0.5">{currentUser.name}</div>
+                        <div className="text-[8px] uppercase tracking-[0.15em] text-text-dim">Signed in</div>
+                        <div className="mt-0.5 text-[12px] font-semibold text-gold-light truncate">{currentUser.name}</div>
                       </div>
 
-                      <span className={`shrink-0 text-[9px] px-2 py-1 rounded-md ${roleBadgeClass(currentUser.role)}`}>
+                      <span className={`shrink-0 text-[8px] px-1.5 py-1 rounded ${roleBadgeClass(currentUser.role)}`}>
                         {currentUser.role}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between border-t border-white/[0.05] pt-2">
+                      <span className="text-[8px] uppercase tracking-[0.14em] text-text-dim">Your Time</span>
+                      <span className="text-[9px] font-mono text-gold-light/80">
+                        {getLocalZoneLabel()}
                       </span>
                     </div>
                   </div>
 
-                  {/* Automatic local timezone */}
-                  <div className="rounded-xl border border-gold/15 bg-gold/[0.035] overflow-hidden mb-3">
-                    <div className="px-3 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
-                      <div>
-                        <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-gold-light">Your Time</div>
-                        <div className="text-[9px] text-text-dim mt-0.5">Detected automatically from this device</div>
-                      </div>
-                      <span className="text-base text-gold-light">◷</span>
-                    </div>
-                    <div className="p-2.5">
-                      <div className="flex items-center gap-3 px-2.5 py-2.5 rounded-lg bg-black/20 border border-gold/10">
-                        <span className="w-8 h-8 rounded-lg bg-gold/[0.08] border border-gold/15 flex items-center justify-center shrink-0 text-gold-light">◷</span>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[11px] font-bold text-gold-light truncate">{AUTO_LOCAL_TZ}</div>
-                          <div className="text-[9px] font-mono text-gold-light/60 mt-0.5">{getLocalZoneLabel()}</div>
-                        </div>
-                        <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shrink-0" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Account actions */}
-                  <div className="grid grid-cols-2 gap-2">
+                  {/* Compact account actions */}
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
                       onClick={() => { setShowChangePassword(true); setMobileOpen(false) }}
-                      className="min-h-10 rounded-lg border border-white/[0.07] bg-white/[0.018] px-3 text-[11px] font-semibold text-text hover:border-gold/20 hover:bg-gold/[0.05] hover:text-gold-light transition-all"
+                      className="min-h-9 rounded-lg border border-white/[0.07] bg-white/[0.018] px-2.5 text-[10px] font-semibold text-text hover:border-gold/20 hover:bg-gold/[0.05] hover:text-gold-light transition-all"
                     >
                       🔑 Password
                     </button>
+
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="min-h-10 rounded-lg border border-red-500/15 bg-red-500/[0.025] px-3 text-[11px] font-semibold text-red-400 hover:border-red-500/30 hover:bg-red-500/[0.06] hover:text-red-300 transition-all"
+                      className="min-h-9 rounded-lg border border-red-500/15 bg-red-500/[0.025] px-2.5 text-[10px] font-semibold text-red-400 hover:border-red-500/30 hover:bg-red-500/[0.06] hover:text-red-300 transition-all"
                     >
                       🚪 Logout
                     </button>
                   </div>
-                </>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -427,17 +416,16 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                     setMobileOpen(false)
                     addToast('Entered guest mode.', 'blue', 'Welcome')
                   }}
-                  className="w-full min-h-11 rounded-xl border border-gold/15 bg-gold/[0.04] text-sm font-semibold text-text-dim hover:text-gold-light hover:bg-gold/[0.07] transition-all"
+                  className="mt-5 w-full min-h-10 rounded-lg border border-gold/15 bg-gold/[0.04] text-[11px] font-semibold text-text-dim hover:text-gold-light hover:bg-gold/[0.07] transition-all"
                 >
                   👤 Continue as Guest
                 </button>
               )}
             </div>
 
-            {/* Drawer footer */}
-            <div className="shrink-0 px-4 py-2.5 border-t border-white/[0.06] bg-black/20 text-center">
-              <span className="text-[8px] uppercase tracking-[0.16em] text-text-dim/70">
-                PeakyBlinder Clan Management
+            <div className="shrink-0 px-3 py-2 border-t border-white/[0.06] bg-black/20 text-center">
+              <span className="text-[8px] uppercase tracking-[0.15em] text-text-dim/60">
+                PeakyBlinder
               </span>
             </div>
           </div>
@@ -445,7 +433,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
       )}
 
       {/* Original content dimensions intentionally preserved */}
-      <main className="flex-1 mt-16 px-3.5 py-4 sm:p-4 md:p-6 max-w-7xl mx-auto w-full">
+      <main className="flex-1 mt-16 px-3 py-3.5 sm:p-4 md:p-6 max-w-7xl mx-auto w-full">
         {children}
       </main>
 
