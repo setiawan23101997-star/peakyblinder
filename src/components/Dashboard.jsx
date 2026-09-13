@@ -992,7 +992,7 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
                   width={14}
                   height={10}
                 />
-                <span>{localEq.day.slice(0, 3)} {localEq.time} local</span>
+                <span>{localEq.day.slice(0, 3)} {to12h(localEq.time)} local</span>
               </span>
             )}
           </div>
@@ -1151,14 +1151,11 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
         </div>
 
         <div className="mt-2 flex items-center justify-between gap-2 border-t border-gold/10 pt-2">
-          <div className="flex items-baseline gap-2 min-w-0">
+          <div className="min-w-0">
             <span
               className="font-mono font-bold text-sm tabular-nums leading-none whitespace-nowrap"
               style={{ color: t.color }}
             >
-              {ev.time}
-            </span>
-            <span className="text-[11px] text-text-dim font-mono tabular-nums whitespace-nowrap">
               {to12h(ev.time)}
             </span>
           </div>
@@ -1179,17 +1176,14 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
               width={14}
               height={10}
             />
-            <span>{localEq.day.slice(0, 3)} {localEq.time} Your Time</span>
+            <span>{localEq.day.slice(0, 3)} {to12h(localEq.time)} Your Time</span>
           </div>
         )}
       </div>
 
       <div className="hidden sm:flex items-center gap-3">
-        <div className="flex-shrink-0 w-14 text-center border-r border-gold/15 pr-3">
+        <div className="flex-shrink-0 w-24 text-center border-r border-gold/15 pr-3">
           <div className="font-mono font-bold text-sm tabular-nums leading-tight whitespace-nowrap" style={{ color: t.color }}>
-            {ev.time}
-          </div>
-          <div className="text-[10px] text-text-dim font-mono tabular-nums mt-0.5 whitespace-nowrap">
             {to12h(ev.time)}
           </div>
         </div>
@@ -1218,7 +1212,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
                 width={14}
                 height={10}
               />
-              <span>{localEq.day.slice(0, 3)} {localEq.time} Your Time</span>
+              <span>{localEq.day.slice(0, 3)} {to12h(localEq.time)} Your Time</span>
             </div>
           )}
         </div>
