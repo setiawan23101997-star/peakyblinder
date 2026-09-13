@@ -12,7 +12,15 @@ const GLOW_RARITIES = new Set(['legendary'])
 const URGENT_MS = 5 * 60 * 1000
 const MIN_BID_INCREMENT = 5
 
-const SERVER_TZ_LABEL = 'GMT+8'
+const SERVER_TZ_LABEL = 'UTC+08:00 (GMT+8)'
+const SERVER_TZ_SHORT = 'UTC+08:00'
+const SERVER_TZ_NAME = 'GMT+8'
+
+// The auction clock is intentionally anchored to the game's fixed UTC+8 server time.
+// All displayed auction timestamps are converted to this server wall-clock time.
+function ServerTimeLabel({ compact = false }) {
+  return compact ? SERVER_TZ_SHORT : `${SERVER_TZ_LABEL}`
+}
 
 const presetDescriptions = [
   '',
@@ -808,7 +816,11 @@ export default function Auctions({ ctx }) {
                 <div className="mt-1 text-sm font-mono font-bold tabular-nums text-gold-light whitespace-nowrap">
                   {formatClock(now)}
                 </div>
-                <div className="text-[9px] text-text-dim mt-0.5">{SERVER_TZ_LABEL}</div>
+                <div className="mt-0.5 flex items-center gap-1.5 text-[9px] text-text-dim">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_7px_rgba(74,222,128,.65)]" />
+                  <span className="font-semibold text-text-bright">{SERVER_TZ_SHORT}</span>
+                  <span>· {SERVER_TZ_NAME}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -951,7 +963,7 @@ export default function Auctions({ ctx }) {
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-3 text-[11px]">
                     <div><span className="text-text-dim">Opening bid</span><div className="mt-1 font-mono font-bold text-gold-light">{(parseInt(newItem.startBid) || 100).toLocaleString()} coins</div></div>
-                    <div><span className="text-text-dim">Closes</span><div className="mt-1 font-mono font-bold text-gold-light">{formatClock(Date.now() + (parseInt(newItem.duration) || 60) * 60000)} server</div></div>
+                    <div><span className="text-text-dim">Closes</span><div className="mt-1 font-mono font-bold text-gold-light">{formatClock(Date.now() + (parseInt(newItem.duration) || 60) * 60000)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span></div></div>
                   </div>
                 </div>
               </div>
@@ -1017,7 +1029,7 @@ export default function Auctions({ ctx }) {
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[.06] pt-5">
               <div className="text-[11px] text-text-dim">
-                The auction will use <span className="text-text-bright font-semibold">{SERVER_TZ_LABEL}</span> and begin immediately after creation.
+                The auction will use <span className="text-text-bright font-semibold">{SERVER_TZ_LABEL}</span> server time and begin immediately after creation.
               </div>
               <button onClick={createAuction} className="btn-gold min-h-10 px-5 font-bold" disabled={uploading}>
                 {uploading ? 'Uploading…' : 'Start Auction'}
@@ -1220,7 +1232,7 @@ function FeaturedAuctionCard({
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-text-dim">
-                <span>Ends <span className="font-mono text-gold-light">{formatDateTime(auction.endsAt)}</span> server</span>
+                <span>Ends <span className="font-mono text-gold-light">{formatDateTime(auction.endsAt)}</span> <span className="text-text-dim">{SERVER_TZ_SHORT}</span></span>
                 {isWinning && <span className="font-semibold text-green-400">✓ You are currently leading</span>}
               </div>
             </div>
@@ -1277,7 +1289,7 @@ function FeaturedAuctionCard({
                           <span className={`truncate text-xs font-semibold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
                           <span className={`font-mono text-xs font-bold tabular-nums ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
                         </div>
-                        <div className={`mt-1 text-[10px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>{isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} server</div>
+                        <div className={`mt-1 text-[10px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>{isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span></div>
                       </div>
                     )
                   })}
@@ -1416,7 +1428,7 @@ function AuctionCard({
                         <span className={`truncate text-[11px] font-semibold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
                         <span className={`font-mono text-[11px] font-bold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
                       </div>
-                      <div className={`mt-0.5 text-[9px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>{isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} server</div>
+                      <div className={`mt-0.5 text-[9px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>{isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span></div>
                     </div>
                   )
                 })}
@@ -1497,7 +1509,7 @@ function EndedAuctionRow({
             <div className="hidden sm:block min-w-[120px]">
               <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Closed</div>
               <div className="mt-0.5 text-[10px] font-mono text-text-bright">{endedAt > 0 ? formatDateTime(endedAt) : '—'}</div>
-              <div className="text-[9px] text-text-dim">{agoLabel ? `${agoLabel} · server` : ''}</div>
+              <div className="text-[9px] text-text-dim">{agoLabel ? `${agoLabel} · ${SERVER_TZ_SHORT}` : ''}</div>
             </div>
           </div>
 
