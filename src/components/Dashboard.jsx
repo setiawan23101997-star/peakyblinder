@@ -66,6 +66,28 @@ const NBSP = '\u00A0'
 const SERVER_TZ = 'Asia/Singapore'
 const SERVER_TZ_LABEL = 'GMT+8'
 
+// Server time remains authoritative. This timezone is only used to show
+// the same event instant in each player's own browser/device timezone.
+const AUTO_LOCAL_TZ = (() => {
+  try {
+    return new Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local'
+  } catch {
+    return 'Local'
+  }
+})()
+
+function getLocalZoneLabel() {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, {
+      timeZone: AUTO_LOCAL_TZ,
+      timeZoneName: 'shortOffset',
+    }).formatToParts(new Date())
+    return parts.find(p => p.type === 'timeZoneName')?.value || AUTO_LOCAL_TZ
+  } catch {
+    return AUTO_LOCAL_TZ
+  }
+}
+
 const DEFAULT_REGION = {
   id: 'ph', code: 'ph', flag: '🇵🇭', name: 'Philippines',
   tz: 'Asia/Manila', label: 'GMT+8',
@@ -173,6 +195,10 @@ function formatInZone(ts, tz) {
   const day = getDTF('en-GB', { timeZone: tz, weekday: 'long' }).format(d)
   const date = getDTF('en-GB', { timeZone: tz, ...DATE_OPTS }).format(d)
   return { time, day, date }
+}
+
+function formatInAutoLocalZone(ts) {
+  return formatInZone(ts, AUTO_LOCAL_TZ)
 }
 
 function formatCountdown(ms) {
@@ -408,7 +434,7 @@ const HeroSection = React.memo(function HeroSection({
   const now = useNow()
 
   const serverClock = useMemo(() => formatInZone(now, SERVER_TZ), [now])
-  const localClock = useMemo(() => formatInZone(now, activeRegion.tz), [now, activeRegion.tz])
+  const localClock = useMemo(() => formatInAutoLocalZone(now), [now])
   const serverSec = useMemo(
     () => String(getZoneParts(now, SERVER_TZ).ss).padStart(2, '0'),
     [now]
@@ -431,10 +457,10 @@ const HeroSection = React.memo(function HeroSection({
       mm,
       SERVER_TZ
     )
-    return formatInZone(eventTs, activeRegion.tz).time
-  }, [todayEvents, serverNowParts.y, serverNowParts.m, serverNowParts.d, activeRegion.tz])
+    return formatInAutoLocalZone(eventTs).time
+  }, [todayEvents, serverNowParts.y, serverNowParts.m, serverNowParts.d])
 
-  const greeting = getGreeting(getZoneParts(now, activeRegion.tz).hh)
+  const greeting = getGreeting(getZoneParts(now, AUTO_LOCAL_TZ).hh)
   const firstName = currentUser?.name?.split(' ')[0] || 'Warrior'
 
   return (
@@ -472,7 +498,7 @@ const HeroSection = React.memo(function HeroSection({
                     </div>
 
                     <div className="flex items-center justify-between gap-3 rounded-lg border border-gold/10 bg-black/20 px-2.5 py-1.5">
-                      <span className="text-text-dim">First Event · Local</span>
+                      <span className="text-text-dim">First Event · Your Time</span>
                       <span className="text-gold-light font-semibold font-mono whitespace-nowrap">
                         {to12h(firstEventLocalTime)}
                       </span>
@@ -490,7 +516,7 @@ const HeroSection = React.memo(function HeroSection({
                   <span className="text-text-dim">Server Time</span>
                   <span className="mx-2 text-gold-dim/45">·</span>
                   <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(firstEventLocalTime)}</span>{' '}
-                  <span className="text-text-dim">Local Time</span>
+                  <span className="text-text-dim">Your Time</span>
                 </p>
               </>
             ) : (
@@ -520,20 +546,14 @@ const HeroSection = React.memo(function HeroSection({
 
             <div className="rounded-xl border border-gold/15 bg-black/25 px-3.5 py-3 min-w-0">
               <div className="text-[8px] sm:text-[10px] text-gold-dim font-semibold uppercase tracking-[0.12em] sm:tracking-wider flex items-center gap-1.5 truncate">
-                <span>Local · {activeRegion.label}</span>
+                <span>Your Time · {getLocalZoneLabel()}</span>
               </div>
               <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-1">
                 <span className="text-lg sm:text-xl md:text-2xl">{localClock.time}</span>
               </div>
               <div className="text-[9px] sm:text-[10px] text-text-dim mt-1 whitespace-nowrap flex items-center gap-1.5">
-                <FlagImage
-                  code={activeRegion.code}
-                  flag={activeRegion.flag}
-                  name={activeRegion.name}
-                  width={14}
-                  height={10}
-                />
-                <span className="truncate">{activeRegion.name}</span>
+                <span className="text-gold-light">●</span>
+                <span className="truncate">{AUTO_LOCAL_TZ}</span>
               </div>
             </div>
           </div>
@@ -883,26 +903,18 @@ const ScheduleSection = React.memo(function ScheduleSection({ activeRegion, idPr
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-dim mb-0.5">Clan calendar</div>
             <h2 className="font-spectral text-2xl font-bold text-text-bright">Weekly Schedule</h2>
+          <div className="mt-1 text-[10px] text-text-dim">
+            Server schedule is authoritative · Your Time updates automatically from your browser/device timezone.
+          </div>
           </div>
           <p className="text-text-dim text-sm mt-1 flex items-center gap-2 flex-wrap">
-            <span>🕒 Server Time · {SERVER_TZ_LABEL}</span>
-            {activeRegion.id !== 'ph' && (
-              <>
-                <span className="text-text-dim/50">·</span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span>Local:</span>
-                  <FlagImage
-                    code={activeRegion.code}
-                    flag={activeRegion.flag}
-                    name={activeRegion.name}
-                    width={16}
-                    height={12}
-                  />
-                  <span className="text-gold-light font-semibold">{activeRegion.name}</span>
-                  <span className="text-text-dim">{activeRegion.label}</span>
-                </span>
-              </>
-            )}
+             <span>🕒 Server Time · {SERVER_TZ_LABEL}</span>
+             <span className="text-text-dim/50">·</span>
+             <span className="inline-flex items-center gap-1.5">
+               <span>Your Time:</span>
+               <span className="text-gold-light font-semibold">{AUTO_LOCAL_TZ}</span>
+               <span className="text-text-dim">{getLocalZoneLabel()}</span>
+             </span>
           </p>
         </div>
         <div className="hidden sm:flex items-center gap-4 flex-wrap">
@@ -952,7 +964,7 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
   const urgent = remaining > 0 && remaining < URGENT_MS
   const progress = Math.min(1, Math.max(0, 1 - remaining / WEEK_MS))
 
-  const localEq = formatInZone(next.nextTs, activeRegion.tz)
+  const localEq = formatInAutoLocalZone(next.nextTs)
 
   return (
     <div className="relative w-full min-w-0 rounded-2xl border border-gold/15 bg-[#0b0a09]/85 overflow-hidden mb-3 shadow-[0_14px_40px_rgba(0,0,0,0.2)]">
@@ -983,17 +995,11 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
             <span className="font-mono tabular-nums whitespace-nowrap">
               {DAY_NAMES[next.dow].slice(0, 3)} · {to12h(next.time)} · server
             </span>
-            {activeRegion.label && localEq && (
-              <span className="text-gold-light/80 tabular-nums whitespace-nowrap inline-flex items-center gap-1">
-                <FlagImage
-                  code={activeRegion.code}
-                  flag={activeRegion.flag}
-                  name={activeRegion.name}
-                  width={14}
-                  height={10}
-                />
-                <span>{localEq.day.slice(0, 3)} {to12h(localEq.time)} local</span>
-              </span>
+            {localEq && (
+               <span className="text-gold-light/80 tabular-nums whitespace-nowrap inline-flex items-center gap-1">
+                 <span className="text-gold-light">●</span>
+                 <span>{localEq.day.slice(0, 3)} {to12h(localEq.time)} your time</span>
+               </span>
             )}
           </div>
         </div>
@@ -1125,7 +1131,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
     [dow, ev.time, now]
   )
   const countdown = formatCountdown(startTs - now)
-  const localEq = formatInZone(startTs, activeRegion.tz)
+  const localEq = formatInAutoLocalZone(startTs)
 
   return (
     <div className="rounded-xl bg-black/20 border border-white/[0.06] p-3 sm:p-0 sm:px-3.5 sm:py-3 hover:border-gold/25 hover:bg-gold/[0.025] transition-all">
@@ -1167,17 +1173,11 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
           </div>
         </div>
 
-        {activeRegion.label && localEq && (
-          <div className="mt-1.5 text-[10px] text-gold-light/70 tabular-nums flex items-center gap-1.5">
-            <FlagImage
-              code={activeRegion.code}
-              flag={activeRegion.flag}
-              name={activeRegion.name}
-              width={14}
-              height={10}
-            />
-            <span>{localEq.day.slice(0, 3)} {to12h(localEq.time)} Your Time</span>
-          </div>
+        {localEq && (
+           <div className="mt-1.5 text-[10px] text-gold-light/70 tabular-nums flex items-center gap-1.5">
+             <span className="text-gold-light">●</span>
+             <span>{localEq.day.slice(0, 3)} {to12h(localEq.time)} Your Time · {getLocalZoneLabel()}</span>
+           </div>
         )}
       </div>
 
@@ -1203,16 +1203,10 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
               {ev.boss ? `👾 ${ev.boss}` : ev.subtitle}
             </div>
           )}
-          {activeRegion.label && localEq && (
+          {localEq && (
             <div className="text-[10px] text-gold-light/70 tabular-nums mt-0.5 flex items-center gap-1.5">
-              <FlagImage
-                code={activeRegion.code}
-                flag={activeRegion.flag}
-                name={activeRegion.name}
-                width={14}
-                height={10}
-              />
-              <span>{localEq.day.slice(0, 3)} {to12h(localEq.time)} Your Time</span>
+              <span className="text-gold-light">●</span>
+              <span>{localEq.day.slice(0, 3)} {to12h(localEq.time)} · Your Time · {AUTO_LOCAL_TZ}</span>
             </div>
           )}
         </div>
