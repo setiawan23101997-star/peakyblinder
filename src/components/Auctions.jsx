@@ -10,7 +10,9 @@ const RARITY = {
 
 const GLOW_RARITIES = new Set(['legendary'])
 const URGENT_MS = 5 * 60 * 1000
-const MIN_BID_INCREMENT = 5
+const BID_LOCK_MS = 30 * 1000
+const OUTBID_EXTENSION_MS = 2 * 60 * 1000
+const MIN_BID_INCREMENT = 10
 
 const SERVER_TZ_LABEL = 'UTC+08:00 (GMT+8)'
 const SERVER_TZ_SHORT = 'UTC+08:00'
@@ -87,6 +89,74 @@ function formatDateTime(ts) {
   return `${pad2(p.d)} ${MONTH_SHORT_ARR[p.m]}, ${pad2(p.hh)}:${pad2(p.mm)}`
 }
 
+// Every player sees a second, automatic local-time view based on the
+// timezone configured by their browser/device. Auction timestamps remain
+// stored as epoch milliseconds, so no timezone-specific data is written
+// into the auction itself.
+const LOCAL_TIME_ZONE = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local Time'
+  } catch {
+    return 'Local Time'
+  }
+})()
+
+function localParts(ts) {
+  const ms = toMs(ts)
+  if (!ms) return null
+
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, {
+      timeZone: LOCAL_TIME_ZONE,
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date(ms))
+
+    const get = type => parts.find(p => p.type === type)?.value || ''
+    return {
+      y: get('year'),
+      m: get('month'),
+      d: get('day'),
+      hh: get('hour'),
+      mm: get('minute'),
+    }
+  } catch {
+    return null
+  }
+}
+
+function localTimeZoneOffset(ts = Date.now()) {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, {
+      timeZone: LOCAL_TIME_ZONE,
+      timeZoneName: 'shortOffset',
+    }).formatToParts(new Date(toMs(ts) || Date.now()))
+    return parts.find(p => p.type === 'timeZoneName')?.value || LOCAL_TIME_ZONE
+  } catch {
+    return LOCAL_TIME_ZONE
+  }
+}
+
+function formatLocalClock(ts) {
+  const p = localParts(ts)
+  if (!p) return '—'
+  return `${p.hh}:${p.mm}`
+}
+
+function formatLocalDateTime(ts) {
+  const p = localParts(ts)
+  if (!p) return '—'
+  return `${p.d} ${p.m}, ${p.y}, ${p.hh}:${p.mm}`
+}
+
+function formatLocalTimeLabel(ts = Date.now()) {
+  return `${LOCAL_TIME_ZONE} · ${localTimeZoneOffset(ts)}`
+}
+
 function formatCountdown(endsAt, now) {
   const diff = endsAt - now
   if (diff <= 0) return 'Ended'
@@ -108,7 +178,7 @@ function formatRelativePast(ms) {
   return `${s}s ago`
 }
 function isBiddingOpen(auction, now) {
-  return auction.status === 'active' && (auction.endsAt - now) > URGENT_MS
+  return auction.status === 'active' && (auction.endsAt - now) > BID_LOCK_MS
 }
 function minNextBidFor(auction) {
   return (auction?.currentBid || 0) + MIN_BID_INCREMENT
@@ -470,27 +540,34 @@ export default function Auctions({ ctx }) {
 
   const placeBid = async (auctionId) => {
     const auction = auctions.find(a => a.id === auctionId)
+    const bidNow = Date.now()
+
     if (!auction || auction.status !== 'active') {
       addToast('This auction has ended.', 'red', 'Auction Ended')
       return
     }
-    if (!isBiddingOpen(auction, Date.now())) {
-      addToast('Bidding is closed — less than 5 minutes remaining.', 'red', 'Bidding Closed')
+
+    if (!isBiddingOpen(auction, bidNow)) {
+      addToast('Bidding is locked during the final 30 seconds.', 'red', 'Bidding Closed')
       return
     }
+
     const raw = bidAmounts[auctionId]
     const amount = (raw === '' || raw === undefined || raw === null)
       ? minNextBidFor(auction)
       : parseInt(raw)
+
     if (!amount || amount <= 0) {
       addToast('Enter a valid bid amount.', 'red', 'Invalid Bid')
       return
     }
+
     const minNext = minNextBidFor(auction)
     if (amount < minNext) {
       addToast(`Minimum bid is ${minNext.toLocaleString()} coins (current + ${MIN_BID_INCREMENT}).`, 'red', 'Bid Too Low')
       return
     }
+
     const bidder = members.find(m => m.name === currentUser.name)
     if (!bidder || bidder.coins < amount) {
       addToast('Not enough coins.', 'red', 'Insufficient Funds')
@@ -499,20 +576,36 @@ export default function Auctions({ ctx }) {
 
     const prevBidder = auction.topBidder
     const prevAmount = auction.currentBid
+
+    // Soft-close / anti-sniping:
+    // only a genuine outbid extends the auction. Raising your own bid does
+    // not add time. A bid accepted before the 30-second lock adds 2 minutes
+    // to the current end time.
+    const isOutbid = !!prevBidder && prevBidder !== currentUser.name
+    const extensionMs = isOutbid ? OUTBID_EXTENSION_MS : 0
+    const newEndsAt = auction.endsAt + extensionMs
+
     const newBids = [
       ...(auction.bids || []),
       {
         bidder: currentUser.name,
         amount,
-        time: Date.now(),
+        time: bidNow,
         previousBidder: prevBidder || null,
         previousAmount: prevBidder ? prevAmount : null,
+        extendedByMs: extensionMs,
+        endsAt: newEndsAt,
       },
     ]
 
     const { error: auctionErr } = await supabase
       .from('auctions')
-      .update({ current_bid: amount, top_bidder: currentUser.name, bids: newBids })
+      .update({
+        current_bid: amount,
+        top_bidder: currentUser.name,
+        bids: newBids,
+        ends_at: newEndsAt,
+      })
       .eq('id', auctionId)
 
     if (auctionErr) {
@@ -521,12 +614,30 @@ export default function Auctions({ ctx }) {
       return
     }
 
-    await supabase.from('members').update({ coins: bidder.coins - amount }).eq('id', bidder.id)
+    const { error: bidderCoinsErr } = await supabase
+      .from('members')
+      .update({ coins: bidder.coins - amount })
+      .eq('id', bidder.id)
+
+    if (bidderCoinsErr) {
+      console.error('Bidder coin update failed:', bidderCoinsErr)
+      addToast(`Bid was saved, but coin deduction failed: ${bidderCoinsErr.message}`, 'red', 'Coin Update Failed')
+      return
+    }
 
     if (prevBidder) {
       const prev = members.find(m => m.name === prevBidder)
       if (prev) {
-        await supabase.from('members').update({ coins: prev.coins + prevAmount }).eq('id', prev.id)
+        const { error: refundErr } = await supabase
+          .from('members')
+          .update({ coins: prev.coins + prevAmount })
+          .eq('id', prev.id)
+
+        if (refundErr) {
+          console.error('Previous bidder refund failed:', refundErr)
+          addToast(`Bid was saved, but the previous bidder refund failed: ${refundErr.message}`, 'red', 'Refund Update Failed')
+          return
+        }
       }
     }
 
@@ -537,10 +648,26 @@ export default function Auctions({ ctx }) {
     }))
 
     setAuctions(prev => prev.map(a => a.id === auctionId
-      ? { ...a, currentBid: amount, topBidder: currentUser.name, bids: newBids }
+      ? {
+          ...a,
+          currentBid: amount,
+          topBidder: currentUser.name,
+          bids: newBids,
+          endsAt: newEndsAt,
+        }
       : a))
+
     setBidAmounts(prev => ({ ...prev, [auctionId]: '' }))
-    addToast(`Bid of ${amount.toLocaleString()} coins placed on ${auction.name}.`, 'gold', 'Bid Placed')
+
+    if (isOutbid) {
+      addToast(
+        `Bid of ${amount.toLocaleString()} coins placed. Auction extended by 2 minutes.`,
+        'gold',
+        'Anti-Snipe Extension'
+      )
+    } else {
+      addToast(`Bid of ${amount.toLocaleString()} coins placed on ${auction.name}.`, 'gold', 'Bid Placed')
+    }
   }
 
   const endAuction = async (auctionId) => {
@@ -862,9 +989,11 @@ export default function Auctions({ ctx }) {
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-[11px] text-text-dim">
           <span className="inline-flex items-center gap-2"><span className="text-gold-light">↗</span> Minimum increment <strong className="text-text-bright">+{MIN_BID_INCREMENT}</strong></span>
           <span className="hidden sm:inline text-white/10">|</span>
-          <span className="inline-flex items-center gap-2"><span className="text-yellow-400">◷</span> Bidding locks in the final <strong className="text-text-bright">5 minutes</strong></span>
+          <span className="inline-flex items-center gap-2"><span className="text-yellow-400">◷</span> Bidding locks in the final <strong className="text-text-bright">30 seconds</strong></span>
           <span className="hidden md:inline text-white/10">|</span>
-          <span className="inline-flex items-center gap-2"><span className="text-gold-light">◉</span> All auction times use <strong className="text-text-bright">{SERVER_TZ_LABEL}</strong></span>
+          <span className="inline-flex items-center gap-2"><span className="text-gold-light">↻</span> Genuine outbid adds <strong className="text-text-bright">+2 minutes</strong></span>
+          <span className="hidden md:inline text-white/10">|</span>
+          <span className="inline-flex items-center gap-2"><span className="text-gold-light">◉</span> Times shown in <strong className="text-text-bright">{SERVER_TZ_LABEL}</strong> + <strong className="text-text-bright">your local time</strong></span>
           <button
             type="button"
             onClick={() => setShowLegend(v => !v)}
@@ -880,6 +1009,8 @@ export default function Auctions({ ctx }) {
             <div><span className="text-gold-light font-semibold">Winner</span> — the highest bidder when the auction closes.</div>
             <div><span className="text-yellow-400 font-semibold">Awaiting hand-out</span> — an admin still needs to deliver the item in-game.</div>
             <div><span className="text-green-400 font-semibold">Delivered</span> — the winning item has been handed to the winner.</div>
+            <div><span className="text-gold-light font-semibold">Time</span> — server time is authoritative; your local time is shown automatically from your browser/device timezone.</div>
+
           </div>
         )}
       </div>
@@ -963,7 +1094,15 @@ export default function Auctions({ ctx }) {
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-3 text-[11px]">
                     <div><span className="text-text-dim">Opening bid</span><div className="mt-1 font-mono font-bold text-gold-light">{(parseInt(newItem.startBid) || 100).toLocaleString()} coins</div></div>
-                    <div><span className="text-text-dim">Closes</span><div className="mt-1 font-mono font-bold text-gold-light">{formatClock(Date.now() + (parseInt(newItem.duration) || 60) * 60000)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span></div></div>
+                    <div>
+                      <span className="text-text-dim">Closes</span>
+                      <div className="mt-1 font-mono font-bold text-gold-light">
+                        {formatClock(Date.now() + (parseInt(newItem.duration) || 60) * 60000)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span>
+                      </div>
+                      <div className="mt-0.5 text-[9px] font-mono text-text-dim">
+                        Local {formatLocalClock(Date.now() + (parseInt(newItem.duration) || 60) * 60000)}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1029,7 +1168,7 @@ export default function Auctions({ ctx }) {
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[.06] pt-5">
               <div className="text-[11px] text-text-dim">
-                The auction will use <span className="text-text-bright font-semibold">{SERVER_TZ_LABEL}</span> server time and begin immediately after creation.
+                The auction uses <span className="text-text-bright font-semibold">{SERVER_TZ_LABEL}</span> as the authoritative clock. Your screen also shows <span className="text-text-bright font-semibold">{formatLocalTimeLabel()}</span>.
               </div>
               <button onClick={createAuction} className="btn-gold min-h-10 px-5 font-bold" disabled={uploading}>
                 {uploading ? 'Uploading…' : 'Start Auction'}
@@ -1232,7 +1371,11 @@ function FeaturedAuctionCard({
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-text-dim">
-                <span>Ends <span className="font-mono text-gold-light">{formatDateTime(auction.endsAt)}</span> <span className="text-text-dim">{SERVER_TZ_SHORT}</span></span>
+                <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span>Ends <span className="font-mono text-gold-light">{formatDateTime(auction.endsAt)}</span> <span className="text-text-dim">{SERVER_TZ_SHORT}</span></span>
+                  <span className="text-white/15">·</span>
+                  <span className="text-text-dim">Local <span className="font-mono text-text-bright">{formatLocalDateTime(auction.endsAt)}</span></span>
+                </span>
                 {isWinning && <span className="font-semibold text-green-400">✓ You are currently leading</span>}
               </div>
             </div>
@@ -1259,12 +1402,12 @@ function FeaturedAuctionCard({
                       <input id={`featured-bid-${auction.id}`} className="input min-w-0 flex-1 text-base font-mono" type="number" min={minNextBid} step={MIN_BID_INCREMENT} placeholder={String(minNextBid)} value={bidAmount} onChange={e => onBidChange(e.target.value)} onFocus={e => { if (!e.target.value) onBidChange(String(minNextBid)) }} />
                       <button onClick={onPlaceBid} className="btn-gold px-5 font-bold">Bid</button>
                     </div>
-                    <div className="mt-2 text-[10px] text-text-dim">Bids increase by at least <span className="font-semibold text-gold-light">{MIN_BID_INCREMENT}</span> coins.</div>
+                    <div className="mt-2 text-[10px] text-text-dim">Minimum increment is <span className="font-semibold text-gold-light">{MIN_BID_INCREMENT}</span> coins. A genuine outbid adds 2 minutes.</div>
                   </div>
                 ) : (
                   <div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/[.06] p-3">
                     <div className="text-xs font-bold text-red-400">🔒 Bidding Locked</div>
-                    <div className="mt-1 text-[10px] leading-4 text-text-dim">Bidding closes during the final 5 minutes.</div>
+                    <div className="mt-1 text-[10px] leading-4 text-text-dim">Bidding closes during the final 30 seconds.</div>
                   </div>
                 )
               ) : (
@@ -1289,7 +1432,12 @@ function FeaturedAuctionCard({
                           <span className={`truncate text-xs font-semibold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
                           <span className={`font-mono text-xs font-bold tabular-nums ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
                         </div>
-                        <div className={`mt-1 text-[10px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>{isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span></div>
+                        <div className={`mt-1 text-[10px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>
+                          {isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span>
+                          <span className="text-white/15"> · </span>
+                          <span className="text-text-dim">Local {formatLocalClock(b.time)}</span>
+                          {b.extendedByMs > 0 && <span className="ml-1 text-gold-light">↻ +2m</span>}
+                        </div>
                       </div>
                     )
                   })}
@@ -1373,7 +1521,8 @@ function AuctionCard({
             </div>
             <div className="text-right">
               <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Ends</div>
-              <div className="mt-0.5 text-[10px] font-mono text-text-dim">{formatDateTime(auction.endsAt)}</div>
+              <div className="mt-0.5 text-[10px] font-mono text-text-dim">{formatDateTime(auction.endsAt)} <span className="text-[9px]">{SERVER_TZ_SHORT}</span></div>
+              <div className="mt-0.5 text-[9px] font-mono text-text-dim">Local {formatLocalDateTime(auction.endsAt)}</div>
             </div>
           </div>
         </div>
@@ -1407,7 +1556,7 @@ function AuctionCard({
           ) : (
             <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/[.05] p-3">
               <div className="text-xs font-bold text-red-400">🔒 Bidding Locked</div>
-              <div className="mt-1 text-[10px] text-text-dim">Final 5 minutes — auction closes automatically.</div>
+              <div className="mt-1 text-[10px] text-text-dim">Final 30 seconds — bidding is locked.</div>
             </div>
           )
         )}
@@ -1428,7 +1577,12 @@ function AuctionCard({
                         <span className={`truncate text-[11px] font-semibold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
                         <span className={`font-mono text-[11px] font-bold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
                       </div>
-                      <div className={`mt-0.5 text-[9px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>{isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span></div>
+                      <div className={`mt-0.5 text-[9px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>
+                        {isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span>
+                        <span className="text-white/15"> · </span>
+                        <span className="text-text-dim">Local {formatLocalClock(b.time)}</span>
+                        {b.extendedByMs > 0 && <span className="ml-1 text-gold-light">↻ +2m</span>}
+                      </div>
                     </div>
                   )
                 })}
@@ -1508,7 +1662,8 @@ function EndedAuctionRow({
 
             <div className="hidden sm:block min-w-[120px]">
               <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Closed</div>
-              <div className="mt-0.5 text-[10px] font-mono text-text-bright">{endedAt > 0 ? formatDateTime(endedAt) : '—'}</div>
+              <div className="mt-0.5 text-[10px] font-mono text-text-bright">{endedAt > 0 ? formatDateTime(endedAt) : '—'} <span className="text-[9px] text-text-dim">{SERVER_TZ_SHORT}</span></div>
+              <div className="text-[9px] text-text-dim">{endedAt > 0 ? `Local ${formatLocalDateTime(endedAt)}` : ''}</div>
               <div className="text-[9px] text-text-dim">{agoLabel ? `${agoLabel} · ${SERVER_TZ_SHORT}` : ''}</div>
             </div>
           </div>
@@ -1533,7 +1688,12 @@ function EndedAuctionRow({
                 const isLast = idx === bids.length - 1
                 return (
                   <li key={b.time || idx} className={`grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[80px_minmax(0,1fr)_100px_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2.5 sm:py-2 text-[11px] ${isLast ? 'bg-green-500/[.035]' : ''}`}>
-                    <span className={`col-start-1 row-start-2 sm:col-auto sm:row-auto font-mono tabular-nums text-[9px] sm:text-[11px] ${isLast ? 'text-green-400' : 'text-text-dim'}`}>{formatClock(b.time)}</span>
+                    <span className={`col-start-1 row-start-2 sm:col-auto sm:row-auto font-mono tabular-nums text-[9px] sm:text-[11px] ${isLast ? 'text-green-400' : 'text-text-dim'}`}>
+                      {formatClock(b.time)} <span className="text-[8px] sm:text-[9px]">{SERVER_TZ_SHORT}</span>
+                      <span className="text-white/15"> · </span>
+                      <span className="text-[8px] sm:text-[9px]">Local {formatLocalClock(b.time)}</span>
+                      {b.extendedByMs > 0 && <span className="ml-1 text-[8px] text-gold-light">↻ +2m</span>}
+                    </span>
                     <span className={`col-start-1 row-start-1 sm:col-auto sm:row-auto min-w-0 truncate font-semibold text-xs sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
                     <span className={`col-start-2 row-start-1 row-span-2 sm:col-auto sm:row-auto text-right font-mono font-bold tabular-nums text-sm sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
                     <span className="col-start-1 row-start-3 sm:col-auto sm:row-auto text-[9px] font-bold uppercase tracking-wider text-green-400">{isLast ? 'Winner' : ''}</span>
@@ -1541,7 +1701,11 @@ function EndedAuctionRow({
                 )
               })}
             </ul>
-            {endedAt > 0 && <div className="border-t border-white/[.05] px-3 py-2 text-[9px] text-text-dim">Closed {formatDateTime(endedAt)} · server time ({SERVER_TZ_LABEL})</div>}
+            {endedAt > 0 && (
+              <div className="border-t border-white/[.05] px-3 py-2 text-[9px] text-text-dim">
+                Closed {formatDateTime(endedAt)} {SERVER_TZ_SHORT} · Local {formatLocalDateTime(endedAt)} ({formatLocalTimeLabel(endedAt)})
+              </div>
+            )}
           </div>
         )}
       </div>
