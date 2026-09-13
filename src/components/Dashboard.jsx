@@ -27,7 +27,7 @@ const WEEKLY_SCHEDULE = {
     { time: '20:00', type: 'treasure', name: "Sindri's Treasure Island", subtitle: '20:00 – 21:00' },
   ],
   0: [
-    { time: '20:00', type: 'arena', name: 'Clan Arena Tournament', subtitle: 'See announcement' },
+    { time: '20:00', type: 'arena', name: 'Clan Arena Tournament', subtitle: 'See Announcement' },
     { time: '22:00', type: 'boss', name: 'Canyon of the World Tree', boss: 'Twilight Overlord Rogvalt' },
     { time: '22:10', type: 'boss', name: 'Canyon of Nidavellir 1F', boss: 'Nargrim' },
   ],
@@ -200,23 +200,23 @@ function formatAuctionTime(ms) {
 }
 
 function formatRelativePast(ms) {
-  if (ms <= 0) return 'just now'
+  if (ms <= 0) return 'Just Now'
   const totalSec = Math.floor(ms / 1000)
   const d = Math.floor(totalSec / 86400)
   const h = Math.floor((totalSec % 86400) / 3600)
   const m = Math.floor((totalSec % 3600) / 60)
   const s = totalSec % 60
-  if (d > 0) return `${d}d ago`
-  if (h > 0) return `${h}h ago`
-  if (m > 0) return `${m}m ago`
-  return `${s}s ago`
+  if (d > 0) return `${d}d Ago`
+  if (h > 0) return `${h}h Ago`
+  if (m > 0) return `${m}m Ago`
+  return `${s}s Ago`
 }
 
 function getGreeting(hour) {
-  if (hour < 5) return 'Still up'
-  if (hour < 12) return 'Good morning'
-  if (hour < 18) return 'Good afternoon'
-  return 'Good evening'
+  if (hour < 5) return 'Still Up'
+  if (hour < 12) return 'Good Morning'
+  if (hour < 18) return 'Good Afternoon'
+  return 'Good Evening'
 }
 
 function readWinner(a, now = Date.now()) {
@@ -384,7 +384,7 @@ export default function Dashboard({ ctx, setPage }) {
         <StatTile icon="♙" label="Warriors" value={visibleMembers.length} />
         <StatTile icon="✦" label="Coins in play" value={totalCoins.toLocaleString()} />
         <StatTile icon="⚔" label="Total power" value={totalPower.toLocaleString()} />
-        <StatTile icon="◇" label="Live auctions" value={totalActiveAuctions} onClick={goAuctions} />
+        <StatTile icon="◇" label="Live Auctions" value={totalActiveAuctions} onClick={goAuctions} />
       </section>
 
       <ScheduleSection activeRegion={activeRegion} idPrefix={idPrefix} />
@@ -429,10 +429,10 @@ const HeroSection = React.memo(function HeroSection({
             </h1>
             <p className="text-text-dim text-xs sm:text-sm md:text-[15px] mt-2 leading-relaxed max-w-2xl">
               {todayEvents.length > 0
-                ? <>{todayEvents.length} {todayEvents.length === 1 ? 'event' : 'events'} today — first at{' '}
+                ? <>{todayEvents.length} {todayEvents.length === 1 ? 'event' : 'events'} Today — First At{' '}
                     <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(todayEvents[0].time)}</span>
-                    {' '}server time.</>
-                : <>Nothing scheduled today.</>}
+                    {' '}Server Time.</>
+                : <>Nothing Scheduled Today.</>}
             </p>
           </div>
 
@@ -477,15 +477,15 @@ const HeroSection = React.memo(function HeroSection({
       </section>
 
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-0">
-        <ActionTile icon="◷" label="Attendance" hint={isElder ? 'Record & award coins' : 'View attendance history'} onClick={goAttendance} />
-        <ActionTile icon="◇" label="Auctions" hint="Bid on clan items" onClick={goAuctions} />
-        <ActionTile icon="♙" label={isElder ? 'Manage members' : 'View members'} hint={isElder ? 'Add, edit & remove' : 'See clan roster'} onClick={goMembers} />
+        <ActionTile icon="◷" label="Attendance" hint={isElder ? 'Record & Award Coins' : 'View Attendance History'} onClick={goAttendance} />
+        <ActionTile icon="◇" label="Auctions" hint="Bid On Clan Items" onClick={goAuctions} />
+        <ActionTile icon="♙" label={isElder ? 'Manage Members' : 'View Members'} hint={isElder ? 'Add, Edit & Remove' : 'See Clan Roster'} onClick={goMembers} />
       </section>
     </>
   )
 })
 
-/* ── Live auctions ─────────────────────────────────────────────────── */
+/* ── Live Auctions ─────────────────────────────────────────────────── */
 
 const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
   auctions, totalCount, onOpenAll, currentUser,
@@ -499,7 +499,7 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
         <div className="flex items-center gap-3">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-dim mb-0.5">Market</div>
-            <h2 className="font-spectral text-xl font-bold text-text-bright">Live auctions</h2>
+            <h2 className="font-spectral text-xl font-bold text-text-bright">Live Auctions</h2>
           </div>
           <span className="text-[10px] font-bold uppercase tracking-wider text-gold-light bg-gold/[0.08] border border-gold/20 rounded-full px-2.5 py-1">
             {totalCount} active
@@ -510,7 +510,7 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
           onClick={onOpenAll}
           className="text-[11px] font-bold uppercase tracking-wider text-text-dim hover:text-gold-bright transition-colors"
         >
-          View all →
+          View All →
         </button>
       </div>
 
@@ -543,9 +543,9 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
   const isEnding = remaining > 0 && remaining < URGENT_MS
   const isLeading = a.topBidder && currentUserName === a.topBidder
   const timeLabel = formatAuctionTime(remaining)
-  const cardLabel = `${a.name}, ${a.rarity} rarity, current bid ${(a.currentBid || 0).toLocaleString()}` +
-    (a.topBidder ? `, top bidder ${a.topBidder}` : ', no bids yet') +
-    `, ends in ${timeLabel}`
+  const cardLabel = `${a.name}, ${a.rarity} Rarity, Current Bid ${(a.currentBid || 0).toLocaleString()}` +
+    (a.topBidder ? `, Top Bidder ${a.topBidder}` : ', No Bids Yet') +
+    `, Ends In ${timeLabel}`
 
   return (
     <button
@@ -603,7 +603,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
 
         <div className="mt-auto flex items-end justify-between gap-3 pt-2.5 border-t border-white/[0.06]" aria-hidden="true">
           <div className="min-w-0">
-            <div className="text-[10px] text-text-dim leading-none">Top bid</div>
+            <div className="text-[10px] text-text-dim leading-none">Top Bid</div>
             <div className="font-mono text-lg font-bold text-gold-bright tabular-nums leading-tight mt-1">
               {(a.currentBid || 0).toLocaleString()}
             </div>
@@ -618,7 +618,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
 
         {isLeading && (
           <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-green-400" aria-hidden="true">
-            ✓ You're leading
+            ✓ You're Leading
           </div>
         )}
       </div>
@@ -626,7 +626,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
   )
 })
 
-/* ── Recently won ──────────────────────────────────────────────────── */
+/* ── Recently Won ──────────────────────────────────────────────────── */
 
 const RecentWinsStrip = React.memo(function RecentWinsStrip({
   endedData, onOpenAll, currentUserName,
@@ -659,10 +659,10 @@ const RecentWinsStrip = React.memo(function RecentWinsStrip({
         <div className="flex items-center gap-3">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-dim mb-0.5">History</div>
-            <h2 className="font-spectral text-xl font-bold text-text-bright">Recently won</h2>
+            <h2 className="font-spectral text-xl font-bold text-text-bright">Recently Won</h2>
           </div>
           <span className="text-[10px] font-bold uppercase tracking-wider text-green-300 bg-green-500/[0.08] border border-green-500/20 rounded-full px-2.5 py-1">
-            last 7 days
+            Last 7 Days
           </span>
         </div>
         <button
@@ -670,7 +670,7 @@ const RecentWinsStrip = React.memo(function RecentWinsStrip({
           onClick={onOpenAll}
           className="text-[11px] font-bold uppercase tracking-wider text-text-dim hover:text-gold-bright transition-colors"
         >
-          View history →
+          View History →
         </button>
       </div>
 
@@ -699,10 +699,10 @@ const RecentWinCard = React.memo(function RecentWinCard({
   const justEnded = endedAt > 0 && (now - endedAt) < JUST_ENDED_MS
   const agoLabel = formatRelativePast(now - endedAt)
   const hasMultipleWins = totalWins > 1
-  const cardLabel = `${a.name} won by ${winnerName} for ${price.toLocaleString()} coins, ${agoLabel}` +
-    (hasMultipleWins ? ` (${totalWins} wins in the last 7 days)` : '') +
+  const cardLabel = `${a.name} Won By ${winnerName} For ${price.toLocaleString()} Coins, ${agoLabel}` +
+    (hasMultipleWins ? ` (${totalWins} wins in the Last 7 Days)` : '') +
     (isMe ? '. Congratulations!' : '') +
-    (justEnded ? ' Just ended.' : '')
+    (justEnded ? ' Just Ended.' : '')
 
   return (
     <button
@@ -770,19 +770,19 @@ const RecentWinCard = React.memo(function RecentWinCard({
 
         <div className="mt-auto flex items-end justify-between gap-3 pt-2.5 border-t border-white/[0.06]" aria-hidden="true">
           <div className="min-w-0">
-            <div className="text-[10px] text-text-dim leading-none">Final price</div>
+            <div className="text-[10px] text-text-dim leading-none">Final Price</div>
             <div className="font-mono text-lg font-bold text-gold-bright tabular-nums leading-tight mt-1">
               {price.toLocaleString()}
             </div>
           </div>
           <div className="text-right min-w-0">
-            <div className="text-[10px] text-text-dim leading-none">Won by</div>
+            <div className="text-[10px] text-text-dim leading-none">Won By</div>
             <div className={`text-xs font-semibold truncate mt-1 ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
               {winnerName}
             </div>
             {hasMultipleWins && (
               <div className="text-[10px] text-gold-light mt-0.5">
-                {totalWins} wins this week
+                {totalWins} Wins This Week
               </div>
             )}
           </div>
@@ -820,10 +820,10 @@ const ScheduleSection = React.memo(function ScheduleSection({ activeRegion, idPr
         <div>
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-dim mb-0.5">Clan calendar</div>
-            <h2 className="font-spectral text-2xl font-bold text-text-bright">Weekly schedule</h2>
+            <h2 className="font-spectral text-2xl font-bold text-text-bright">Weekly Schedule</h2>
           </div>
           <p className="text-text-dim text-sm mt-1 flex items-center gap-2 flex-wrap">
-            <span>🕒 Server time · {SERVER_TZ_LABEL}</span>
+            <span>🕒 Server Time · {SERVER_TZ_LABEL}</span>
             {activeRegion.id !== 'ph' && (
               <>
                 <span className="text-text-dim/50">·</span>
@@ -911,7 +911,7 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
 
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-bold uppercase tracking-widest mb-0.5" style={{ color: t.color }}>
-            Coming up next
+            Coming Up Next
           </div>
           <div className="font-spectral text-base sm:text-lg md:text-xl font-bold text-text-bright leading-tight break-words">
             {next.name}
@@ -938,7 +938,7 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
 
         <div className="col-span-2 sm:col-span-1 sm:text-right flex-shrink-0 pt-2 sm:pt-0 border-t border-white/[0.06] sm:border-0 min-w-0">
           <div className="text-[10px] text-text-dim font-semibold uppercase tracking-wider mb-0.5 whitespace-nowrap">
-            Starts in
+            Starts In
           </div>
           <div
             className={`font-mono text-2xl sm:text-2xl md:text-3xl font-bold tabular-nums leading-none whitespace-nowrap ${urgent ? 'motion-safe:animate-pulse' : ''}`}
@@ -989,7 +989,7 @@ const WeeklyEventTabs = React.memo(function WeeklyEventTabs({
     <div className="w-full min-w-0 rounded-2xl border border-gold/15 bg-[#0b0a09]/70 overflow-hidden shadow-[0_12px_35px_rgba(0,0,0,0.18)]">
       <div
         role="tablist"
-        aria-label="Day of the week (server time)"
+        aria-label="Day Of The Week (Server Time)"
         className="grid grid-cols-7 overflow-hidden border-b border-white/[0.06] bg-black/20"
       >
         {DAY_ORDER.map(dow => {
@@ -1037,7 +1037,7 @@ const WeeklyEventTabs = React.memo(function WeeklyEventTabs({
       >
         {events.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-text-dim italic">
-            Nothing scheduled for {DAY_NAMES[activeDay]}.
+            Nothing Scheduled For {DAY_NAMES[activeDay]}.
           </div>
         ) : (
           events.map((ev, i) => (
@@ -1101,7 +1101,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
             </span>
           </div>
           <div className="col-span-2 sm:col-span-1 sm:text-right flex-shrink-0 pt-2 sm:pt-0 border-t border-white/[0.06] sm:border-0 min-w-0">
-            <div className="text-[9px] sm:text-[10px] text-text-dim leading-none">Starts in</div>
+            <div className="text-[9px] sm:text-[10px] text-text-dim leading-none">Starts In</div>
             <div className="font-mono text-[11px] sm:text-xs text-gold-light tabular-nums mt-0.5 leading-none whitespace-nowrap">
               {countdown}
             </div>
@@ -1117,7 +1117,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
               width={14}
               height={10}
             />
-            <span>{localEq.day.slice(0, 3)} {localEq.time} your time</span>
+            <span>{localEq.day.slice(0, 3)} {localEq.time} Your Time</span>
           </div>
         )}
       </div>
@@ -1156,13 +1156,13 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
                 width={14}
                 height={10}
               />
-              <span>{localEq.day.slice(0, 3)} {localEq.time} your time</span>
+              <span>{localEq.day.slice(0, 3)} {localEq.time} Your Time</span>
             </div>
           )}
         </div>
 
         <div className="col-span-2 sm:col-span-1 sm:text-right flex-shrink-0 pt-2 sm:pt-0 border-t border-white/[0.06] sm:border-0 min-w-0">
-          <div className="text-[10px] text-text-dim">Starts in</div>
+          <div className="text-[10px] text-text-dim">Starts In</div>
           <div className="font-mono text-xs text-gold-light tabular-nums mt-0.5 whitespace-nowrap">
             {countdown}
           </div>
