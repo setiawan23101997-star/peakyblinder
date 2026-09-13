@@ -769,385 +769,262 @@ export default function Auctions({ ctx }) {
   const hasSelectedImage = !!(imageFile || pickedLibraryImg)
 
   return (
-    <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="font-spectral text-2xl font-bold text-gold-light mb-2">Auctions</h1>
-          <p className="text-text-dim text-sm">
-            {activeAuctions.length} active, {endedAuctions.length} ended
-            {featuredAuction && <> · <span className="text-gold-light font-semibold">1 featured</span></>}
-          </p>
-        </div>
-
-        <div className="flex items-stretch gap-2 flex-wrap">
-          <div className="card px-3 py-2 border-gold/30 flex items-center gap-3 min-w-[190px]">
-            <div className="text-lg leading-none" aria-hidden="true">🕒</div>
-            <div className="text-left">
-              <div className="text-[9px] font-bold uppercase tracking-widest text-gold-dim leading-tight">
-                Server · {SERVER_TZ_LABEL}
+    <div className="space-y-6">
+      {/* Page header */}
+      <header className="relative overflow-hidden rounded-2xl border border-gold/15 bg-[#0c0a09]/90">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          aria-hidden="true"
+          style={{
+            background: 'radial-gradient(circle at 0% 0%, rgba(242,204,96,.07), transparent 38%), linear-gradient(120deg, rgba(255,255,255,.02), transparent 42%)',
+          }}
+        />
+        <div className="relative p-5 md:p-6">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_10px_rgba(242,204,96,.7)]" />
+                <span className="text-[10px] font-bold uppercase tracking-[.22em] text-gold-dim">Clan Auction House</span>
               </div>
-              <div className="font-mono text-xs text-gold-bright tabular-nums whitespace-nowrap leading-tight">
-                {formatServerClock(now)}
+              <h1 className="font-spectral text-3xl md:text-4xl font-bold tracking-tight text-text-bright">
+                Auctions
+              </h1>
+              <p className="mt-1.5 text-sm text-text-dim max-w-2xl">
+                Compete for rare clan items, track live bids, and secure your next reward.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="rounded-xl border border-white/[.07] bg-black/20 px-3.5 py-2.5 min-w-[105px]">
+                <div className="text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Live</div>
+                <div className="mt-1 text-xl font-mono font-bold tabular-nums text-gold-bright">{activeAuctions.length}</div>
+              </div>
+              <div className="rounded-xl border border-white/[.07] bg-black/20 px-3.5 py-2.5 min-w-[105px]">
+                <div className="text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Completed</div>
+                <div className="mt-1 text-xl font-mono font-bold tabular-nums text-text-bright">{endedAuctions.length}</div>
+              </div>
+              <div className="col-span-2 sm:col-span-1 rounded-xl border border-gold/20 bg-gold/[.045] px-3.5 py-2.5 min-w-[105px]">
+                <div className="text-[9px] font-bold uppercase tracking-[.15em] text-gold-dim">Server Time</div>
+                <div className="mt-1 text-sm font-mono font-bold tabular-nums text-gold-light whitespace-nowrap">
+                  {formatClock(now)}
+                </div>
+                <div className="text-[9px] text-text-dim mt-0.5">{SERVER_TZ_LABEL}</div>
               </div>
             </div>
           </div>
 
-          {isElder && (
-            <button
-              onClick={() => setShowCreate(!showCreate)}
-              className="btn-gold whitespace-nowrap h-full"
-              aria-expanded={showCreate}
-            >
-              {showCreate ? '✕ Cancel' : '+ Create auction'}
-            </button>
-          )}
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-white/[.07] bg-black/20 px-3 py-2 text-[11px] text-text-dim">
+              <span className="text-green-400">●</span>
+              <span><span className="text-text-bright font-semibold">{activeAuctions.length}</span> live auction{activeAuctions.length === 1 ? '' : 's'}</span>
+            </div>
+            {featuredAuction && (
+              <div className="inline-flex items-center gap-2 rounded-lg border border-gold/20 bg-gold/[.04] px-3 py-2 text-[11px] text-gold-light">
+                <span>★</span>
+                <span>Featured lot active</span>
+              </div>
+            )}
+            {pendingDistribution > 0 && isElder && (
+              <div className="inline-flex items-center gap-2 rounded-lg border border-yellow-500/25 bg-yellow-500/[.04] px-3 py-2 text-[11px] text-yellow-400">
+                <span>!</span>
+                <span><strong>{pendingDistribution}</strong> awaiting distribution</span>
+              </div>
+            )}
+            <div className="ml-auto">
+              {isElder && (
+                <button
+                  onClick={() => setShowCreate(!showCreate)}
+                  className="btn-gold min-h-10 px-4 text-sm font-bold"
+                  aria-expanded={showCreate}
+                >
+                  {showCreate ? '✕ Close' : '+ Create Auction'}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <div className="card mb-4 border-gold/20 bg-void/40">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-text-dim">
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true">🔒</span><span>Bids lock 5 min before end</span>
-          </span>
-          <span className="text-gold/20" aria-hidden="true">·</span>
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true">📈</span><span>Min increment: +{MIN_BID_INCREMENT} coins</span>
-          </span>
-          <span className="text-gold/20" aria-hidden="true">·</span>
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true">🕒</span><span>All times are server time ({SERVER_TZ_LABEL})</span>
-          </span>
-          {isElder && (
-            <>
-              <span className="text-gold/20" aria-hidden="true">·</span>
-              <span className="inline-flex items-center gap-1.5">
-                <span aria-hidden="true">⭐</span><span>Click a star to feature (visible to everyone)</span>
-              </span>
-            </>
-          )}
-          <span className="text-gold/20" aria-hidden="true">·</span>
+      {/* Auction rules */}
+      <div className="rounded-xl border border-white/[.06] bg-black/20">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-[11px] text-text-dim">
+          <span className="inline-flex items-center gap-2"><span className="text-gold-light">↗</span> Minimum increment <strong className="text-text-bright">+{MIN_BID_INCREMENT}</strong></span>
+          <span className="hidden sm:inline text-white/10">|</span>
+          <span className="inline-flex items-center gap-2"><span className="text-yellow-400">◷</span> Bidding locks in the final <strong className="text-text-bright">5 minutes</strong></span>
+          <span className="hidden md:inline text-white/10">|</span>
+          <span className="inline-flex items-center gap-2"><span className="text-gold-light">◉</span> All auction times use <strong className="text-text-bright">{SERVER_TZ_LABEL}</strong></span>
           <button
             type="button"
             onClick={() => setShowLegend(v => !v)}
             aria-expanded={showLegend}
-            className="inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-full border border-gold/30 bg-gold/10 text-gold-light hover:text-gold-bright hover:bg-gold/15 hover:border-gold/50 px-3 py-1 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+            className="ml-auto inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.12em] text-gold-light hover:text-gold-bright transition-colors"
           >
-            <span aria-hidden="true" className="text-sm leading-none">💡</span>
-            <span>{showLegend ? 'Hide help' : 'How distribution works'}</span>
-            <span aria-hidden="true" className={`text-[9px] leading-none transition-transform ${showLegend ? 'rotate-180' : ''}`}>▼</span>
+            {showLegend ? 'Hide guide' : 'Auction guide'}
+            <span className={`transition-transform ${showLegend ? 'rotate-180' : ''}`}>⌄</span>
           </button>
         </div>
-
         {showLegend && (
-          <div className="mt-3 pt-3 border-t border-gold/10 text-xs text-text-dim space-y-2">
-            <p className="flex items-start gap-2">
-              <span className="text-base leading-none flex-shrink-0" aria-hidden="true">🎁</span>
-              <span><span className="text-gold-light font-semibold">Distributed by</span> shows which Master or Elder has handed the winning item to the winner in-game.</span>
-            </p>
-            <p className="flex items-start gap-2">
-              <span className="text-base leading-none flex-shrink-0" aria-hidden="true">⏳</span>
-              <span><span className="text-yellow-400 font-semibold">Awaiting hand-out</span> — the winner hasn't received the item yet. An admin will mark it once delivered.</span>
-            </p>
-            <p className="flex items-start gap-2">
-              <span className="text-base leading-none flex-shrink-0" aria-hidden="true">✓</span>
-              <span><span className="text-green-400 font-semibold">Name</span> — delivered by that admin.{' '}<span className="text-text-dim font-semibold">⏱ System</span> means the auction ended automatically without a human handing it out.</span>
-            </p>
+          <div className="border-t border-white/[.06] px-4 py-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-text-dim">
+            <div><span className="text-gold-light font-semibold">Winner</span> — the highest bidder when the auction closes.</div>
+            <div><span className="text-yellow-400 font-semibold">Awaiting hand-out</span> — an admin still needs to deliver the item in-game.</div>
+            <div><span className="text-green-400 font-semibold">Delivered</span> — the winning item has been handed to the winner.</div>
           </div>
         )}
       </div>
 
+      {/* Distribution notice */}
       {isElder && pendingDistribution > 0 && (
-        <div className="card mb-4 border-yellow-500/30 bg-yellow-500/[0.04]">
-          <div className="flex items-center gap-2 text-xs text-yellow-400">
-            <span aria-hidden="true">⚠️</span>
-            <span className="font-semibold">
-              {pendingDistribution} won {pendingDistribution === 1 ? 'item is' : 'items are'} still waiting for a distributor. Pick who handed it out below.
-            </span>
+        <div className="flex items-start gap-3 rounded-xl border border-yellow-500/20 bg-yellow-500/[.035] px-4 py-3">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-yellow-500/10 text-yellow-400">!</span>
+          <div className="min-w-0">
+            <div className="text-xs font-bold text-yellow-400">Distribution requires attention</div>
+            <div className="mt-0.5 text-[11px] text-text-dim">
+              {pendingDistribution} {pendingDistribution === 1 ? 'winning item is' : 'winning items are'} still waiting for a distributor.
+            </div>
           </div>
         </div>
       )}
 
+      {/* Create auction */}
       {showCreate && (
-        <div className="card mb-6 border-gold/40">
-          <div className="text-sm font-semibold text-text-bright mb-4">New auction</div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label htmlFor={`${formId}-name`} className="block text-xs text-text-dim font-semibold mb-1">Item name</label>
-              <input
-                id={`${formId}-name`}
-                className="input"
-                placeholder="e.g. Kari Top / Bound"
-                value={newItem.name}
-                onChange={e => setNewItem({ ...newItem, name: e.target.value })}
-              />
-            </div>
-            <div>
-              <label htmlFor={`${formId}-rarity`} className="block text-xs text-text-dim font-semibold mb-1">Rarity</label>
-              <select
-                id={`${formId}-rarity`}
-                className="input"
-                value={newItem.rarity}
-                onChange={e => setNewItem({ ...newItem, rarity: e.target.value })}
-              >
-                {Object.entries(RARITY).map(([key, r]) => (
-                  <option key={key} value={key}>{r.label}</option>
-                ))}
-              </select>
+        <section className="overflow-hidden rounded-2xl border border-gold/25 bg-[#0d0b0a]/95">
+          <div className="border-b border-white/[.06] bg-black/20 px-5 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[.2em] text-gold-dim">Auction setup</div>
+                <h2 className="mt-1 font-spectral text-xl font-bold text-text-bright">Create New Auction</h2>
+              </div>
+              <button type="button" onClick={() => setShowCreate(false)} className="h-8 w-8 rounded-lg border border-white/[.08] text-text-dim hover:text-text-bright hover:bg-white/[.04]" aria-label="Close create auction">✕</button>
             </div>
           </div>
 
-          <div className="mb-4">
-            <label htmlFor={`${formId}-desc`} className="block text-xs text-text-dim font-semibold mb-1">Description (optional)</label>
-            <select
-              id={`${formId}-desc`}
-              className="input"
-              value={descChoice}
-              onChange={e => {
-                setDescChoice(e.target.value)
-                if (e.target.value !== 'Custom...') setCustomDesc('')
-              }}
-            >
-              {presetDescriptions.map(d => (
-                <option key={d} value={d}>{d === '' ? 'No description' : d}</option>
-              ))}
-            </select>
-            {descChoice === 'Custom...' && (
-              <input
-                className="input mt-2"
-                aria-label="Custom description"
-                placeholder="Type your custom description..."
-                value={customDesc}
-                onChange={e => setCustomDesc(e.target.value)}
-                maxLength={100}
-                autoFocus
-              />
-            )}
-          </div>
+          <div className="p-5 md:p-6 space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(300px,.9fr)] gap-6">
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor={`${formId}-name`} className="block text-[10px] font-bold uppercase tracking-[.16em] text-gold-dim mb-2">Item name</label>
+                    <input id={`${formId}-name`} className="input w-full" placeholder="e.g. Kari Top / Bound" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} />
+                  </div>
+                  <div>
+                    <label htmlFor={`${formId}-rarity`} className="block text-[10px] font-bold uppercase tracking-[.16em] text-gold-dim mb-2">Rarity</label>
+                    <select id={`${formId}-rarity`} className="input w-full" value={newItem.rarity} onChange={e => setNewItem({ ...newItem, rarity: e.target.value })}>
+                      {Object.entries(RARITY).map(([key, r]) => <option key={key} value={key}>{r.label}</option>)}
+                    </select>
+                  </div>
+                </div>
 
-          <div className="mb-4">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <label htmlFor={fileInputId} className="text-[11px] font-bold uppercase tracking-widest text-gold-dim">
-                Item image
-              </label>
-              <button
-                type="button"
-                onClick={loadLibrary}
-                disabled={libraryLoading}
-                className="text-[10px] font-semibold text-gold-light hover:text-gold-bright disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 rounded px-1.5 py-0.5"
-              >
-                {libraryLoading ? '↻ Loading…' : '↻ Refresh'}
+                <div>
+                  <label htmlFor={`${formId}-desc`} className="block text-[10px] font-bold uppercase tracking-[.16em] text-gold-dim mb-2">Description</label>
+                  <select id={`${formId}-desc`} className="input w-full" value={descChoice} onChange={e => { setDescChoice(e.target.value); if (e.target.value !== 'Custom...') setCustomDesc('') }}>
+                    {presetDescriptions.map(d => <option key={d} value={d}>{d === '' ? 'No description' : d}</option>)}
+                  </select>
+                  {descChoice === 'Custom...' && (
+                    <input className="input w-full mt-2" aria-label="Custom description" placeholder="Type a short description..." value={customDesc} onChange={e => setCustomDesc(e.target.value)} maxLength={100} autoFocus />
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-white/[.07] bg-black/20 p-4">
+                    <label htmlFor={`${formId}-bid`} className="block text-[10px] font-bold uppercase tracking-[.16em] text-text-dim mb-2">Starting bid</label>
+                    <div className="flex items-center gap-2">
+                      <input id={`${formId}-bid`} className="input flex-1" type="number" min="1" placeholder="100" value={newItem.startBid} onChange={e => setNewItem({ ...newItem, startBid: e.target.value })} />
+                      <span className="text-xs text-text-dim">coins</span>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/[.07] bg-black/20 p-4">
+                    <label htmlFor={`${formId}-duration`} className="block text-[10px] font-bold uppercase tracking-[.16em] text-text-dim mb-2">Duration</label>
+                    <div className="flex items-center gap-2">
+                      <input id={`${formId}-duration`} className="input flex-1" type="number" min="1" placeholder="60" value={newItem.duration} onChange={e => setNewItem({ ...newItem, duration: e.target.value })} />
+                      <span className="text-xs text-text-dim">minutes</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gold/15 bg-gold/[.025] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-[.16em] text-gold-dim">Auction preview</div>
+                      <div className="mt-1 text-sm text-text-bright">{newItem.name.trim() || 'Untitled Item'}</div>
+                    </div>
+                    <RarityBadge rarity={newItem.rarity} />
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-[11px]">
+                    <div><span className="text-text-dim">Opening bid</span><div className="mt-1 font-mono font-bold text-gold-light">{(parseInt(newItem.startBid) || 100).toLocaleString()} coins</div></div>
+                    <div><span className="text-text-dim">Closes</span><div className="mt-1 font-mono font-bold text-gold-light">{formatClock(Date.now() + (parseInt(newItem.duration) || 60) * 60000)} server</div></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Image manager */}
+              <div className="rounded-xl border border-white/[.07] bg-black/20 p-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[.16em] text-gold-dim">Item artwork</div>
+                    <div className="mt-1 text-[11px] text-text-dim">Upload a new image or reuse an existing asset.</div>
+                  </div>
+                  <button type="button" onClick={loadLibrary} disabled={libraryLoading} className="text-[10px] font-bold uppercase tracking-wider text-gold-light hover:text-gold-bright disabled:opacity-40">
+                    {libraryLoading ? 'Loading…' : 'Refresh'}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-3 rounded-lg border border-white/[.06] bg-black/20 p-3">
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="Preview" className="h-16 w-16 rounded-lg border border-gold/25 object-cover bg-void/60" />
+                  ) : (
+                    <div className="h-16 w-16 rounded-lg border border-dashed border-white/[.10] flex items-center justify-center text-text-dim/50">IMG</div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Selected asset</div>
+                    <div className="mt-1 truncate text-xs text-text-bright">{hasSelectedImage ? selectedImageLabel : 'No image selected'}</div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <input id={fileInputId} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleImageChange} disabled={uploading} className="sr-only" />
+                    <label htmlFor={fileInputId} className={`cursor-pointer rounded-lg border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-center transition-colors ${uploading ? 'border-white/[.08] text-text-dim cursor-not-allowed' : 'border-gold/35 text-gold-light hover:bg-gold/10 hover:border-gold/55'}`}>
+                      {hasSelectedImage ? 'Change' : 'Upload'}
+                    </label>
+                    {hasSelectedImage && <button type="button" onClick={clearImage} disabled={uploading} className="rounded-lg border border-red-500/25 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-red-400 hover:bg-red-500/10 disabled:opacity-40">Clear</button>}
+                  </div>
+                </div>
+
+                <div className="mt-4 border-t border-white/[.06] pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] font-bold uppercase tracking-[.16em] text-text-dim">Image library</div>
+                    <div className="text-[10px] text-text-dim">{libraryLoading ? 'Loading…' : libraryError ? <span className="text-red-400">{libraryError}</span> : `${libraryImages.length} asset${libraryImages.length === 1 ? '' : 's'}`}</div>
+                  </div>
+                  {libraryImages.length === 0 && !libraryLoading && !libraryError && <div className="rounded-lg border border-dashed border-white/[.08] py-7 text-center text-[11px] text-text-dim">No images available yet.</div>}
+                  {libraryImages.length > 0 && (
+                    <div className="grid grid-cols-5 sm:grid-cols-6 lg:grid-cols-5 xl:grid-cols-6 gap-2 max-h-[235px] overflow-y-auto pr-1">
+                      {libraryImages.map(img => {
+                        const isPicked = pickedLibraryImg?.name === img.name
+                        const isDeleting = deletingImageName === img.name
+                        const title = img.displayName || displayNameForLibraryImage(img)
+                        return (
+                          <div key={img.name} className={`group relative overflow-hidden rounded-lg border ${isPicked ? 'border-gold-bright ring-1 ring-gold/40' : 'border-white/[.08] hover:border-gold/40'} ${isDeleting ? 'opacity-40 pointer-events-none' : ''}`}>
+                            <button type="button" onClick={() => pickFromLibrary(img)} title={title} className="block w-full" aria-pressed={isPicked} aria-label={`Use image ${title}`}>
+                              <img src={img.url} alt={title} loading="lazy" className="aspect-square w-full object-cover bg-void/60" />
+                            </button>
+                            {isPicked && <span className="absolute top-1 left-1 h-4 w-4 rounded-full bg-gold text-black text-[9px] font-bold flex items-center justify-center">✓</span>}
+                            <button type="button" onClick={e => { e.stopPropagation(); deleteLibraryImage(img) }} disabled={isDeleting} title="Delete image" aria-label={`Delete image ${title}`} className="absolute top-1 right-1 h-4 w-4 rounded-full bg-black/80 border border-red-500/50 text-red-400 hover:bg-red-500 hover:text-white text-[8px] opacity-0 group-hover:opacity-100 focus-visible:opacity-100">{isDeleting ? '…' : '✕'}</button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[.06] pt-5">
+              <div className="text-[11px] text-text-dim">
+                The auction will use <span className="text-text-bright font-semibold">{SERVER_TZ_LABEL}</span> and begin immediately after creation.
+              </div>
+              <button onClick={createAuction} className="btn-gold min-h-10 px-5 font-bold" disabled={uploading}>
+                {uploading ? 'Uploading…' : 'Start Auction'}
               </button>
             </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex-shrink-0">
-                {imagePreview ? (
-                  <img
-                    src={imagePreview}
-                    alt="Preview"
-                    className="rounded border border-gold/25 object-cover bg-void/60"
-                    style={{ width: 44, height: 44 }}
-                  />
-                ) : (
-                  <div
-                    className="rounded border border-dashed border-gold/25 flex items-center justify-center text-sm text-text-dim/50 bg-void/40"
-                    style={{ width: 44, height: 44 }}
-                    aria-hidden="true"
-                  >
-                    🖼
-                  </div>
-                )}
-              </div>
-
-              <div className="min-w-0 max-w-[320px] flex items-center gap-2">
-                {hasSelectedImage ? (
-                  <>
-                    {pickedLibraryImg && (
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-gold-light bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5 flex-shrink-0">
-                        Library
-                      </span>
-                    )}
-                    {imageFile && (
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-blue-300 bg-blue-500/10 border border-blue-500/30 rounded-full px-2 py-0.5 flex-shrink-0">
-                        New
-                      </span>
-                    )}
-                    <span
-                      className="text-[11px] text-text-bright truncate"
-                      title={selectedImageLabel}
-                    >
-                      {selectedImageLabel}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-[11px] text-text-dim italic">
-                    No image selected
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <input
-                  id={fileInputId}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  onChange={handleImageChange}
-                  disabled={uploading}
-                  className="sr-only"
-                />
-                <label
-                  htmlFor={fileInputId}
-                  className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded border px-2 py-1 cursor-pointer transition-colors ${
-                    uploading
-                      ? 'border-gold/20 text-text-dim cursor-not-allowed'
-                      : 'border-gold/40 text-gold-light hover:bg-gold/10 hover:text-gold-bright'
-                  }`}
-                  aria-disabled={uploading}
-                >
-                  <span aria-hidden="true">📁</span>
-                  <span>{hasSelectedImage ? 'Change' : 'Upload'}</span>
-                </label>
-
-                {hasSelectedImage && (
-                  <button
-                    type="button"
-                    onClick={clearImage}
-                    disabled={uploading}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300 px-2 py-1 transition-colors disabled:opacity-40"
-                    aria-label="Clear selected image"
-                  >
-                    ✕ Clear
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-3 pt-3 border-t border-gold/10">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-gold-dim">
-                  Reuse from library
-                </div>
-                <div className="text-[10px] text-text-dim">
-                  {libraryLoading
-                    ? 'Loading…'
-                    : libraryError
-                      ? <span className="text-red-400">{libraryError}</span>
-                      : `${libraryImages.length} image${libraryImages.length === 1 ? '' : 's'}`}
-                </div>
-              </div>
-
-              {libraryImages.length === 0 && !libraryLoading && !libraryError && (
-                <div className="text-[11px] text-text-dim italic py-2 text-center border border-dashed border-gold/15 rounded">
-                  No images in your library yet.
-                </div>
-              )}
-
-              {libraryImages.length > 0 && (
-                <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
-                  {libraryImages.map(img => {
-                    const isPicked = pickedLibraryImg?.name === img.name
-                    const isDeleting = deletingImageName === img.name
-                    const title = img.displayName || displayNameForLibraryImage(img)
-                    return (
-                      <div
-                        key={img.name}
-                        className={`group relative rounded overflow-hidden border transition-colors ${
-                          isPicked
-                            ? 'border-gold-bright ring-1 ring-gold/50'
-                            : 'border-gold/20 hover:border-gold/60'
-                        } ${isDeleting ? 'opacity-40 pointer-events-none' : ''}`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => pickFromLibrary(img)}
-                          title={title}
-                          className="block w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
-                          aria-pressed={isPicked}
-                          aria-label={`Use image ${title}`}
-                        >
-                          <img
-                            src={img.url}
-                            alt={title}
-                            loading="lazy"
-                            className="w-full aspect-square object-cover bg-void/60"
-                          />
-                        </button>
-
-                        {isPicked && (
-                          <span className="absolute top-0.5 left-0.5 text-[8px] bg-gold text-black font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none shadow">
-                            ✓
-                          </span>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            deleteLibraryImage(img)
-                          }}
-                          disabled={isDeleting}
-                          title="Delete image from library"
-                          aria-label={`Delete image ${title}`}
-                          className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-black/75 border border-red-500/60 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center text-[8px] font-bold leading-none transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
-                        >
-                          {isDeleting ? '…' : '✕'}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label htmlFor={`${formId}-bid`} className="block text-xs text-text-dim font-semibold mb-1">Starting bid</label>
-              <div className="flex items-center gap-2">
-                <input
-                  id={`${formId}-bid`}
-                  className="input flex-1"
-                  type="number"
-                  min="1"
-                  placeholder="100"
-                  value={newItem.startBid}
-                  onChange={e => setNewItem({ ...newItem, startBid: e.target.value })}
-                />
-                <span className="text-xs text-text-dim whitespace-nowrap">coins</span>
-              </div>
-            </div>
-            <div>
-              <label htmlFor={`${formId}-duration`} className="block text-xs text-text-dim font-semibold mb-1">Duration</label>
-              <div className="flex items-center gap-2">
-                <input
-                  id={`${formId}-duration`}
-                  className="input flex-1"
-                  type="number"
-                  min="1"
-                  placeholder="60"
-                  value={newItem.duration}
-                  onChange={e => setNewItem({ ...newItem, duration: e.target.value })}
-                />
-                <span className="text-xs text-text-dim whitespace-nowrap">minutes</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 items-center">
-            <button onClick={createAuction} className="btn-gold" disabled={uploading}>
-              {uploading ? 'Uploading…' : 'Start auction'}
-            </button>
-            {parseInt(newItem.duration) > 0 && (
-              <span className="text-xs text-text-dim flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span>Ends</span>
-                <span className="font-mono text-gold-light">
-                  {formatClock(Date.now() + (parseInt(newItem.duration) || 60) * 60000)} server
-                </span>
-              </span>
-            )}
-          </div>
-        </div>
+        </section>
       )}
 
       {featuredAuction && (
@@ -1171,47 +1048,59 @@ export default function Auctions({ ctx }) {
       )}
 
       {otherActiveAuctions.length === 0 && !featuredAuction ? (
-        <div className="card text-center py-12 text-text-dim">No active auctions.</div>
-      ) : otherActiveAuctions.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-          {otherActiveAuctions.map(auction => (
-            <AuctionCard
-              key={auction.id}
-              auction={auction}
-              now={now}
-              currentUser={currentUser}
-              isElder={isElder}
-              isMaster={isMaster}
-              isFeatured={!!auction.isFeatured}
-              onToggleFeatured={() => toggleFeatured(auction.id)}
-              featuringInFlight={featuringInFlight}
-              bidAmount={bidAmounts[auction.id] || ''}
-              onBidChange={v => setBidAmounts(prev => ({ ...prev, [auction.id]: v }))}
-              onPlaceBid={() => placeBid(auction.id)}
-              onEndEarly={() => endAuction(auction.id)}
-              onDelete={() => deleteAuction(auction.id)}
-              isBidsExpanded={!!expandedBids[auction.id]}
-              onToggleBids={() => toggleBidsExpanded(auction.id)}
-            />
-          ))}
+        <div className="rounded-2xl border border-dashed border-white/[.09] bg-black/15 py-16 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-gold/15 bg-gold/[.04] text-gold-light">◇</div>
+          <div className="mt-4 text-sm font-semibold text-text-bright">No Live Auctions</div>
+          <div className="mt-1 text-xs text-text-dim">New clan auctions will appear here when they go live.</div>
         </div>
+      ) : otherActiveAuctions.length > 0 ? (
+        <section>
+          <div className="flex items-end justify-between gap-3 mb-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[.2em] text-gold-dim">Live inventory</div>
+              <h2 className="mt-1 font-spectral text-xl font-bold text-text-bright">Active Auctions</h2>
+            </div>
+            <span className="rounded-full border border-white/[.07] bg-black/20 px-2.5 py-1 text-[10px] font-mono text-text-dim">{otherActiveAuctions.length} lots</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {otherActiveAuctions.map(auction => (
+              <AuctionCard
+                key={auction.id}
+                auction={auction}
+                now={now}
+                currentUser={currentUser}
+                isElder={isElder}
+                isMaster={isMaster}
+                isFeatured={!!auction.isFeatured}
+                onToggleFeatured={() => toggleFeatured(auction.id)}
+                featuringInFlight={featuringInFlight}
+                bidAmount={bidAmounts[auction.id] || ''}
+                onBidChange={v => setBidAmounts(prev => ({ ...prev, [auction.id]: v }))}
+                onPlaceBid={() => placeBid(auction.id)}
+                onEndEarly={() => endAuction(auction.id)}
+                onDelete={() => deleteAuction(auction.id)}
+                isBidsExpanded={!!expandedBids[auction.id]}
+                onToggleBids={() => toggleBidsExpanded(auction.id)}
+              />
+            ))}
+          </div>
+        </section>
       ) : null}
 
       {endedAuctions.length > 0 && (
-        <section className="mt-8">
-          <div className="flex items-end justify-between mb-3 flex-wrap gap-2">
-            <div className="flex items-center gap-3">
-              <h2 className="font-spectral text-xl font-bold text-text-bright">Ended auctions</h2>
-              <span className="text-[11px] font-semibold text-text-dim bg-void/60 border border-gold/20 rounded px-2 py-0.5">{endedAuctions.length}</span>
+        <section className="pt-2">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[.2em] text-gold-dim">Auction archive</div>
+              <div className="mt-1 flex items-center gap-2">
+                <h2 className="font-spectral text-xl font-bold text-text-bright">Completed Auctions</h2>
+                <span className="rounded-full border border-white/[.07] bg-black/20 px-2 py-0.5 text-[10px] font-mono text-text-dim">{endedAuctions.length}</span>
+              </div>
             </div>
-            <div className="text-[11px] text-text-dim hidden md:flex items-center gap-3">
-              <span><span className="text-yellow-400">⏳</span> awaiting hand-out</span>
-              <span><span className="text-green-400">✓</span> delivered</span>
-            </div>
+            <div className="text-[10px] text-text-dim">Review winners, final bids, and distribution status.</div>
           </div>
-
-          <div className="card p-0 overflow-hidden">
-            <ul className="divide-y divide-gold/10">
+          <div className="overflow-hidden rounded-2xl border border-white/[.07] bg-[#0b0908]/90">
+            <ul className="divide-y divide-white/[.05]">
               {endedAuctions.map(a => (
                 <EndedAuctionRow
                   key={a.id}
@@ -1222,7 +1111,7 @@ export default function Auctions({ ctx }) {
                   distributors={distributors}
                   isExpanded={!!expandedBids[a.id]}
                   onToggle={() => toggleBidsExpanded(a.id)}
-                  onAssignDistributor={(name) => assignDistributor(a.id, name)}
+                  onAssignDistributor={name => assignDistributor(a.id, name)}
                   onDelete={() => deleteAuction(a.id)}
                 />
               ))}
@@ -1265,268 +1154,130 @@ function FeaturedAuctionCard({
 
   return (
     <section
-      className="relative mb-6 overflow-hidden rounded-2xl border bg-[#0d0b0a]/95"
+      className="relative overflow-hidden rounded-2xl border bg-[#0b0908]/95"
       style={{
-        borderColor: rgba(rm.rgb, 0.42),
-        boxShadow: `0 18px 50px -28px ${rgba(rm.rgb, 0.45)}, inset 0 1px 0 rgba(255,255,255,0.035)`,
+        borderColor: rgba(rm.rgb, 0.34),
+        boxShadow: `0 22px 60px -34px ${rgba(rm.rgb, 0.42)}, inset 0 1px 0 rgba(255,255,255,.035)`,
       }}
       aria-label={`Featured auction: ${auction.name}`}
     >
-      {/* Ambient rarity lighting */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        aria-hidden="true"
-        style={{
-          background: `
-            radial-gradient(circle at 0% 0%, ${rgba(rm.rgb, 0.13)}, transparent 34%),
-            radial-gradient(circle at 100% 100%, ${rgba(rm.rgb, 0.055)}, transparent 38%),
-            linear-gradient(120deg, rgba(255,255,255,0.018), transparent 35%)
-          `,
-        }}
-      />
+      <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{
+        background: `radial-gradient(circle at 0% 0%, ${rgba(rm.rgb,.12)}, transparent 34%), radial-gradient(circle at 100% 100%, ${rgba(rm.rgb,.045)}, transparent 40%)`,
+      }} />
 
       <div className="relative">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-white/[0.06] bg-black/20">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[.06] bg-black/25 px-5 py-3.5">
+          <div className="flex items-center gap-3 min-w-0">
             <FeaturedPill rarityMeta={rm} />
-            <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">
-              Featured auction
-            </span>
+            <div className="hidden sm:block">
+              <div className="text-[9px] font-bold uppercase tracking-[.18em] text-gold-dim">Featured Lot</div>
+              <div className="text-[11px] text-text-dim">Priority auction selected by clan leadership</div>
+            </div>
           </div>
-
-          <div className="flex items-center gap-2.5 flex-shrink-0">
-            <span className="hidden sm:inline text-[9px] uppercase tracking-widest text-text-dim">
-              Server · {SERVER_TZ_LABEL}
-            </span>
-            <span
-              className={`font-mono text-sm sm:text-base font-bold tabular-nums ${isUrgent ? 'motion-safe:animate-pulse' : ''}`}
-              style={{ color: isUrgent ? '#ef4444' : rm.color }}
-            >
+          <div className="flex items-center gap-2.5">
+            <span className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Time Remaining</span>
+            <span className={`rounded-lg border px-2.5 py-1.5 font-mono text-sm font-bold tabular-nums ${isUrgent ? 'border-red-500/30 bg-red-500/[.07] text-red-400 motion-safe:animate-pulse' : 'border-gold/20 bg-gold/[.04]'}`} style={!isUrgent ? { color: rm.color } : undefined}>
               {formatCountdown(auction.endsAt, now)}
             </span>
           </div>
         </div>
 
-        {/* Main content */}
         <div className="p-5 md:p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-[132px_minmax(0,1fr)_310px] gap-5 lg:gap-6 items-stretch">
-
-            {/* Item artwork */}
-            <div className="flex lg:block">
+          <div className="grid grid-cols-1 lg:grid-cols-[148px_minmax(0,1fr)_330px] gap-5 lg:gap-7">
+            <div className="flex justify-center lg:justify-start">
               {auction.imageUrl ? (
-                <div
-                  className="relative w-[112px] h-[112px] md:w-[132px] md:h-[132px] rounded-xl overflow-hidden border bg-black/35"
-                  style={{
-                    borderColor: rgba(rm.rgb, 0.5),
-                    boxShadow: `0 10px 30px -16px ${rgba(rm.rgb, 0.65)}`,
-                  }}
-                >
-                  <img
-                    src={auction.imageUrl}
-                    alt={auction.name}
-                    loading="lazy"
-                    className="w-full h-full object-cover"
-                    onError={(e) => { e.currentTarget.style.display = 'none' }}
-                  />
-                  <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                      boxShadow: `inset 0 0 0 1px ${rgba(rm.rgb, 0.12)}`,
-                    }}
-                  />
+                <div className="relative h-[148px] w-[148px] overflow-hidden rounded-2xl border bg-black/40" style={{ borderColor: rgba(rm.rgb,.45), boxShadow: `0 18px 40px -20px ${rgba(rm.rgb,.5)}` }}>
+                  <img src={auction.imageUrl} alt={auction.name} loading="lazy" className="h-full w-full object-cover" onError={e => { e.currentTarget.style.display='none' }} />
+                  <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: `inset 0 0 0 1px ${rgba(rm.rgb,.1)}` }} />
                 </div>
               ) : (
-                <div
-                  className="w-[112px] h-[112px] md:w-[132px] md:h-[132px] rounded-xl border flex items-center justify-center font-spectral text-4xl font-bold bg-black/30"
-                  style={{
-                    borderColor: rgba(rm.rgb, 0.5),
-                    color: rm.color,
-                    backgroundColor: rgba(rm.rgb, 0.08),
-                  }}
-                  aria-hidden="true"
-                >
+                <div className="flex h-[148px] w-[148px] items-center justify-center rounded-2xl border bg-black/30 font-spectral text-5xl font-bold" style={{ borderColor: rgba(rm.rgb,.45), color: rm.color, backgroundColor: rgba(rm.rgb,.07) }}>
                   {auction.name.charAt(0).toUpperCase()}
                 </div>
               )}
             </div>
 
-            {/* Item information */}
             <div className="min-w-0 flex flex-col justify-center">
-              <div
-                className="text-[10px] font-bold uppercase tracking-[0.22em] mb-1"
-                style={{ color: rm.color }}
-              >
-                {rm.label}
+              <div className="flex flex-wrap items-center gap-2">
+                <RarityBadge rarity={auction.rarity} />
+                {isWinning && <span className="rounded-full border border-green-500/25 bg-green-500/[.06] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-green-400">Leading</span>}
               </div>
+              <h2 className="mt-2 font-spectral text-2xl md:text-3xl xl:text-[36px] font-bold leading-[1.04] text-text-bright break-words">{auction.name}</h2>
+              {auction.description && <p className="mt-2 max-w-2xl text-sm leading-6 text-text-dim">{auction.description}</p>}
 
-              <h2 className="font-spectral text-2xl md:text-3xl lg:text-[34px] font-bold leading-[1.05] text-text-bright break-words">
-                {auction.name}
-              </h2>
-
-              {auction.description && (
-                <p className="text-xs md:text-sm text-text-dim mt-2 max-w-2xl leading-relaxed">
-                  {auction.description}
-                </p>
-              )}
-
-              <div className="grid grid-cols-2 gap-2.5 mt-5 max-w-xl">
-                <div className="rounded-xl border border-white/[0.07] bg-black/25 px-3.5 py-3">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">
-                    Current bid
-                  </div>
-                  <div className="flex items-baseline gap-1.5 mt-1">
-                    <span
-                      className="font-mono text-xl md:text-2xl font-bold tabular-nums"
-                      style={{ color: rm.color }}
-                    >
-                      {auction.currentBid.toLocaleString()}
-                    </span>
+              <div className="mt-5 grid grid-cols-2 gap-2.5 max-w-xl">
+                <div className="rounded-xl border border-white/[.07] bg-black/25 px-3.5 py-3">
+                  <div className="text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Current Bid</div>
+                  <div className="mt-1 flex items-baseline gap-1.5">
+                    <span className="font-mono text-2xl font-bold tabular-nums" style={{ color: rm.color }}>{auction.currentBid.toLocaleString()}</span>
                     <span className="text-[10px] text-text-dim">coins</span>
                   </div>
                 </div>
-
-                <div className="rounded-xl border border-white/[0.07] bg-black/25 px-3.5 py-3 min-w-0">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">
-                    Leading bidder
-                  </div>
-                  <div className={`text-sm md:text-base font-semibold truncate mt-1 ${isWinning ? 'text-green-400' : 'text-text-bright'}`}>
-                    {auction.topBidder || 'No bids yet'}
-                  </div>
+                <div className="rounded-xl border border-white/[.07] bg-black/25 px-3.5 py-3 min-w-0">
+                  <div className="text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Leading Bidder</div>
+                  <div className={`mt-1 truncate text-sm font-semibold ${isWinning ? 'text-green-400' : 'text-text-bright'}`}>{auction.topBidder || 'No bids yet'}</div>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-[10px] text-text-dim">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="text-text-dim/70">Ends</span>
-                  <span className="font-mono text-gold-light tabular-nums">{formatDateTime(auction.endsAt)}</span>
-                  <span>server</span>
-                </span>
-                {isWinning && (
-                  <span className="inline-flex items-center gap-1 text-green-400 font-semibold">
-                    <span>✓</span> You're leading
-                  </span>
-                )}
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-text-dim">
+                <span>Ends <span className="font-mono text-gold-light">{formatDateTime(auction.endsAt)}</span> server</span>
+                {isWinning && <span className="font-semibold text-green-400">✓ You are currently leading</span>}
               </div>
             </div>
 
-            {/* Bid panel */}
-            <div className="rounded-xl border border-white/[0.07] bg-black/30 p-4 md:p-5 flex flex-col justify-center">
-              <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="rounded-2xl border border-gold/20 bg-gradient-to-b from-gold/[.055] to-black/25 p-4 md:p-5">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-text-dim">
-                    Place your bid
-                  </div>
-                  <div className="text-[11px] text-text-dim mt-1">
-                    Minimum <span className="font-mono font-bold text-gold-light">{minNextBid.toLocaleString()}</span> coins
-                  </div>
+                  <div className="text-[10px] font-bold uppercase tracking-[.18em] text-gold-dim">Place Your Bid</div>
+                  <div className="mt-1 text-xs text-text-dim">Minimum accepted bid</div>
                 </div>
-                <div
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{
-                    backgroundColor: biddingOpen ? '#4ade80' : '#ef4444',
-                    boxShadow: `0 0 10px ${biddingOpen ? 'rgba(74,222,128,.45)' : 'rgba(239,68,68,.45)'}`,
-                  }}
-                  aria-hidden="true"
-                />
+                <span className={`mt-1 h-2 w-2 rounded-full ${biddingOpen ? 'bg-green-400 shadow-[0_0_10px_rgba(74,222,128,.55)]' : 'bg-red-400 shadow-[0_0_10px_rgba(239,68,68,.45)]'}`} />
+              </div>
+
+              <div className="mt-4 rounded-xl border border-white/[.07] bg-black/25 p-3">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-text-dim">Minimum Bid</div>
+                <div className="mt-1 font-mono text-lg font-bold text-gold-light">{minNextBid.toLocaleString()} <span className="text-[10px] font-normal text-text-dim">coins</span></div>
               </div>
 
               {currentUser && auction.status === 'active' ? (
                 biddingOpen ? (
-                  <div>
-                    <label htmlFor={`featured-bid-${auction.id}`} className="sr-only">
-                      Bid amount
-                    </label>
+                  <div className="mt-3">
+                    <label htmlFor={`featured-bid-${auction.id}`} className="sr-only">Bid amount for {auction.name}</label>
                     <div className="flex gap-2">
-                      <input
-                        id={`featured-bid-${auction.id}`}
-                        className="input text-base flex-1 min-w-0"
-                        type="number"
-                        min={minNextBid}
-                        step={MIN_BID_INCREMENT}
-                        placeholder={String(minNextBid)}
-                        value={bidAmount}
-                        onChange={e => onBidChange(e.target.value)}
-                        onFocus={e => { if (!e.target.value) onBidChange(String(minNextBid)) }}
-                      />
-                      <button
-                        onClick={onPlaceBid}
-                        className="btn-gold px-5 text-sm font-bold whitespace-nowrap"
-                      >
-                        Bid
-                      </button>
+                      <input id={`featured-bid-${auction.id}`} className="input min-w-0 flex-1 text-base font-mono" type="number" min={minNextBid} step={MIN_BID_INCREMENT} placeholder={String(minNextBid)} value={bidAmount} onChange={e => onBidChange(e.target.value)} onFocus={e => { if (!e.target.value) onBidChange(String(minNextBid)) }} />
+                      <button onClick={onPlaceBid} className="btn-gold px-5 font-bold">Bid</button>
                     </div>
-                    <div className="text-[10px] text-text-dim mt-2">
-                      +{MIN_BID_INCREMENT} coins minimum increment
-                    </div>
+                    <div className="mt-2 text-[10px] text-text-dim">Bids increase by at least <span className="font-semibold text-gold-light">{MIN_BID_INCREMENT}</span> coins.</div>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-red-500/25 bg-red-500/[0.07] px-3 py-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-red-400">
-                      <span>🔒</span>
-                      <span>Bidding closed</span>
-                    </div>
-                    <div className="text-[10px] text-text-dim mt-1">
-                      Final 5 minutes — auction is locked.
-                    </div>
+                  <div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/[.06] p-3">
+                    <div className="text-xs font-bold text-red-400">🔒 Bidding Locked</div>
+                    <div className="mt-1 text-[10px] leading-4 text-text-dim">Bidding closes during the final 5 minutes.</div>
                   </div>
                 )
               ) : (
-                <div className="text-xs text-text-dim rounded-lg border border-white/[0.06] bg-black/20 px-3 py-3">
-                  Sign in to participate in this auction.
-                </div>
+                <div className="mt-3 rounded-xl border border-white/[.07] bg-black/20 p-3 text-xs text-text-dim">Sign in to participate in this auction.</div>
               )}
             </div>
           </div>
 
-          {/* Bid history */}
           {history.length > 0 && (
-            <div className="mt-5 pt-4 border-t border-white/[0.06]">
-              <button
-                type="button"
-                onClick={onToggleBids}
-                aria-expanded={isBidsExpanded}
-                className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-text-dim hover:text-gold-light transition-colors rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
-              >
-                <span
-                  className={`transition-transform ${isBidsExpanded ? 'rotate-180' : ''}`}
-                  aria-hidden="true"
-                >
-                  ▾
-                </span>
-                Bid history
-                <span className="font-mono text-gold-light">{history.length}</span>
+            <div className="mt-6 border-t border-white/[.06] pt-4">
+              <button type="button" onClick={onToggleBids} aria-expanded={isBidsExpanded} className="inline-flex items-center gap-2 rounded-lg text-[10px] font-bold uppercase tracking-[.16em] text-text-dim hover:text-gold-light">
+                <span className={`transition-transform ${isBidsExpanded ? 'rotate-180' : ''}`}>⌄</span>
+                Bid Activity <span className="font-mono text-gold-light">{history.length}</span>
               </button>
-
               {isBidsExpanded && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-3 max-h-[190px] overflow-y-auto pr-1" role="list">
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-[220px] overflow-y-auto pr-1" role="list">
                   {history.map((b, idx) => {
                     const isCurrentTop = idx === 0
                     return (
-                      <div
-                        key={b.time || idx}
-                        role="listitem"
-                        className={`rounded-lg border px-3 py-2 ${
-                          isCurrentTop
-                            ? 'border-green-500/25 bg-green-500/[0.06]'
-                            : 'border-white/[0.06] bg-black/20'
-                        }`}
-                      >
+                      <div key={b.time || idx} role="listitem" className={`rounded-xl border px-3.5 py-3 ${isCurrentTop ? 'border-green-500/25 bg-green-500/[.055]' : 'border-white/[.06] bg-black/20'}`}>
                         <div className="flex items-center justify-between gap-2">
-                          <span className={`text-xs font-semibold truncate ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>
-                            {b.bidder}
-                          </span>
-                          <span className={`font-mono text-xs font-bold tabular-nums flex-shrink-0 ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>
-                            {b.amount.toLocaleString()}
-                          </span>
+                          <span className={`truncate text-xs font-semibold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
+                          <span className={`font-mono text-xs font-bold tabular-nums ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
                         </div>
-                        <div className={`text-[10px] mt-1 ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>
-                          {isCurrentTop
-                            ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading')
-                            : 'Outbid'}
-                          {' · '}
-                          {formatClock(b.time)} server
-                        </div>
+                        <div className={`mt-1 text-[10px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>{isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} server</div>
                       </div>
                     )
                   })}
@@ -1535,40 +1286,14 @@ function FeaturedAuctionCard({
             </div>
           )}
 
-          {/* Admin actions */}
           {isElder && (
-            <div className="flex items-center gap-2 mt-5 pt-4 border-t border-white/[0.06]">
-              {isMaster && (
-                <button
-                  onClick={onEndEarly}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-yellow-500/20 bg-yellow-500/[0.04] px-3 py-2 text-[11px] font-semibold text-yellow-400 hover:bg-yellow-500/[0.09] hover:border-yellow-500/35 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
-                >
-                  <span aria-hidden="true">⏹</span>
-                  End early
-                </button>
-              )}
-
-              <button
-                onClick={onToggleFeatured}
-                disabled={featuringInFlight}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 disabled:opacity-50 ${
-                  isPinned
-                    ? 'border-gold/45 bg-gold/[0.09] text-gold-bright hover:bg-gold/[0.14]'
-                    : 'border-white/[0.10] bg-black/20 text-text-dim hover:text-gold-light hover:border-gold/35'
-                }`}
-                title={isPinned ? 'Remove from featured' : 'Pin as featured'}
-              >
-                <span aria-hidden="true">{featuringInFlight ? '…' : (isPinned ? '★' : '☆')}</span>
-                <span>{isPinned ? 'Unfeature' : 'Feature'}</span>
+            <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/[.06] pt-4">
+              <span className="mr-1 text-[9px] font-bold uppercase tracking-[.16em] text-text-dim">Admin</span>
+              {isMaster && <button onClick={onEndEarly} className="rounded-lg border border-yellow-500/20 bg-yellow-500/[.035] px-3 py-2 text-[11px] font-semibold text-yellow-400 hover:bg-yellow-500/[.08]">⏹ End Early</button>}
+              <button onClick={onToggleFeatured} disabled={featuringInFlight} className={`rounded-lg border px-3 py-2 text-[11px] font-semibold ${isPinned ? 'border-gold/35 bg-gold/[.08] text-gold-bright' : 'border-white/[.08] bg-black/20 text-text-dim hover:text-gold-light'}`}>
+                {featuringInFlight ? '…' : isPinned ? '★ Unfeature' : '☆ Feature'}
               </button>
-
-              <button
-                onClick={onDelete}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold text-red-400/80 hover:text-red-300 hover:bg-red-500/[0.06] transition-colors ml-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
-              >
-                <span aria-hidden="true">🗑</span>
-                Delete
-              </button>
+              <button onClick={onDelete} className="ml-auto rounded-lg px-3 py-2 text-[11px] font-semibold text-red-400/80 hover:bg-red-500/[.06] hover:text-red-300">Delete</button>
             </div>
           )}
         </div>
@@ -1594,168 +1319,120 @@ function AuctionCard({
   const minNextBid = auction.currentBid + MIN_BID_INCREMENT
 
   return (
-    <div
-      className={`relative card border-l-4 ${isWinning ? 'bg-green-500/5' : ''}`}
+    <article
+      className={`group relative overflow-hidden rounded-2xl border bg-[#0c0a09]/90 transition-all duration-200 hover:-translate-y-0.5 ${isWinning ? 'border-green-500/25' : 'border-white/[.07] hover:border-white/[.13]'}`}
       style={{
-        borderLeftColor: isWinning ? '#22c55e' : rm.color,
-        boxShadow: glow && !isWinning ? `0 0 16px ${rgba(rm.rgb, 0.12)}` : undefined,
+        boxShadow: glow && !isWinning ? `0 18px 42px -30px ${rgba(rm.rgb,.38)}` : undefined,
       }}
     >
+      <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${rm.color}, ${rgba(rm.rgb,.18)})` }} />
+
       {isElder && (
-        <button
-          type="button"
-          onClick={onToggleFeatured}
-          disabled={featuringInFlight}
-          title={isFeatured ? 'Remove from featured' : 'Pin as featured'}
-          aria-label={isFeatured ? 'Remove from featured' : 'Pin as featured'}
-          className={`absolute top-2 right-2 w-7 h-7 rounded-full border flex items-center justify-center text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 disabled:opacity-50 ${
-            isFeatured
-              ? 'bg-gold text-black border-gold-bright'
-              : 'bg-void/60 text-gold-light/70 border-gold/30 hover:text-gold-bright hover:border-gold/60'
-          }`}
-        >
-          {featuringInFlight ? '…' : (isFeatured ? '★' : '☆')}
+        <button type="button" onClick={onToggleFeatured} disabled={featuringInFlight} title={isFeatured ? 'Remove from featured' : 'Pin as featured'} aria-label={isFeatured ? 'Remove from featured' : 'Pin as featured'} className={`absolute right-3 top-3 z-10 h-8 w-8 rounded-lg border flex items-center justify-center text-sm transition-colors ${isFeatured ? 'border-gold/40 bg-gold text-black' : 'border-white/[.08] bg-black/50 text-gold-light/70 hover:border-gold/35 hover:text-gold-bright'}`}>
+          {featuringInFlight ? '…' : isFeatured ? '★' : '☆'}
         </button>
       )}
 
-      <div className="flex items-start gap-3">
-        {auction.imageUrl && (
-          <ItemImage src={auction.imageUrl} alt={auction.name} size={64} />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 pr-8">
-              <div className="font-bold truncate" style={{ color: rm.color }}>{auction.name}</div>
-              <div className="mt-1"><RarityBadge rarity={auction.rarity} /></div>
+      <div className="p-4">
+        <div className="flex gap-3">
+          {auction.imageUrl ? (
+            <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl border bg-black/35" style={{ borderColor: rgba(rm.rgb,.28) }}>
+              <img src={auction.imageUrl} alt={auction.name} loading="lazy" className="h-full w-full object-cover" onError={e => { e.currentTarget.style.display='none' }} />
             </div>
-            <div className="text-right flex-shrink-0">
-              <div className="text-xs text-text-dim">Ends in</div>
-              <div className={`font-bold text-red-400 ${isUrgent ? 'motion-safe:animate-pulse' : ''}`}>
-                {formatCountdown(auction.endsAt, now)}
+          ) : (
+            <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-xl border bg-black/30 font-spectral text-2xl font-bold" style={{ borderColor: rgba(rm.rgb,.28), color: rm.color }}>{auction.name.charAt(0).toUpperCase()}</div>
+          )}
+
+          <div className="min-w-0 flex-1 pr-8">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <RarityBadge rarity={auction.rarity} />
+              {isWinning && <span className="rounded-full bg-green-500/[.08] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-green-400">Leading</span>}
+            </div>
+            <h3 className="mt-1.5 truncate text-base font-bold" style={{ color: rm.color }}>{auction.name}</h3>
+            {auction.description && <p className="mt-0.5 truncate text-[11px] text-text-dim">{auction.description}</p>}
+          </div>
+        </div>
+
+        <div className={`mt-4 rounded-xl border ${isUrgent ? 'border-red-500/20 bg-red-500/[.035]' : 'border-white/[.06] bg-black/20'} px-3 py-2.5`}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Time Remaining</div>
+              <div className={`mt-0.5 font-mono text-sm font-bold tabular-nums ${isUrgent ? 'text-red-400 motion-safe:animate-pulse' : 'text-gold-light'}`}>{formatCountdown(auction.endsAt, now)}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Ends</div>
+              <div className="mt-0.5 text-[10px] font-mono text-text-dim">{formatDateTime(auction.endsAt)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-white/[.06] bg-black/15 px-3 py-2.5">
+            <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Current Bid</div>
+            <div className="mt-0.5 font-mono text-lg font-bold tabular-nums" style={{ color: rm.color }}>{auction.currentBid.toLocaleString()}</div>
+            <div className="text-[9px] text-text-dim">coins</div>
+          </div>
+          <div className="rounded-xl border border-white/[.06] bg-black/15 px-3 py-2.5 min-w-0">
+            <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Leading Bidder</div>
+            <div className={`mt-1 truncate text-xs font-semibold ${isWinning ? 'text-green-400' : 'text-text-bright'}`}>{auction.topBidder || 'No bids yet'}</div>
+            <div className="mt-1 text-[9px] text-text-dim">{history.length} bid{history.length === 1 ? '' : 's'}</div>
+          </div>
+        </div>
+
+        {currentUser && auction.status === 'active' && (
+          biddingOpen ? (
+            <div className="mt-3 rounded-xl border border-gold/15 bg-gold/[.025] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[9px] font-bold uppercase tracking-[.14em] text-gold-dim">Your Bid</span>
+                <span className="text-[10px] text-text-dim">Min <span className="font-mono font-bold text-gold-light">{minNextBid.toLocaleString()}</span></span>
+              </div>
+              <div className="flex gap-2">
+                <label htmlFor={`bid-${auction.id}`} className="sr-only">Bid amount for {auction.name}</label>
+                <input id={`bid-${auction.id}`} className="input min-w-0 flex-1 text-sm font-mono" type="number" min={minNextBid} step={MIN_BID_INCREMENT} placeholder={String(minNextBid)} value={bidAmount} onChange={e => onBidChange(e.target.value)} onFocus={e => { if (!e.target.value) onBidChange(String(minNextBid)) }} />
+                <button onClick={onPlaceBid} className="btn-gold px-4 text-sm font-bold">Bid</button>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {auction.description && (
-        <div className="text-xs text-text-dim mt-2 italic">{auction.description}</div>
-      )}
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-dim">
-        <span className="inline-flex items-center gap-1 tabular-nums">
-          <span aria-hidden="true">🕒</span>
-          <span className="font-mono text-gold-light">
-            {formatDateTime(auction.endsAt)}
-          </span>
-          <span>server</span>
-        </span>
-      </div>
-
-      <div className="flex items-center justify-between mt-3">
-        <div>
-          <div className="text-xs text-text-dim">Current bid</div>
-          <div className="text-xl font-bold text-gold-bright tabular-nums">{auction.currentBid.toLocaleString()}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-text-dim">Top bidder</div>
-          <div className={`font-semibold ${isWinning ? 'text-green-400' : 'text-text-bright'}`}>{auction.topBidder || '—'}</div>
-        </div>
-      </div>
-
-      {isWinning && (
-        <div className="mt-2 text-[11px] font-semibold text-green-400">✓ You're leading</div>
-      )}
-
-      {currentUser && auction.status === 'active' && (
-        biddingOpen ? (
-          <div className="mt-3">
-            <div className="flex gap-2">
-              <label htmlFor={`bid-${auction.id}`} className="sr-only">Bid amount for {auction.name}</label>
-              <input
-                id={`bid-${auction.id}`}
-                className="input text-sm flex-1"
-                type="number"
-                min={minNextBid}
-                step={MIN_BID_INCREMENT}
-                placeholder={`Min ${minNextBid.toLocaleString()}`}
-                value={bidAmount}
-                onChange={e => onBidChange(e.target.value)}
-                onFocus={e => { if (!e.target.value) onBidChange(String(minNextBid)) }}
-              />
-              <button onClick={onPlaceBid} className="btn-gold text-sm px-3">Bid</button>
+          ) : (
+            <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/[.05] p-3">
+              <div className="text-xs font-bold text-red-400">🔒 Bidding Locked</div>
+              <div className="mt-1 text-[10px] text-text-dim">Final 5 minutes — auction closes automatically.</div>
             </div>
-            <div className="text-[10px] text-text-dim mt-1">
-              Minimum bid: <span className="text-gold-light font-semibold">{minNextBid.toLocaleString()}</span> coins
-              <span className="text-text-dim"> · pre-filled for you</span>
-            </div>
-          </div>
-        ) : (
-          <div className="mt-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-center">
-            <div className="text-xs font-semibold text-red-400">🔒 Bidding closed</div>
-            <div className="text-[10px] text-text-dim mt-0.5">Final 5 minutes — waiting for the auction to end.</div>
-          </div>
-        )
-      )}
+          )
+        )}
 
-      {history.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-gold/10">
-          <button
-            type="button"
-            onClick={onToggleBids}
-            aria-expanded={isBidsExpanded}
-            className="text-[11px] font-semibold text-gold-light hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 rounded"
-          >
-            {isBidsExpanded ? '▲ Hide bid history' : `▼ Show bid history (${history.length})`}
-          </button>
-
-          {isBidsExpanded && (
-            <div className="space-y-1 max-h-[180px] overflow-y-auto pr-1 mt-2" role="list">
-              {history.map((b, idx) => {
-                const isCurrentTop = idx === 0
-                return (
-                  <div
-                    key={b.time || idx}
-                    role="listitem"
-                    className={`text-xs rounded px-2 py-1.5 ${isCurrentTop ? 'bg-green-500/10 border border-green-500/30' : 'bg-void/40 border border-gold/10'}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`font-semibold truncate ${isCurrentTop ? 'text-green-300' : 'text-text-dim line-through'}`}>{b.bidder}</span>
-                      <span className={`font-bold flex-shrink-0 ${isCurrentTop ? 'text-green-300' : 'text-text-dim line-through'}`}>{b.amount.toLocaleString()}</span>
-                    </div>
-                    <div className={`text-[11px] mt-0.5 ${isCurrentTop ? 'text-green-400' : 'text-text-dim'}`}>
-                      {isCurrentTop ? (auction.topBidder === currentUser?.name ? 'winning' : 'leading') : 'outbid'} at{' '}
-                      <span className="font-mono tabular-nums">{formatClock(b.time)}</span>
-                      <span className="text-text-dim/70"> server</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {isElder && (
-        <div className="flex gap-3 mt-3 pt-2 border-t border-gold/10">
-          {isMaster && (
-            <button
-              onClick={onEndEarly}
-              className="text-xs text-yellow-400 hover:text-yellow-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 rounded"
-            >
-              End early
+        {history.length > 0 && (
+          <div className="mt-3 border-t border-white/[.06] pt-3">
+            <button type="button" onClick={onToggleBids} aria-expanded={isBidsExpanded} className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.13em] text-text-dim hover:text-gold-light">
+              <span className={`transition-transform ${isBidsExpanded ? 'rotate-180' : ''}`}>⌄</span>
+              Bid History <span className="font-mono text-gold-light">{history.length}</span>
             </button>
-          )}
-          <button
-            onClick={onDelete}
-            aria-label={`Delete auction: ${auction.name}`}
-            className="text-xs text-red-400 hover:text-red-300 ml-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 rounded"
-          >
-            🗑 Delete
-          </button>
-        </div>
-      )}
-    </div>
+            {isBidsExpanded && (
+              <div className="mt-2 max-h-[180px] space-y-1.5 overflow-y-auto pr-1" role="list">
+                {history.map((b, idx) => {
+                  const isCurrentTop = idx === 0
+                  return (
+                    <div key={b.time || idx} role="listitem" className={`rounded-lg border px-2.5 py-2 ${isCurrentTop ? 'border-green-500/20 bg-green-500/[.05]' : 'border-white/[.05] bg-black/15'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`truncate text-[11px] font-semibold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
+                        <span className={`font-mono text-[11px] font-bold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
+                      </div>
+                      <div className={`mt-0.5 text-[9px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>{isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} server</div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {isElder && (
+          <div className="mt-3 flex items-center gap-2 border-t border-white/[.06] pt-3">
+            {isMaster && <button onClick={onEndEarly} className="rounded-lg px-2 py-1.5 text-[10px] font-semibold text-yellow-400 hover:bg-yellow-500/[.07]">End Early</button>}
+            <button onClick={onDelete} aria-label={`Delete auction: ${auction.name}`} className="ml-auto rounded-lg px-2 py-1.5 text-[10px] font-semibold text-red-400/80 hover:bg-red-500/[.07]">Delete</button>
+          </div>
+        )}
+      </div>
+    </article>
   )
 }
 
@@ -1773,155 +1450,89 @@ function EndedAuctionRow({
   const assignedName = a.distributedBy || ''
 
   return (
-    <li className={`${isMe ? 'bg-green-500/[0.04]' : ''}`}>
-      <div className="flex items-center gap-3 px-4 py-3 hover:bg-void/30 transition-colors">
-        {a.imageUrl && <ItemImage src={a.imageUrl} alt={a.name} size={40} />}
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: rm.color }} aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold truncate" style={{ color: rm.color }}>{a.name}</span>
-              <RarityBadge rarity={a.rarity} />
-              {isMe && (
-                <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">🎉 You won</span>
-              )}
-            </div>
-            {a.description && (
-              <div className="text-[11px] text-text-dim italic truncate mt-0.5">{a.description}</div>
-            )}
-          </div>
-        </div>
-
-        <div className="hidden md:flex items-center gap-1.5 flex-shrink-0 min-w-0" title="Winner">
-          <span className="text-sm" aria-hidden="true">🏆</span>
-          <span className={`text-xs font-semibold truncate max-w-[120px] ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
-            {winner || <span className="italic text-text-dim font-normal">No bids</span>}
-          </span>
-        </div>
-
-        {winner && (
-          <div className="hidden lg:flex items-center gap-1.5 flex-shrink-0 min-w-0" title="Distributed by">
-            <span className="text-sm" aria-hidden="true">🎁</span>
-            {isElder ? (
-              <select
-                className="input text-[11px] py-0.5 px-2 h-6 min-w-0 max-w-[160px]"
-                value={assignedName}
-                onChange={e => onAssignDistributor(e.target.value)}
-                aria-label={`Distributor for ${a.name}`}
-              >
-                <option value="">— Not yet —</option>
-                {distributors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-              </select>
-            ) : (
-              <DistributorStatusBadge name={assignedName} />
-            )}
-          </div>
-        )}
-
-        <div className="hidden sm:flex items-baseline gap-1 flex-shrink-0">
-          <span className="font-mono font-bold text-gold-bright tabular-nums text-sm">{(a.currentBid || 0).toLocaleString()}</span>
-          <span className="text-[10px] text-text-dim">coins</span>
-        </div>
-
-        {endedAt > 0 && (
-          <div className="hidden sm:flex flex-col items-end flex-shrink-0 leading-tight">
-            <span className="text-[10px] font-mono tabular-nums text-gold-light whitespace-nowrap">
-              {formatDateTime(endedAt)}
-            </span>
-            <span className="text-[10px] text-text-dim whitespace-nowrap">
-              {agoLabel} · server
-            </span>
-          </div>
-        )}
-
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {totalBids > 0 && (
-            <button
-              type="button"
-              onClick={onToggle}
-              aria-expanded={isExpanded}
-              aria-label={isExpanded ? 'Hide bid history' : `Show bid history (${totalBids})`}
-              className="text-[11px] text-gold-light hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 rounded px-1.5 py-1 flex items-center gap-1"
-            >
-              <span aria-hidden="true">{isExpanded ? '▲' : '▼'}</span>
-              <span className="hidden md:inline">{totalBids}</span>
-            </button>
-          )}
-          {isElder && (
-            <button
-              type="button"
-              onClick={onDelete}
-              aria-label={`Delete auction: ${a.name}`}
-              className="text-[11px] text-red-400 hover:text-red-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 rounded px-1.5 py-1"
-            >
-              🗑
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="md:hidden flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-2 text-xs">
-        {winner && (
-          <span className="flex items-center gap-1">
-            <span aria-hidden="true">🏆</span>
-            <span className={`font-semibold ${isMe ? 'text-green-400' : 'text-text-bright'}`}>{winner}</span>
-          </span>
-        )}
-        <span className="flex items-center gap-1">
-          <span className="font-mono font-bold text-gold-bright tabular-nums">{(a.currentBid || 0).toLocaleString()}</span>
-          <span className="text-text-dim">coins</span>
-        </span>
-        {agoLabel && <span className="text-text-dim">{agoLabel}</span>}
-      </div>
-
-      {winner && (
-        <div className="lg:hidden flex items-center gap-2 px-4 pb-3 text-xs">
-          <span aria-hidden="true">🎁</span>
-          <span className="text-text-dim flex-shrink-0">Distributed by</span>
-          {isElder ? (
-            <select
-              className="input text-[11px] py-0.5 px-2 h-7 flex-1 min-w-0"
-              value={assignedName}
-              onChange={e => onAssignDistributor(e.target.value)}
-              aria-label={`Distributor for ${a.name}`}
-            >
-              <option value="">— Not yet —</option>
-              {distributors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-            </select>
+    <li className={`${isMe ? 'bg-green-500/[.025]' : ''}`}>
+      <div className="px-4 py-3.5 md:px-5">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+          {a.imageUrl ? (
+            <ItemImage src={a.imageUrl} alt={a.name} size={48} />
           ) : (
-            <DistributorStatusBadge name={assignedName} />
+            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border bg-black/20 font-spectral text-lg font-bold" style={{ borderColor: rgba(rm.rgb,.25), color: rm.color }}>{a.name.charAt(0).toUpperCase()}</div>
           )}
-        </div>
-      )}
 
-      {isExpanded && totalBids > 0 && (
-        <div className="px-4 pb-3">
-          <div className="rounded-lg bg-void/40 border border-gold/10 overflow-hidden">
-            <ul className="divide-y divide-gold/5">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: rm.color }} />
+              <span className="truncate text-sm font-bold" style={{ color: rm.color }}>{a.name}</span>
+              <RarityBadge rarity={a.rarity} />
+              {isMe && <span className="rounded-full border border-green-500/20 bg-green-500/[.05] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-green-400">You Won</span>}
+            </div>
+            {a.description && <div className="mt-0.5 truncate text-[10px] text-text-dim">{a.description}</div>}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:items-center gap-2 sm:gap-5 lg:gap-6">
+            <div className="min-w-[100px]">
+              <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Winner</div>
+              <div className={`mt-0.5 max-w-[130px] truncate text-xs font-semibold ${isMe ? 'text-green-400' : 'text-text-bright'}`}>{winner || <span className="italic font-normal text-text-dim">No bids</span>}</div>
+            </div>
+
+            <div>
+              <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Final Bid</div>
+              <div className="mt-0.5 font-mono text-sm font-bold tabular-nums text-gold-bright">{(a.currentBid || 0).toLocaleString()}</div>
+            </div>
+
+            <div className="min-w-[145px]">
+              <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Distribution</div>
+              {winner ? (
+                isElder ? (
+                  <select className="input mt-0.5 h-7 max-w-[160px] px-2 py-0 text-[10px]" value={assignedName} onChange={e => onAssignDistributor(e.target.value)} aria-label={`Distributor for ${a.name}`}>
+                    <option value="">Not yet assigned</option>
+                    {distributors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  </select>
+                ) : (
+                  <div className="mt-1"><DistributorStatusBadge name={assignedName} /></div>
+                )
+              ) : <div className="mt-0.5 text-[10px] text-text-dim">No distribution required</div>}
+            </div>
+
+            <div className="hidden sm:block min-w-[120px]">
+              <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Closed</div>
+              <div className="mt-0.5 text-[10px] font-mono text-text-bright">{endedAt > 0 ? formatDateTime(endedAt) : '—'}</div>
+              <div className="text-[9px] text-text-dim">{agoLabel ? `${agoLabel} · server` : ''}</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 lg:ml-auto">
+            {totalBids > 0 && (
+              <button type="button" onClick={onToggle} aria-expanded={isExpanded} className="rounded-lg border border-white/[.07] bg-black/15 px-2.5 py-2 text-[10px] font-bold text-gold-light hover:border-gold/25">
+                {isExpanded ? 'Hide Bids' : `${totalBids} Bid${totalBids === 1 ? '' : 's'}`}
+              </button>
+            )}
+            {isElder && <button type="button" onClick={onDelete} aria-label={`Delete auction: ${a.name}`} className="rounded-lg px-2.5 py-2 text-[10px] font-semibold text-red-400/75 hover:bg-red-500/[.07] hover:text-red-300">Delete</button>}
+          </div>
+        </div>
+
+        {isExpanded && totalBids > 0 && (
+          <div className="mt-3 rounded-xl border border-white/[.06] bg-black/20 overflow-hidden">
+            <div className="grid grid-cols-[80px_minmax(0,1fr)_100px_auto] gap-3 border-b border-white/[.05] px-3 py-2 text-[9px] font-bold uppercase tracking-[.12em] text-text-dim">
+              <span>Time</span><span>Bidder</span><span className="text-right">Amount</span><span />
+            </div>
+            <ul className="divide-y divide-white/[.04]">
               {bids.map((b, idx) => {
                 const isLast = idx === bids.length - 1
                 return (
-                  <li
-                    key={b.time || idx}
-                    className={`flex items-center gap-3 px-3 py-1.5 text-xs ${isLast ? 'bg-green-500/[0.06]' : ''}`}
-                  >
-                    <span className={`font-mono tabular-nums flex-shrink-0 ${isLast ? 'text-green-400' : 'text-text-dim'}`}>{formatClock(b.time)}</span>
-                    <span className={`font-semibold truncate flex-1 ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
-                    <span className={`font-mono font-bold tabular-nums flex-shrink-0 ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
-                    {isLast && <span className="text-[10px] font-bold text-green-400 uppercase flex-shrink-0">Won</span>}
+                  <li key={b.time || idx} className={`grid grid-cols-[80px_minmax(0,1fr)_100px_auto] items-center gap-3 px-3 py-2 text-[11px] ${isLast ? 'bg-green-500/[.035]' : ''}`}>
+                    <span className={`font-mono tabular-nums ${isLast ? 'text-green-400' : 'text-text-dim'}`}>{formatClock(b.time)}</span>
+                    <span className={`truncate font-semibold ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
+                    <span className={`text-right font-mono font-bold tabular-nums ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-green-400">{isLast ? 'Winner' : ''}</span>
                   </li>
                 )
               })}
             </ul>
+            {endedAt > 0 && <div className="border-t border-white/[.05] px-3 py-2 text-[9px] text-text-dim">Closed {formatDateTime(endedAt)} · server time ({SERVER_TZ_LABEL})</div>}
           </div>
-        </div>
-      )}
-
-      {isExpanded && endedAt > 0 && (
-        <div className="px-4 pb-3 text-[10px] text-text-dim flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span>Ended {formatDateTime(endedAt)} · server time ({SERVER_TZ_LABEL})</span>
-        </div>
-      )}
+        )}
+      </div>
     </li>
   )
 }
