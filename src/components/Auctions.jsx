@@ -12,19 +12,7 @@ const GLOW_RARITIES = new Set(['legendary'])
 const URGENT_MS = 5 * 60 * 1000
 const MIN_BID_INCREMENT = 5
 
-const SERVER_TZ = 'Asia/Singapore'
 const SERVER_TZ_LABEL = 'GMT+8'
-
-const FALLBACK_REGIONS = [
-  { id: 'ph', code: 'ph', flag: '🇵🇭', name: 'Philippines', tz: 'Asia/Manila',       label: 'GMT+8' },
-  { id: 'us', code: 'us', flag: '🇺🇸', name: 'New York',    tz: 'America/New_York',  label: 'ET' },
-  { id: 'br', code: 'br', flag: '🇧🇷', name: 'Brazil',      tz: 'America/Sao_Paulo', label: 'BRT' },
-  { id: 'de', code: 'de', flag: '🇩🇪', name: 'Germany',     tz: 'Europe/Berlin',     label: 'CET' },
-  { id: 'by', code: 'by', flag: '🇧🇾', name: 'Belarus',     tz: 'Europe/Minsk',      label: 'MSK' },
-  { id: 'ua', code: 'ua', flag: '🇺🇦', name: 'Ukraine',     tz: 'Europe/Kyiv',       label: 'EET' },
-  { id: 'th', code: 'th', flag: '🇹🇭', name: 'Thailand',    tz: 'Asia/Bangkok',      label: 'GMT+7' },
-  { id: 'id', code: 'id', flag: '🇮🇩', name: 'Indonesia',   tz: 'Asia/Jakarta',      label: 'GMT+7' },
-]
 
 const presetDescriptions = [
   '',
@@ -45,48 +33,51 @@ const IMAGE_BUCKET = 'auction-images'
 function rgba(rgb, alpha) { return `rgba(${rgb}, ${alpha})` }
 function getRarityMeta(rarity) { return RARITY[rarity] || RARITY.epic }
 
-/* ── Cached Intl formatters ───────────────────────────────────────── */
+const SERVER_OFFSET_MIN = 8 * 60
+const MONTH_SHORT_ARR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-const _dtfCache = new Map()
-function getDTF(locale, opts) {
-  const key = locale + '|' + JSON.stringify(opts)
-  let dtf = _dtfCache.get(key)
-  if (!dtf) {
-    dtf = new Intl.DateTimeFormat(locale, opts)
-    _dtfCache.set(key, dtf)
+function toMs(ts) {
+  if (ts instanceof Date) {
+    const n = ts.getTime()
+    return Number.isFinite(n) ? n : 0
   }
-  return dtf
+  const n = Number(ts)
+  return Number.isFinite(n) && n > 0 ? n : 0
 }
 
-const CLOCK_OPTS = {
-  day: '2-digit', month: 'short', year: 'numeric',
-  hour: '2-digit', minute: '2-digit', second: '2-digit',
-  hour12: false,
-}
-const TIME_OPTS = { hour: '2-digit', minute: '2-digit', hour12: false }
-const DATETIME_OPTS = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }
-const SHORT_OPTS = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }
-const WEEKDAY_OPTS = { weekday: 'short' }
+function pad2(n) { return n < 10 ? `0${n}` : String(n) }
 
-function formatClockInZone(ts, tz) {
-  return getDTF('en-GB', { timeZone: tz, ...CLOCK_OPTS }).format(new Date(ts))
-}
-function formatTimeInZone(ts, tz) {
-  return getDTF('en-GB', { timeZone: tz, ...TIME_OPTS }).format(new Date(ts))
-}
-function formatDateTimeInZone(ts, tz) {
-  return getDTF('en-GB', { timeZone: tz, ...DATETIME_OPTS }).format(new Date(ts))
-}
-function formatShortInZone(ts, tz) {
-  return getDTF('en-GB', { timeZone: tz, ...SHORT_OPTS }).format(new Date(ts))
-}
-function formatWeekdayInZone(ts, tz) {
-  return getDTF('en-GB', { timeZone: tz, ...WEEKDAY_OPTS }).format(new Date(ts))
+function serverParts(ts) {
+  const ms = toMs(ts)
+  if (!ms) return null
+  const shifted = new Date(ms + SERVER_OFFSET_MIN * 60 * 1000)
+  return {
+    y: shifted.getUTCFullYear(),
+    m: shifted.getUTCMonth(),
+    d: shifted.getUTCDate(),
+    hh: shifted.getUTCHours(),
+    mm: shifted.getUTCMinutes(),
+    ss: shifted.getUTCSeconds(),
+  }
 }
 
-function formatServerClock(ts) { return formatClockInZone(ts, SERVER_TZ) }
-function formatClock(ts) { return formatTimeInZone(ts, SERVER_TZ) }
-function formatDateTime(ts) { return formatDateTimeInZone(ts, SERVER_TZ) }
+function formatServerClock(ts) {
+  const p = serverParts(ts)
+  if (!p) return '—'
+  return `${pad2(p.d)} ${MONTH_SHORT_ARR[p.m]} ${p.y}, ${pad2(p.hh)}:${pad2(p.mm)}:${pad2(p.ss)}`
+}
+
+function formatClock(ts) {
+  const p = serverParts(ts)
+  if (!p) return '—'
+  return `${pad2(p.hh)}:${pad2(p.mm)}`
+}
+
+function formatDateTime(ts) {
+  const p = serverParts(ts)
+  if (!p) return '—'
+  return `${pad2(p.d)} ${MONTH_SHORT_ARR[p.m]}, ${pad2(p.hh)}:${pad2(p.mm)}`
+}
 
 function formatCountdown(endsAt, now) {
   const diff = endsAt - now
@@ -124,33 +115,31 @@ function displayNameForLibraryImage(img) {
   return base
 }
 
-function FlagImage({ code, flag, name, width = 20, height = 15 }) {
-  const [failed, setFailed] = useState(false)
-  if (!code || failed) {
-    if (!flag) return null
-    return (
-      <span
-        className="inline-flex items-center justify-center flex-shrink-0 leading-none"
-        style={{ width, height, fontSize: Math.round(height * 1.1) }}
-        aria-hidden="true"
-      >
-        {flag}
-      </span>
-    )
-  }
+function FeaturedPill({ rarityMeta, small = false }) {
+  const rm = rarityMeta
   return (
-    <img
-      src={`https://flagcdn.com/w20/${code}.png`}
-      srcSet={`https://flagcdn.com/w20/${code}.png 1x, https://flagcdn.com/w40/${code}.png 2x`}
-      width={width}
-      height={height}
-      alt={name ? `${name} flag` : ''}
-      loading="lazy"
-      decoding="async"
-      className="rounded-[2px] border border-gold/20 object-cover flex-shrink-0"
-      style={{ width, height }}
-      onError={() => setFailed(true)}
-    />
+    <span
+      className={`inline-flex items-center gap-1.5 font-bold uppercase tracking-widest rounded-full whitespace-nowrap ${
+        small ? 'text-[9px] px-2 py-0.5' : 'text-[10px] px-2.5 py-1'
+      }`}
+      style={{
+        background: `linear-gradient(135deg, ${rm.color} 0%, ${rgba(rm.rgb, 0.7)} 100%)`,
+        color: '#0a0706',
+        boxShadow: `0 0 0 1px ${rgba(rm.rgb, 0.45)}, 0 4px 14px -4px ${rgba(rm.rgb, 0.6)}`,
+      }}
+    >
+      <svg
+        width={small ? 8 : 10}
+        height={small ? 8 : 10}
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        aria-hidden="true"
+        className="flex-shrink-0"
+      >
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+      </svg>
+      <span>Featured</span>
+    </span>
   )
 }
 
@@ -201,7 +190,6 @@ function ItemImage({ src, alt, size = 56 }) {
 export default function Auctions({ ctx }) {
   const {
     members, setMembers, auctions, setAuctions, currentUser, addToast, supabase,
-    region, setRegionId, regions: ctxRegions,
   } = ctx
 
   const [showCreate, setShowCreate] = useState(false)
@@ -225,8 +213,8 @@ export default function Auctions({ ctx }) {
   const [uploading, setUploading] = useState(false)
   const [bidAmounts, setBidAmounts] = useState({})
   const [expandedBids, setExpandedBids] = useState({})
+  const [featuringInFlight, setFeaturingInFlight] = useState(false)
   const [now, setNow] = useState(() => Date.now())
-  const [pickerOpen, setPickerOpen] = useState(false)
   const formId = useId()
   const fileInputId = `${formId}-image`
   const libraryLoadRef = useRef(false)
@@ -323,30 +311,8 @@ export default function Auctions({ ctx }) {
     }
   }
 
-  const regions = useMemo(() => {
-    const list = Array.isArray(ctxRegions) && ctxRegions.length > 0 ? ctxRegions : FALLBACK_REGIONS
-    return list.map(r => ({ ...r, code: r.code || r.id, flag: r.flag || '' }))
-  }, [ctxRegions])
-
-  const activeRegion = useMemo(() => {
-    const r = region || regions[0]
-    return {
-      ...r,
-      code: r.code || r.id,
-      flag: r.flag || '',
-      name: r.name || r.label || r.id,
-      label: r.label || '',
-    }
-  }, [region, regions])
-
   const isElder = currentUser?.role === 'Elder' || currentUser?.role === 'Master' || currentUser?.role === 'Admin'
   const isMaster = currentUser?.role === 'Master' || currentUser?.role === 'Admin'
-
-  const pickRegion = (id) => {
-    if (typeof setRegionId === 'function') setRegionId(id)
-    else try { localStorage.setItem('peakyblader:localRegion', id) } catch {}
-    setPickerOpen(false)
-  }
 
   const distributors = useMemo(() => {
     return [...members]
@@ -458,6 +424,7 @@ export default function Auctions({ ctx }) {
       bids: [],
       distributed_by: null,
       image_url: imageUrl,
+      is_featured: false,
     }])
 
     setUploading(false)
@@ -482,6 +449,7 @@ export default function Auctions({ ctx }) {
       bids: [],
       distributedBy: null,
       imageUrl,
+      isFeatured: false,
     }, ...prev])
 
     setNewItem({ name: '', description: '', rarity: 'epic', startBid: 100, duration: 60 })
@@ -576,9 +544,12 @@ export default function Auctions({ ctx }) {
       ? `\n\nWinner: ${auction.topBidder} for ${auction.currentBid.toLocaleString()} coins.`
       : `\n\nNo bids were placed — item goes undistributed.`
     if (window.confirm(`End "${auction.name}" early?${winnerNote}`)) {
-      const { error } = await supabase.from('auctions').update({ status: 'ended' }).eq('id', auctionId)
+      const { error } = await supabase
+        .from('auctions')
+        .update({ status: 'ended', is_featured: false })
+        .eq('id', auctionId)
       if (error) { addToast(`Couldn't end auction: ${error.message}`, 'red', 'Save Failed'); return }
-      setAuctions(prev => prev.map(a => a.id === auctionId ? { ...a, status: 'ended', endedAt: Date.now() } : a))
+      setAuctions(prev => prev.map(a => a.id === auctionId ? { ...a, status: 'ended', endedAt: Date.now(), isFeatured: false } : a))
       addToast(`"${auction.name}" ended. Now pick who distributes it.`, 'gold', 'Auction Ended')
     }
   }
@@ -631,6 +602,139 @@ export default function Auctions({ ctx }) {
     addToast(`"${auction.name}" removed.`, 'red', 'Auction Deleted')
   }
 
+  const toggleFeatured = async (auctionId) => {
+    console.log('══════════════════════════════════════════════════════════════')
+    console.log('[toggleFeatured] ▶ CALLED', { auctionId, type: typeof auctionId })
+    console.log('[toggleFeatured] currentUser:', currentUser)
+    console.log('[toggleFeatured] isElder:', isElder)
+    console.log('[toggleFeatured] featuringInFlight:', featuringInFlight)
+
+    if (!isElder) {
+      console.warn('[toggleFeatured] ✕ blocked: not elder')
+      return
+    }
+    if (featuringInFlight) {
+      console.warn('[toggleFeatured] ✕ blocked: in flight')
+      return
+    }
+
+    const auction = auctions.find(a => a.id === auctionId)
+    if (!auction) {
+      console.warn('[toggleFeatured] ✕ blocked: auction not found', auctionId)
+      console.log('[toggleFeatured] available ids:', auctions.map(a => a.id))
+      return
+    }
+
+    const willUnfeature = !!auction.isFeatured
+    console.log('[toggleFeatured] willUnfeature:', willUnfeature)
+    console.log('[toggleFeatured] target auction:', auction)
+
+    setFeaturingInFlight(true)
+
+    try {
+      if (willUnfeature) {
+        console.log('[toggleFeatured] → sending UPDATE is_featured=false')
+        const res = await supabase
+          .from('auctions')
+          .update({ is_featured: false })
+          .eq('id', auctionId)
+
+        console.log('[toggleFeatured] ← unfeature response:', {
+          error: res.error,
+          status: res.status,
+          statusText: res.statusText,
+          data: res.data,
+          count: res.count,
+        })
+
+        if (res.error) throw res.error
+
+        // VERIFY
+        const check = await supabase
+          .from('auctions')
+          .select('id, name, is_featured')
+          .eq('id', auctionId)
+          .maybeSingle()
+        console.log('[toggleFeatured] ✓ verify read:', check)
+
+        if (check.error) {
+          console.warn('[toggleFeatured] verify read failed:', check.error)
+        } else if (check.data && check.data.is_featured === true) {
+          console.error('[toggleFeatured] ⚠ DB STILL SHOWS is_featured=true after unfeature!')
+        }
+
+        setAuctions(prev => prev.map(a => a.id === auctionId ? { ...a, isFeatured: false } : a))
+        addToast(`"${auction.name}" is no longer featured.`, 'blue', 'Updated')
+      } else {
+        console.log('[toggleFeatured] → clearing others first')
+        const others = auctions.filter(a => a.isFeatured && a.id !== auctionId)
+        console.log('[toggleFeatured] others to clear:', others.map(a => a.id))
+        if (others.length > 0) {
+          const clearRes = await supabase
+            .from('auctions')
+            .update({ is_featured: false })
+            .in('id', others.map(a => a.id))
+          console.log('[toggleFeatured] ← clear-others response:', {
+            error: clearRes.error,
+            status: clearRes.status,
+            data: clearRes.data,
+          })
+          if (clearRes.error) throw clearRes.error
+        }
+
+        console.log('[toggleFeatured] → sending UPDATE is_featured=true on', auctionId)
+        const res = await supabase
+          .from('auctions')
+          .update({ is_featured: true })
+          .eq('id', auctionId)
+
+        console.log('[toggleFeatured] ← set response:', {
+          error: res.error,
+          status: res.status,
+          statusText: res.statusText,
+          data: res.data,
+          count: res.count,
+        })
+
+        if (res.error) throw res.error
+
+        // VERIFY
+        const check = await supabase
+          .from('auctions')
+          .select('id, name, is_featured')
+          .eq('id', auctionId)
+          .maybeSingle()
+        console.log('[toggleFeatured] ✓ verify read:', check)
+
+        if (check.error) {
+          console.warn('[toggleFeatured] verify read failed:', check.error)
+        } else if (check.data && check.data.is_featured === false) {
+          console.error('[toggleFeatured] ⚠ DB STILL SHOWS is_featured=false after set! RLS or trigger issue.')
+          throw new Error(
+            `DB rejected the change. After the update, the row still shows is_featured=false. ` +
+            `Most likely cause: RLS update policy blocks this user, OR a trigger on the auctions table ` +
+            `overrides the value. Run this in Supabase SQL editor to test: ` +
+            `update auctions set is_featured = true where id = '${auctionId}'; select id, is_featured from auctions where id = '${auctionId}';`
+          )
+        }
+
+        setAuctions(prev => prev.map(a => {
+          if (a.id === auctionId) return { ...a, isFeatured: true }
+          if (a.isFeatured) return { ...a, isFeatured: false }
+          return a
+        }))
+        addToast(`"${auction.name}" is now featured.`, 'gold', 'Featured')
+      }
+    } catch (err) {
+      console.error('[toggleFeatured] ✕ FAILED:', err)
+      addToast(`Couldn't feature: ${err.message || 'unknown error'}`, 'red', 'Not Saved')
+    } finally {
+      console.log('[toggleFeatured] ■ done')
+      console.log('══════════════════════════════════════════════════════════════')
+      setFeaturingInFlight(false)
+    }
+  }
+
   const toggleBidsExpanded = (id) => setExpandedBids(prev => ({ ...prev, [id]: !prev[id] }))
 
   const activeAuctions = useMemo(() => auctions.filter(a => a.status === 'active'), [auctions])
@@ -647,6 +751,15 @@ export default function Auctions({ ctx }) {
     [endedAuctions]
   )
 
+  const featuredAuction = useMemo(() => {
+    return activeAuctions.find(a => a.isFeatured) || null
+  }, [activeAuctions])
+
+  const otherActiveAuctions = useMemo(
+    () => activeAuctions.filter(a => a.id !== featuredAuction?.id),
+    [activeAuctions, featuredAuction]
+  )
+
   const selectedImageLabel = imageFile
     ? imageFile.name
     : pickedLibraryImg
@@ -660,82 +773,13 @@ export default function Auctions({ ctx }) {
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="font-spectral text-2xl font-bold text-gold-light mb-2">Auctions</h1>
-          <p className="text-text-dim text-sm">{activeAuctions.length} active, {endedAuctions.length} ended</p>
+          <p className="text-text-dim text-sm">
+            {activeAuctions.length} active, {endedAuctions.length} ended
+            {featuredAuction && <> · <span className="text-gold-light font-semibold">1 featured</span></>}
+          </p>
         </div>
 
         <div className="flex items-stretch gap-2 flex-wrap">
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setPickerOpen(o => !o)}
-              className={`card px-3 py-2 border-gold/30 flex items-center gap-3 h-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 min-w-[190px] ${
-                pickerOpen ? 'border-gold/60 bg-gold/[0.06]' : 'hover:border-gold/50'
-              }`}
-              aria-expanded={pickerOpen}
-              aria-label={`Region: ${activeRegion.name}. Click to change.`}
-            >
-              <span className="text-base leading-none" aria-hidden="true">🌍</span>
-              <FlagImage code={activeRegion.code} flag={activeRegion.flag} name={activeRegion.name} width={20} height={15} />
-              <div className="text-left flex-1 min-w-0">
-                <div className="text-[9px] font-bold uppercase tracking-widest text-gold-dim leading-tight">
-                  Your local
-                </div>
-                <div className="font-mono text-xs text-gold-bright tabular-nums whitespace-nowrap leading-tight">
-                  {formatShortInZone(now, activeRegion.tz)}
-                </div>
-              </div>
-              <span
-                className={`text-[10px] text-text-dim transition-transform ${pickerOpen ? 'rotate-180' : ''}`}
-                aria-hidden="true"
-              >
-                ▾
-              </span>
-            </button>
-
-            {pickerOpen && (
-              <div
-                className="absolute right-0 top-full mt-2 w-[260px] rounded-lg border border-gold/30 bg-dark shadow-xl overflow-hidden z-50"
-                style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.9)' }}
-              >
-                <div className="px-4 py-2 border-b border-gold/15 bg-void/40">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-gold-light">
-                    🌍 Region
-                  </div>
-                </div>
-                <ul>
-                  {regions.map(r => {
-                    const isActive = r.id === activeRegion.id
-                    return (
-                      <li key={r.id}>
-                        <button
-                          type="button"
-                          onClick={() => pickRegion(r.id)}
-                          className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${
-                            isActive
-                              ? 'bg-gold/15 text-gold-bright'
-                              : 'text-text hover:bg-gold/10 hover:text-gold-light'
-                          }`}
-                          aria-pressed={isActive}
-                        >
-                          <FlagImage code={r.code} flag={r.flag} name={r.name} />
-                          <span className="flex-1 min-w-0 text-xs font-semibold truncate">
-                            {r.name || r.label || r.id}
-                          </span>
-                          <span className={`flex-shrink-0 text-[10px] font-mono ${isActive ? 'text-gold-bright' : 'text-text-dim'}`}>
-                            {r.label || ''}
-                          </span>
-                          {isActive && (
-                            <span className="text-gold-bright text-xs flex-shrink-0" aria-hidden="true">✓</span>
-                          )}
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-            )}
-          </div>
-
           <div className="card px-3 py-2 border-gold/30 flex items-center gap-3 min-w-[190px]">
             <div className="text-lg leading-none" aria-hidden="true">🕒</div>
             <div className="text-left">
@@ -769,6 +813,18 @@ export default function Auctions({ ctx }) {
           <span className="inline-flex items-center gap-1.5">
             <span aria-hidden="true">📈</span><span>Min increment: +{MIN_BID_INCREMENT} coins</span>
           </span>
+          <span className="text-gold/20" aria-hidden="true">·</span>
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true">🕒</span><span>All times are server time ({SERVER_TZ_LABEL})</span>
+          </span>
+          {isElder && (
+            <>
+              <span className="text-gold/20" aria-hidden="true">·</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden="true">⭐</span><span>Click a star to feature (visible to everyone)</span>
+              </span>
+            </>
+          )}
           <span className="text-gold/20" aria-hidden="true">·</span>
           <button
             type="button"
@@ -869,7 +925,6 @@ export default function Auctions({ ctx }) {
             )}
           </div>
 
-          {/* ── ITEM IMAGE — compact inline picker ── */}
           <div className="mb-4">
             <div className="flex items-center justify-between gap-2 mb-2">
               <label htmlFor={fileInputId} className="text-[11px] font-bold uppercase tracking-widest text-gold-dim">
@@ -885,9 +940,7 @@ export default function Auctions({ ctx }) {
               </button>
             </div>
 
-            {/* Selection row: thumbnail + name + actions all grouped tightly */}
             <div className="flex items-center gap-2">
-              {/* Preview thumb */}
               <div className="flex-shrink-0">
                 {imagePreview ? (
                   <img
@@ -907,7 +960,6 @@ export default function Auctions({ ctx }) {
                 )}
               </div>
 
-              {/* Name + badge area (fixed, doesn't stretch full width) */}
               <div className="min-w-0 max-w-[320px] flex items-center gap-2">
                 {hasSelectedImage ? (
                   <>
@@ -935,7 +987,6 @@ export default function Auctions({ ctx }) {
                 )}
               </div>
 
-              {/* Action buttons grouped right after the name */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <input
                   id={fileInputId}
@@ -972,7 +1023,6 @@ export default function Auctions({ ctx }) {
               </div>
             </div>
 
-            {/* Library grid */}
             <div className="mt-3 pt-3 border-t border-gold/10">
               <div className="flex items-center justify-between gap-2 mb-1.5">
                 <div className="text-[10px] font-bold uppercase tracking-widest text-gold-dim">
@@ -1092,18 +1142,7 @@ export default function Auctions({ ctx }) {
               <span className="text-xs text-text-dim flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span>Ends</span>
                 <span className="font-mono text-gold-light">
-                  {formatTimeInZone(Date.now() + (parseInt(newItem.duration) || 60) * 60000, SERVER_TZ)} server
-                </span>
-                <span className="text-text-dim/50">·</span>
-                <span className="font-mono text-gold-light inline-flex items-center gap-1">
-                  <FlagImage
-                    code={activeRegion.code}
-                    flag={activeRegion.flag}
-                    name={activeRegion.name}
-                    width={14}
-                    height={10}
-                  />
-                  {formatTimeInZone(Date.now() + (parseInt(newItem.duration) || 60) * 60000, activeRegion.tz)} local
+                  {formatClock(Date.now() + (parseInt(newItem.duration) || 60) * 60000)} server
                 </span>
               </span>
             )}
@@ -1111,11 +1150,31 @@ export default function Auctions({ ctx }) {
         </div>
       )}
 
-      {activeAuctions.length === 0 ? (
+      {featuredAuction && (
+        <FeaturedAuctionCard
+          auction={featuredAuction}
+          now={now}
+          currentUser={currentUser}
+          isElder={isElder}
+          isMaster={isMaster}
+          isPinned={!!featuredAuction.isFeatured}
+          onToggleFeatured={() => toggleFeatured(featuredAuction.id)}
+          featuringInFlight={featuringInFlight}
+          bidAmount={bidAmounts[featuredAuction.id] || ''}
+          onBidChange={v => setBidAmounts(prev => ({ ...prev, [featuredAuction.id]: v }))}
+          onPlaceBid={() => placeBid(featuredAuction.id)}
+          onEndEarly={() => endAuction(featuredAuction.id)}
+          onDelete={() => deleteAuction(featuredAuction.id)}
+          isBidsExpanded={!!expandedBids[featuredAuction.id]}
+          onToggleBids={() => toggleBidsExpanded(featuredAuction.id)}
+        />
+      )}
+
+      {otherActiveAuctions.length === 0 && !featuredAuction ? (
         <div className="card text-center py-12 text-text-dim">No active auctions.</div>
-      ) : (
+      ) : otherActiveAuctions.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-          {activeAuctions.map(auction => (
+          {otherActiveAuctions.map(auction => (
             <AuctionCard
               key={auction.id}
               auction={auction}
@@ -1123,6 +1182,9 @@ export default function Auctions({ ctx }) {
               currentUser={currentUser}
               isElder={isElder}
               isMaster={isMaster}
+              isFeatured={!!auction.isFeatured}
+              onToggleFeatured={() => toggleFeatured(auction.id)}
+              featuringInFlight={featuringInFlight}
               bidAmount={bidAmounts[auction.id] || ''}
               onBidChange={v => setBidAmounts(prev => ({ ...prev, [auction.id]: v }))}
               onPlaceBid={() => placeBid(auction.id)}
@@ -1130,11 +1192,10 @@ export default function Auctions({ ctx }) {
               onDelete={() => deleteAuction(auction.id)}
               isBidsExpanded={!!expandedBids[auction.id]}
               onToggleBids={() => toggleBidsExpanded(auction.id)}
-              activeRegion={activeRegion}
             />
           ))}
         </div>
-      )}
+      ) : null}
 
       {endedAuctions.length > 0 && (
         <section className="mt-8">
@@ -1163,7 +1224,6 @@ export default function Auctions({ ctx }) {
                   onToggle={() => toggleBidsExpanded(a.id)}
                   onAssignDistributor={(name) => assignDistributor(a.id, name)}
                   onDelete={() => deleteAuction(a.id)}
-                  activeRegion={activeRegion}
                 />
               ))}
             </ul>
@@ -1188,10 +1248,340 @@ function RarityBadge({ rarity }) {
   )
 }
 
+function FeaturedAuctionCard({
+  auction, now, currentUser, isElder, isMaster,
+  isPinned, onToggleFeatured, featuringInFlight,
+  bidAmount, onBidChange, onPlaceBid, onEndEarly, onDelete,
+  isBidsExpanded, onToggleBids,
+}) {
+  const isWinning = auction.topBidder === currentUser?.name
+  const bids = auction.bids || []
+  const history = useMemo(() => [...bids].reverse(), [bids])
+  const rm = getRarityMeta(auction.rarity)
+  const remaining = auction.endsAt - now
+  const isUrgent = remaining > 0 && remaining < URGENT_MS
+  const biddingOpen = isBiddingOpen(auction, now)
+  const minNextBid = auction.currentBid + MIN_BID_INCREMENT
+
+  return (
+    <section
+      className="relative mb-6 overflow-hidden rounded-2xl border bg-[#0d0b0a]/95"
+      style={{
+        borderColor: rgba(rm.rgb, 0.42),
+        boxShadow: `0 18px 50px -28px ${rgba(rm.rgb, 0.45)}, inset 0 1px 0 rgba(255,255,255,0.035)`,
+      }}
+      aria-label={`Featured auction: ${auction.name}`}
+    >
+      {/* Ambient rarity lighting */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        aria-hidden="true"
+        style={{
+          background: `
+            radial-gradient(circle at 0% 0%, ${rgba(rm.rgb, 0.13)}, transparent 34%),
+            radial-gradient(circle at 100% 100%, ${rgba(rm.rgb, 0.055)}, transparent 38%),
+            linear-gradient(120deg, rgba(255,255,255,0.018), transparent 35%)
+          `,
+        }}
+      />
+
+      <div className="relative">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-white/[0.06] bg-black/20">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FeaturedPill rarityMeta={rm} />
+            <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">
+              Featured auction
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            <span className="hidden sm:inline text-[9px] uppercase tracking-widest text-text-dim">
+              Server · {SERVER_TZ_LABEL}
+            </span>
+            <span
+              className={`font-mono text-sm sm:text-base font-bold tabular-nums ${isUrgent ? 'motion-safe:animate-pulse' : ''}`}
+              style={{ color: isUrgent ? '#ef4444' : rm.color }}
+            >
+              {formatCountdown(auction.endsAt, now)}
+            </span>
+          </div>
+        </div>
+
+        {/* Main content */}
+        <div className="p-5 md:p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[132px_minmax(0,1fr)_310px] gap-5 lg:gap-6 items-stretch">
+
+            {/* Item artwork */}
+            <div className="flex lg:block">
+              {auction.imageUrl ? (
+                <div
+                  className="relative w-[112px] h-[112px] md:w-[132px] md:h-[132px] rounded-xl overflow-hidden border bg-black/35"
+                  style={{
+                    borderColor: rgba(rm.rgb, 0.5),
+                    boxShadow: `0 10px 30px -16px ${rgba(rm.rgb, 0.65)}`,
+                  }}
+                >
+                  <img
+                    src={auction.imageUrl}
+                    alt={auction.name}
+                    loading="lazy"
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.currentTarget.style.display = 'none' }}
+                  />
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      boxShadow: `inset 0 0 0 1px ${rgba(rm.rgb, 0.12)}`,
+                    }}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="w-[112px] h-[112px] md:w-[132px] md:h-[132px] rounded-xl border flex items-center justify-center font-spectral text-4xl font-bold bg-black/30"
+                  style={{
+                    borderColor: rgba(rm.rgb, 0.5),
+                    color: rm.color,
+                    backgroundColor: rgba(rm.rgb, 0.08),
+                  }}
+                  aria-hidden="true"
+                >
+                  {auction.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+            </div>
+
+            {/* Item information */}
+            <div className="min-w-0 flex flex-col justify-center">
+              <div
+                className="text-[10px] font-bold uppercase tracking-[0.22em] mb-1"
+                style={{ color: rm.color }}
+              >
+                {rm.label}
+              </div>
+
+              <h2 className="font-spectral text-2xl md:text-3xl lg:text-[34px] font-bold leading-[1.05] text-text-bright break-words">
+                {auction.name}
+              </h2>
+
+              {auction.description && (
+                <p className="text-xs md:text-sm text-text-dim mt-2 max-w-2xl leading-relaxed">
+                  {auction.description}
+                </p>
+              )}
+
+              <div className="grid grid-cols-2 gap-2.5 mt-5 max-w-xl">
+                <div className="rounded-xl border border-white/[0.07] bg-black/25 px-3.5 py-3">
+                  <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">
+                    Current bid
+                  </div>
+                  <div className="flex items-baseline gap-1.5 mt-1">
+                    <span
+                      className="font-mono text-xl md:text-2xl font-bold tabular-nums"
+                      style={{ color: rm.color }}
+                    >
+                      {auction.currentBid.toLocaleString()}
+                    </span>
+                    <span className="text-[10px] text-text-dim">coins</span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-white/[0.07] bg-black/25 px-3.5 py-3 min-w-0">
+                  <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">
+                    Leading bidder
+                  </div>
+                  <div className={`text-sm md:text-base font-semibold truncate mt-1 ${isWinning ? 'text-green-400' : 'text-text-bright'}`}>
+                    {auction.topBidder || 'No bids yet'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-[10px] text-text-dim">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-text-dim/70">Ends</span>
+                  <span className="font-mono text-gold-light tabular-nums">{formatDateTime(auction.endsAt)}</span>
+                  <span>server</span>
+                </span>
+                {isWinning && (
+                  <span className="inline-flex items-center gap-1 text-green-400 font-semibold">
+                    <span>✓</span> You're leading
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Bid panel */}
+            <div className="rounded-xl border border-white/[0.07] bg-black/30 p-4 md:p-5 flex flex-col justify-center">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-text-dim">
+                    Place your bid
+                  </div>
+                  <div className="text-[11px] text-text-dim mt-1">
+                    Minimum <span className="font-mono font-bold text-gold-light">{minNextBid.toLocaleString()}</span> coins
+                  </div>
+                </div>
+                <div
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{
+                    backgroundColor: biddingOpen ? '#4ade80' : '#ef4444',
+                    boxShadow: `0 0 10px ${biddingOpen ? 'rgba(74,222,128,.45)' : 'rgba(239,68,68,.45)'}`,
+                  }}
+                  aria-hidden="true"
+                />
+              </div>
+
+              {currentUser && auction.status === 'active' ? (
+                biddingOpen ? (
+                  <div>
+                    <label htmlFor={`featured-bid-${auction.id}`} className="sr-only">
+                      Bid amount
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id={`featured-bid-${auction.id}`}
+                        className="input text-base flex-1 min-w-0"
+                        type="number"
+                        min={minNextBid}
+                        step={MIN_BID_INCREMENT}
+                        placeholder={String(minNextBid)}
+                        value={bidAmount}
+                        onChange={e => onBidChange(e.target.value)}
+                        onFocus={e => { if (!e.target.value) onBidChange(String(minNextBid)) }}
+                      />
+                      <button
+                        onClick={onPlaceBid}
+                        className="btn-gold px-5 text-sm font-bold whitespace-nowrap"
+                      >
+                        Bid
+                      </button>
+                    </div>
+                    <div className="text-[10px] text-text-dim mt-2">
+                      +{MIN_BID_INCREMENT} coins minimum increment
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-red-500/25 bg-red-500/[0.07] px-3 py-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-red-400">
+                      <span>🔒</span>
+                      <span>Bidding closed</span>
+                    </div>
+                    <div className="text-[10px] text-text-dim mt-1">
+                      Final 5 minutes — auction is locked.
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="text-xs text-text-dim rounded-lg border border-white/[0.06] bg-black/20 px-3 py-3">
+                  Sign in to participate in this auction.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bid history */}
+          {history.length > 0 && (
+            <div className="mt-5 pt-4 border-t border-white/[0.06]">
+              <button
+                type="button"
+                onClick={onToggleBids}
+                aria-expanded={isBidsExpanded}
+                className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-text-dim hover:text-gold-light transition-colors rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+              >
+                <span
+                  className={`transition-transform ${isBidsExpanded ? 'rotate-180' : ''}`}
+                  aria-hidden="true"
+                >
+                  ▾
+                </span>
+                Bid history
+                <span className="font-mono text-gold-light">{history.length}</span>
+              </button>
+
+              {isBidsExpanded && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-3 max-h-[190px] overflow-y-auto pr-1" role="list">
+                  {history.map((b, idx) => {
+                    const isCurrentTop = idx === 0
+                    return (
+                      <div
+                        key={b.time || idx}
+                        role="listitem"
+                        className={`rounded-lg border px-3 py-2 ${
+                          isCurrentTop
+                            ? 'border-green-500/25 bg-green-500/[0.06]'
+                            : 'border-white/[0.06] bg-black/20'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-xs font-semibold truncate ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>
+                            {b.bidder}
+                          </span>
+                          <span className={`font-mono text-xs font-bold tabular-nums flex-shrink-0 ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>
+                            {b.amount.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className={`text-[10px] mt-1 ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>
+                          {isCurrentTop
+                            ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading')
+                            : 'Outbid'}
+                          {' · '}
+                          {formatClock(b.time)} server
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Admin actions */}
+          {isElder && (
+            <div className="flex items-center gap-2 mt-5 pt-4 border-t border-white/[0.06]">
+              {isMaster && (
+                <button
+                  onClick={onEndEarly}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-yellow-500/20 bg-yellow-500/[0.04] px-3 py-2 text-[11px] font-semibold text-yellow-400 hover:bg-yellow-500/[0.09] hover:border-yellow-500/35 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+                >
+                  <span aria-hidden="true">⏹</span>
+                  End early
+                </button>
+              )}
+
+              <button
+                onClick={onToggleFeatured}
+                disabled={featuringInFlight}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 disabled:opacity-50 ${
+                  isPinned
+                    ? 'border-gold/45 bg-gold/[0.09] text-gold-bright hover:bg-gold/[0.14]'
+                    : 'border-white/[0.10] bg-black/20 text-text-dim hover:text-gold-light hover:border-gold/35'
+                }`}
+                title={isPinned ? 'Remove from featured' : 'Pin as featured'}
+              >
+                <span aria-hidden="true">{featuringInFlight ? '…' : (isPinned ? '★' : '☆')}</span>
+                <span>{isPinned ? 'Unfeature' : 'Feature'}</span>
+              </button>
+
+              <button
+                onClick={onDelete}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold text-red-400/80 hover:text-red-300 hover:bg-red-500/[0.06] transition-colors ml-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+              >
+                <span aria-hidden="true">🗑</span>
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function AuctionCard({
   auction, now, currentUser, isElder, isMaster,
+  isFeatured, onToggleFeatured, featuringInFlight,
   bidAmount, onBidChange, onPlaceBid, onEndEarly, onDelete,
-  isBidsExpanded, onToggleBids, activeRegion,
+  isBidsExpanded, onToggleBids,
 }) {
   const isWinning = auction.topBidder === currentUser?.name
   const bids = auction.bids || []
@@ -1205,19 +1595,36 @@ function AuctionCard({
 
   return (
     <div
-      className={`card border-l-4 ${isWinning ? 'bg-green-500/5' : ''}`}
+      className={`relative card border-l-4 ${isWinning ? 'bg-green-500/5' : ''}`}
       style={{
         borderLeftColor: isWinning ? '#22c55e' : rm.color,
         boxShadow: glow && !isWinning ? `0 0 16px ${rgba(rm.rgb, 0.12)}` : undefined,
       }}
     >
+      {isElder && (
+        <button
+          type="button"
+          onClick={onToggleFeatured}
+          disabled={featuringInFlight}
+          title={isFeatured ? 'Remove from featured' : 'Pin as featured'}
+          aria-label={isFeatured ? 'Remove from featured' : 'Pin as featured'}
+          className={`absolute top-2 right-2 w-7 h-7 rounded-full border flex items-center justify-center text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 disabled:opacity-50 ${
+            isFeatured
+              ? 'bg-gold text-black border-gold-bright'
+              : 'bg-void/60 text-gold-light/70 border-gold/30 hover:text-gold-bright hover:border-gold/60'
+          }`}
+        >
+          {featuringInFlight ? '…' : (isFeatured ? '★' : '☆')}
+        </button>
+      )}
+
       <div className="flex items-start gap-3">
         {auction.imageUrl && (
           <ItemImage src={auction.imageUrl} alt={auction.name} size={64} />
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
+            <div className="min-w-0 pr-8">
               <div className="font-bold truncate" style={{ color: rm.color }}>{auction.name}</div>
               <div className="mt-1"><RarityBadge rarity={auction.rarity} /></div>
             </div>
@@ -1235,31 +1642,15 @@ function AuctionCard({
         <div className="text-xs text-text-dim mt-2 italic">{auction.description}</div>
       )}
 
-      {activeRegion && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-dim">
-          <span className="inline-flex items-center gap-1 tabular-nums">
-            <span aria-hidden="true">🕒</span>
-            <span className="font-mono text-gold-light">
-              {formatDateTimeInZone(auction.endsAt, SERVER_TZ)}
-            </span>
-            <span>server</span>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-dim">
+        <span className="inline-flex items-center gap-1 tabular-nums">
+          <span aria-hidden="true">🕒</span>
+          <span className="font-mono text-gold-light">
+            {formatDateTime(auction.endsAt)}
           </span>
-          <span className="text-gold/20" aria-hidden="true">·</span>
-          <span className="inline-flex items-center gap-1 tabular-nums">
-            <FlagImage
-              code={activeRegion.code}
-              flag={activeRegion.flag}
-              name={activeRegion.name}
-              width={14}
-              height={10}
-            />
-            <span className="font-mono text-gold-light">
-              {formatDateTimeInZone(auction.endsAt, activeRegion.tz)}
-            </span>
-            <span>local</span>
-          </span>
-        </div>
-      )}
+          <span>server</span>
+        </span>
+      </div>
 
       <div className="flex items-center justify-between mt-3">
         <div>
@@ -1268,7 +1659,7 @@ function AuctionCard({
         </div>
         <div className="text-right">
           <div className="text-xs text-text-dim">Top bidder</div>
-          <div className="font-semibold text-text-bright">{auction.topBidder || '—'}</div>
+          <div className={`font-semibold ${isWinning ? 'text-green-400' : 'text-text-bright'}`}>{auction.topBidder || '—'}</div>
         </div>
       </div>
 
@@ -1333,7 +1724,9 @@ function AuctionCard({
                       <span className={`font-bold flex-shrink-0 ${isCurrentTop ? 'text-green-300' : 'text-text-dim line-through'}`}>{b.amount.toLocaleString()}</span>
                     </div>
                     <div className={`text-[11px] mt-0.5 ${isCurrentTop ? 'text-green-400' : 'text-text-dim'}`}>
-                      {isCurrentTop ? (auction.topBidder === currentUser?.name ? 'winning' : 'leading') : 'outbid'} at {formatClock(b.time)}
+                      {isCurrentTop ? (auction.topBidder === currentUser?.name ? 'winning' : 'leading') : 'outbid'} at{' '}
+                      <span className="font-mono tabular-nums">{formatClock(b.time)}</span>
+                      <span className="text-text-dim/70"> server</span>
                     </div>
                   </div>
                 )
@@ -1368,7 +1761,7 @@ function AuctionCard({
 
 function EndedAuctionRow({
   auction: a, now, currentUser, isElder, distributors,
-  isExpanded, onToggle, onAssignDistributor, onDelete, activeRegion,
+  isExpanded, onToggle, onAssignDistributor, onDelete,
 }) {
   const bids = a.bids || []
   const totalBids = bids.length
@@ -1430,8 +1823,15 @@ function EndedAuctionRow({
           <span className="text-[10px] text-text-dim">coins</span>
         </div>
 
-        {agoLabel && (
-          <span className="text-[11px] text-text-dim flex-shrink-0 hidden sm:inline">{agoLabel}</span>
+        {endedAt > 0 && (
+          <div className="hidden sm:flex flex-col items-end flex-shrink-0 leading-tight">
+            <span className="text-[10px] font-mono tabular-nums text-gold-light whitespace-nowrap">
+              {formatDateTime(endedAt)}
+            </span>
+            <span className="text-[10px] text-text-dim whitespace-nowrap">
+              {agoLabel} · server
+            </span>
+          </div>
         )}
 
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -1517,22 +1917,9 @@ function EndedAuctionRow({
         </div>
       )}
 
-      {isExpanded && (
+      {isExpanded && endedAt > 0 && (
         <div className="px-4 pb-3 text-[10px] text-text-dim flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span>Ended {endedAt > 0 ? formatDateTime(endedAt) : '—'} (server)</span>
-          {activeRegion && endedAt > 0 && (
-            <>
-              <span className="text-gold/20" aria-hidden="true">·</span>
-              <FlagImage
-                code={activeRegion.code}
-                flag={activeRegion.flag}
-                name={activeRegion.name}
-                width={14}
-                height={10}
-              />
-              <span>{formatDateTimeInZone(endedAt, activeRegion.tz)} (local)</span>
-            </>
-          )}
+          <span>Ended {formatDateTime(endedAt)} · server time ({SERVER_TZ_LABEL})</span>
         </div>
       )}
     </li>
