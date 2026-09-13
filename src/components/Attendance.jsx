@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 
 const eventTypes = [
   'Clan Annihilation',
@@ -10,6 +10,28 @@ const eventTypes = [
 
 const SERVER_TZ = 'Asia/Singapore'
 const SERVER_TZ_LABEL = 'GMT+8'
+
+// Automatically use the timezone configured on the player's browser/device.
+// Server time remains authoritative for saved attendance records.
+const AUTO_LOCAL_TZ = (() => {
+  try {
+    return new Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local'
+  } catch {
+    return 'Local'
+  }
+})()
+
+function getLocalZoneLabel() {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, {
+      timeZone: AUTO_LOCAL_TZ,
+      timeZoneName: 'shortOffset',
+    }).formatToParts(new Date())
+    return parts.find(p => p.type === 'timeZoneName')?.value || AUTO_LOCAL_TZ
+  } catch {
+    return AUTO_LOCAL_TZ
+  }
+}
 
 const FALLBACK_REGIONS = [
   { id: 'ph', code: 'ph', flag: '🇵🇭', name: 'Philippines', tz: 'Asia/Manila',       label: 'GMT+8' },
@@ -63,6 +85,10 @@ function formatInZone(ts, tz) {
   return formatShortNoYearInZone(ts, tz)
 }
 
+function formatInAutoLocalZone(ts) {
+  return formatShortNoYearInZone(ts, AUTO_LOCAL_TZ)
+}
+
 /** Small flag image from flagcdn.com with emoji fallback. */
 function FlagImage({ code, flag, name, width = 20, height = 15 }) {
   const [failed, setFailed] = useState(false)
@@ -100,7 +126,6 @@ export default function Attendance({ ctx }) {
   const {
     members, setMembers, attendanceLogs, setAttendanceLogs,
     currentUser, addToast, supabase,
-    region, setRegionId, regions: ctxRegions,
   } = ctx
 
   const [selectedEvent, setSelectedEvent] = useState(eventTypes[0])
@@ -112,7 +137,6 @@ export default function Attendance({ ctx }) {
   const [detailLog, setDetailLog] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
   const [now, setNow] = useState(Date.now())
-  const [pickerOpen, setPickerOpen] = useState(false)
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
@@ -122,30 +146,10 @@ export default function Attendance({ ctx }) {
   const isElder = currentUser?.role === 'Elder' || currentUser?.role === 'Master' || currentUser?.role === 'Admin'
   const filtered = members.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
 
-  const regions = useMemo(() => {
-    const list = Array.isArray(ctxRegions) && ctxRegions.length > 0 ? ctxRegions : FALLBACK_REGIONS
-    return list.map(r => ({ ...r, code: r.code || r.id, flag: r.flag || '' }))
-  }, [ctxRegions])
-
-  const activeRegion = useMemo(() => {
-    const r = region || regions[0]
-    return {
-      ...r,
-      code: r.code || r.id,
-      flag: r.flag || '',
-      name: r.name || r.label || r.id,
-      label: r.label || '',
-    }
-  }, [region, regions])
 
   const toggleMember = (id) => setSelectedMembers(prev => ({ ...prev, [id]: !prev[id] }))
   const toggleLog = (id) => setExpandedLogs(prev => ({ ...prev, [id]: !prev[id] }))
 
-  const pickRegion = (id) => {
-    if (typeof setRegionId === 'function') setRegionId(id)
-    else try { localStorage.setItem('peakyblader:localRegion', id) } catch {}
-    setPickerOpen(false)
-  }
 
   const recordAttendance = async () => {
     const ids = Object.keys(selectedMembers).filter(k => selectedMembers[k])
@@ -388,6 +392,7 @@ export default function Attendance({ ctx }) {
               <div className="col-span-2 sm:col-span-1 rounded-xl border border-gold/20 bg-gold/[.04] px-3 sm:px-4 py-2 sm:py-2.5 min-w-0 sm:min-w-[210px]">
                 <div className="text-[8px] sm:text-[9px] font-bold uppercase tracking-[.12em] sm:tracking-[.15em] text-gold-dim">Server Time · {SERVER_TZ_LABEL}</div>
                 <div className="mt-1 text-xs sm:text-sm font-mono font-bold tabular-nums text-gold-light whitespace-nowrap">{formatGMT8(now)}</div>
+                <div className="mt-0.5 text-[8px] font-mono text-text-dim">Your Time auto: {getLocalZoneLabel()}</div>
               </div>
             </div>
           </div>
@@ -398,43 +403,13 @@ export default function Attendance({ ctx }) {
               <span><span className="text-text-bright font-semibold">{attendanceLogs.length}</span> attendance log{attendanceLogs.length === 1 ? '' : 's'}</span>
             </div>
 
-            <div className="relative w-full sm:w-auto sm:ml-auto">
-              <button
-                type="button"
-                onClick={() => setPickerOpen(o => !o)}
-                className={`w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2 rounded-lg border px-3 py-2 text-[10px] sm:text-[11px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${pickerOpen ? 'border-gold/60 bg-gold/[.06] text-gold-bright' : 'border-white/[.08] bg-black/20 text-text-dim hover:border-gold/35 hover:text-text-bright'}`}
-                aria-expanded={pickerOpen}
-              >
-                <FlagImage code={activeRegion.code} flag={activeRegion.flag} name={activeRegion.name} width={20} height={15} />
-                <span className="font-semibold">{activeRegion.name}</span>
-                <span className="font-mono text-[10px] text-text-dim">{formatInZone(now, activeRegion.tz)}</span>
-                <span className={`transition-transform ${pickerOpen ? 'rotate-180' : ''}`}>⌄</span>
-              </button>
-
-              {pickerOpen && (
-                <div className="absolute left-0 sm:left-auto right-0 top-full mt-2 w-full sm:w-[260px] max-h-[55vh] sm:max-h-[420px] rounded-xl border border-gold/25 bg-[#0c0a09] shadow-2xl overflow-auto z-[100]">
-                  <div className="sticky top-0 px-4 py-2.5 border-b border-white/[.06] bg-[#0c0a09]">
-                    <div className="text-[9px] font-bold uppercase tracking-[.18em] text-gold-dim">Local Region</div>
-                    <div className="mt-0.5 text-[10px] text-text-dim">Choose the timezone used for local times.</div>
-                  </div>
-                  {regions.map(r => {
-                    const isActive = r.id === activeRegion.id
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => pickRegion(r.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${isActive ? 'bg-gold/10 text-gold-bright' : 'text-text hover:bg-white/[.03] hover:text-text-bright'}`}
-                      >
-                        <FlagImage code={r.code} flag={r.flag} name={r.name} />
-                        <span className="flex-1 min-w-0 text-xs font-semibold truncate">{r.name || r.label || r.id}</span>
-                        <span className="text-[10px] font-mono text-text-dim">{r.label || ''}</span>
-                        {isActive && <span className="text-gold-bright text-xs">✓</span>}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
+            <div className="w-full sm:w-auto sm:ml-auto">
+              <div className="inline-flex w-full sm:w-auto items-center gap-2 rounded-lg border border-gold/20 bg-gold/[.035] px-3 py-2 text-[10px] sm:text-[11px]">
+                <span className="h-1.5 w-1.5 rounded-full bg-gold-bright" />
+                <span className="font-semibold text-gold-light">Your Time</span>
+                <span className="font-mono text-text-dim">{AUTO_LOCAL_TZ}</span>
+                <span className="font-mono text-gold-light/80">{getLocalZoneLabel()}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -507,7 +482,7 @@ export default function Attendance({ ctx }) {
               </div>
 
               <div className="mt-3 text-[9px] text-text-dim">
-                Attendance will be recorded at <span className="font-mono text-gold-light">{formatGMT8(now)}</span> server time.
+                Attendance will be recorded at <span className="font-mono text-gold-light">{formatGMT8(now)}</span> server time. <span className="text-text-dim">Your Time: {formatInAutoLocalZone(now)} · {AUTO_LOCAL_TZ}</span>
               </div>
             </div>
 
@@ -634,14 +609,8 @@ export default function Attendance({ ctx }) {
 
                         {logTs > 0 && (
                           <span className="inline-flex items-center gap-1.5 text-gold-light/75">
-                            <FlagImage
-                              code={activeRegion.code}
-                              flag={activeRegion.flag}
-                              name={activeRegion.name}
-                              width={14}
-                              height={10}
-                            />
-                            <span>{formatInZone(logTs, activeRegion.tz)}</span>
+                            <span className="h-1.5 w-1.5 rounded-full bg-gold-bright/70" />
+                            <span>{formatInAutoLocalZone(logTs)}</span>
                           </span>
                         )}
 
@@ -732,14 +701,8 @@ export default function Attendance({ ctx }) {
 
                     {logTs > 0 && (
                       <span className="inline-flex items-center gap-1.5 text-gold-light/75">
-                        <FlagImage
-                          code={activeRegion.code}
-                          flag={activeRegion.flag}
-                          name={activeRegion.name}
-                          width={14}
-                          height={10}
-                        />
-                        <span>{formatInZone(logTs, activeRegion.tz)}</span>
+                            <span className="h-1.5 w-1.5 rounded-full bg-gold-bright/70" />
+                            <span>{formatInAutoLocalZone(logTs)}</span>
                       </span>
                     )}
 
