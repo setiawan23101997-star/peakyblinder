@@ -356,7 +356,7 @@ export default function Dashboard({ ctx, setPage }) {
   const goAttendance = useCallback(() => setPage('attendance'), [setPage])
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-7 pb-10">
       <HeroSection
         currentUser={currentUser}
         activeRegion={activeRegion}
@@ -381,10 +381,10 @@ export default function Dashboard({ ctx, setPage }) {
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatTile icon="👥" label="Warriors" value={visibleMembers.length} />
-        <StatTile icon="🪙" label="Coins in play" value={totalCoins.toLocaleString()} />
-        <StatTile icon="⚔️" label="Total power" value={totalPower.toLocaleString()} />
-        <StatTile icon="🔨" label="Live auctions" value={totalActiveAuctions} onClick={goAuctions} />
+        <StatTile icon="♙" label="Warriors" value={visibleMembers.length} />
+        <StatTile icon="✦" label="Coins in play" value={totalCoins.toLocaleString()} />
+        <StatTile icon="⚔" label="Total power" value={totalPower.toLocaleString()} />
+        <StatTile icon="◇" label="Live auctions" value={totalActiveAuctions} onClick={goAuctions} />
       </section>
 
       <ScheduleSection activeRegion={activeRegion} idPrefix={idPrefix} />
@@ -414,14 +414,20 @@ const HeroSection = React.memo(function HeroSection({
 
   return (
     <>
-      <section className="relative rounded-2xl border border-gold/20 bg-gradient-to-br from-gold/[0.06] via-transparent to-transparent overflow-hidden">
-        <div className="p-4 md:p-5 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-center">
+      <section className="relative overflow-hidden rounded-2xl border border-gold/20 bg-[#0b0a09]/90 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/70 to-transparent" aria-hidden="true" />
+        <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gold/[0.05] blur-3xl" aria-hidden="true" />
+        <div className="relative p-5 md:p-6 grid grid-cols-1 xl:grid-cols-[1fr_auto] gap-6 items-center">
           <div className="min-w-0">
-            <h1 className="font-spectral text-2xl md:text-3xl font-bold leading-tight truncate">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_10px_rgba(242,204,96,0.8)]" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-gold-dim">Clan command center</span>
+            </div>
+            <h1 className="font-spectral text-3xl md:text-4xl font-bold leading-tight truncate">
               <span className="text-text-bright">{greeting}, </span>
               <span className="text-gold-bright">{firstName}</span>
             </h1>
-            <p className="text-text-dim text-sm mt-1.5 truncate">
+            <p className="text-text-dim text-sm md:text-[15px] mt-2 truncate max-w-2xl">
               {todayEvents.length > 0
                 ? <>{todayEvents.length} {todayEvents.length === 1 ? 'event' : 'events'} today — first at{' '}
                     <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(todayEvents[0].time)}</span>
@@ -430,12 +436,12 @@ const HeroSection = React.memo(function HeroSection({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-stretch gap-2">
-            <div className="rounded-lg border border-gold/25 bg-void/60 px-3 py-2 min-w-[150px]">
-              <div className="text-[10px] text-gold-dim font-semibold uppercase tracking-wider">
+          <div className="grid grid-cols-2 gap-2 min-w-0 xl:min-w-[330px]">
+            <div className="rounded-xl border border-gold/15 bg-black/25 px-3.5 py-3 min-w-0">
+              <div className="text-[9px] text-text-dim font-bold uppercase tracking-[0.16em]">
                 Server · {SERVER_TZ_LABEL}
               </div>
-              <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-0.5">
+              <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-1">
                 <span className="text-xl md:text-2xl">
                   {serverClock.time.slice(0, 5)}
                 </span>
@@ -448,11 +454,11 @@ const HeroSection = React.memo(function HeroSection({
               </div>
             </div>
 
-            <div className="rounded-lg border border-gold/25 bg-void/60 px-3 py-2 min-w-[150px]">
+            <div className="rounded-xl border border-gold/15 bg-black/25 px-3.5 py-3 min-w-0">
               <div className="text-[10px] text-gold-dim font-semibold uppercase tracking-wider flex items-center gap-1.5">
                 <span>Local · {activeRegion.label}</span>
               </div>
-              <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-0.5">
+              <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-1">
                 <span className="text-xl md:text-2xl">{localClock.time}</span>
               </div>
               <div className="text-[10px] text-text-dim mt-1 whitespace-nowrap flex items-center gap-1.5">
@@ -470,10 +476,10 @@ const HeroSection = React.memo(function HeroSection({
         </div>
       </section>
 
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <ActionTile icon="📋" label="Attendance" hint={isElder ? 'Record & award coins' : 'View attendance history'} onClick={goAttendance} />
-        <ActionTile icon="🔨" label="Auctions" hint="Bid on clan items" onClick={goAuctions} />
-        <ActionTile icon="👥" label={isElder ? 'Manage members' : 'View members'} hint={isElder ? 'Add, edit & remove' : 'See clan roster'} onClick={goMembers} />
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <ActionTile icon="◷" label="Attendance" hint={isElder ? 'Record & award coins' : 'View attendance history'} onClick={goAttendance} />
+        <ActionTile icon="◇" label="Auctions" hint="Bid on clan items" onClick={goAuctions} />
+        <ActionTile icon="♙" label={isElder ? 'Manage members' : 'View members'} hint={isElder ? 'Add, edit & remove' : 'See clan roster'} onClick={goMembers} />
       </section>
     </>
   )
@@ -488,18 +494,21 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
   if (totalCount === 0) return null
 
   return (
-    <section>
+    <section className="relative">
       <div className="flex items-end justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <h2 className="font-spectral text-xl font-bold text-text-bright">Live auctions</h2>
-          <span className="text-[11px] font-semibold text-gold-bright bg-gold/15 border border-gold/40 rounded px-2 py-0.5">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-dim mb-0.5">Market</div>
+            <h2 className="font-spectral text-xl font-bold text-text-bright">Live auctions</h2>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gold-light bg-gold/[0.08] border border-gold/20 rounded-full px-2.5 py-1">
             {totalCount} active
           </span>
         </div>
         <button
           type="button"
           onClick={onOpenAll}
-          className="text-xs font-semibold text-gold-light hover:text-gold-bright transition-colors"
+          className="text-[11px] font-bold uppercase tracking-wider text-text-dim hover:text-gold-bright transition-colors"
         >
           View all →
         </button>
@@ -543,7 +552,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
       type="button"
       onClick={onOpenAll}
       aria-label={cardLabel}
-      className="group text-left rounded-xl border bg-void/40 p-3 flex gap-3 transition-colors hover:bg-gold/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+      className="group text-left rounded-2xl border bg-[#0c0b0a]/80 p-3.5 flex gap-3 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#11100e] hover:border-gold/40 hover:shadow-[0_14px_35px_rgba(0,0,0,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
       style={{ borderColor: isLeading ? 'rgba(34,197,94,0.5)' : rarity.border }}
     >
       <div className="flex-shrink-0">
@@ -554,13 +563,13 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
             width={64}
             height={64}
             loading="lazy"
-            className="rounded-lg border border-gold/25 object-cover bg-void/60"
+            className="rounded-xl border border-white/10 object-cover bg-black/30 shadow-inner"
             style={{ width: 64, height: 64 }}
             onError={(e) => { e.currentTarget.style.display = 'none' }}
           />
         ) : (
           <div
-            className="rounded-lg border flex items-center justify-center font-spectral font-bold"
+            className="rounded-xl border flex items-center justify-center font-spectral font-bold bg-black/25"
             style={{
               width: 64, height: 64,
               borderColor: rarity.border,
@@ -588,14 +597,14 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
           </span>
         </div>
 
-        <div className="text-sm font-semibold truncate mb-1.5" style={{ color: rarity.color }} aria-hidden="true">
+        <div className="text-[15px] font-semibold truncate mb-1.5 leading-tight" style={{ color: rarity.color }} aria-hidden="true">
           {a.name}
         </div>
 
-        <div className="mt-auto flex items-end justify-between gap-3 pt-2 border-t border-gold/10" aria-hidden="true">
+        <div className="mt-auto flex items-end justify-between gap-3 pt-2.5 border-t border-white/[0.06]" aria-hidden="true">
           <div className="min-w-0">
             <div className="text-[10px] text-text-dim leading-none">Top bid</div>
-            <div className="font-mono text-base font-bold text-gold-bright tabular-nums leading-tight mt-1">
+            <div className="font-mono text-lg font-bold text-gold-bright tabular-nums leading-tight mt-1">
               {(a.currentBid || 0).toLocaleString()}
             </div>
           </div>
@@ -645,18 +654,21 @@ const RecentWinsStrip = React.memo(function RecentWinsStrip({
   if (wins.length === 0) return null
 
   return (
-    <section>
+    <section className="relative">
       <div className="flex items-end justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <h2 className="font-spectral text-xl font-bold text-text-bright">Recently won</h2>
-          <span className="text-[11px] font-semibold text-green-400 bg-green-500/10 border border-green-500/40 rounded px-2 py-0.5">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-dim mb-0.5">History</div>
+            <h2 className="font-spectral text-xl font-bold text-text-bright">Recently won</h2>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-green-300 bg-green-500/[0.08] border border-green-500/20 rounded-full px-2.5 py-1">
             last 7 days
           </span>
         </div>
         <button
           type="button"
           onClick={onOpenAll}
-          className="text-xs font-semibold text-gold-light hover:text-gold-bright transition-colors"
+          className="text-[11px] font-bold uppercase tracking-wider text-text-dim hover:text-gold-bright transition-colors"
         >
           View history →
         </button>
@@ -697,7 +709,7 @@ const RecentWinCard = React.memo(function RecentWinCard({
       type="button"
       onClick={onOpenAll}
       aria-label={cardLabel}
-      className={`group relative text-left rounded-xl border p-3 flex gap-3 transition-colors hover:bg-gold/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${
+      className={`group relative text-left rounded-2xl border p-3.5 flex gap-3 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#11100e] hover:shadow-[0_14px_35px_rgba(0,0,0,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${
         isMe ? 'bg-green-500/[0.06]' : 'bg-void/40'
       }`}
       style={{
@@ -721,13 +733,13 @@ const RecentWinCard = React.memo(function RecentWinCard({
             width={64}
             height={64}
             loading="lazy"
-            className="rounded-lg border border-gold/25 object-cover bg-void/60"
+            className="rounded-xl border border-white/10 object-cover bg-black/30 shadow-inner"
             style={{ width: 64, height: 64 }}
             onError={(e) => { e.currentTarget.style.display = 'none' }}
           />
         ) : (
           <div
-            className="rounded-lg border flex items-center justify-center font-spectral font-bold"
+            className="rounded-xl border flex items-center justify-center font-spectral font-bold bg-black/25"
             style={{
               width: 64, height: 64,
               borderColor: rarity.border,
@@ -752,14 +764,14 @@ const RecentWinCard = React.memo(function RecentWinCard({
           </span>
         </div>
 
-        <div className="text-sm font-semibold truncate mb-1.5" style={{ color: rarity.color }} aria-hidden="true">
+        <div className="text-[15px] font-semibold truncate mb-1.5 leading-tight" style={{ color: rarity.color }} aria-hidden="true">
           {a.name}
         </div>
 
-        <div className="mt-auto flex items-end justify-between gap-3 pt-2 border-t border-gold/10" aria-hidden="true">
+        <div className="mt-auto flex items-end justify-between gap-3 pt-2.5 border-t border-white/[0.06]" aria-hidden="true">
           <div className="min-w-0">
             <div className="text-[10px] text-text-dim leading-none">Final price</div>
-            <div className="font-mono text-base font-bold text-gold-bright tabular-nums leading-tight mt-1">
+            <div className="font-mono text-lg font-bold text-gold-bright tabular-nums leading-tight mt-1">
               {price.toLocaleString()}
             </div>
           </div>
@@ -803,10 +815,13 @@ const ScheduleSection = React.memo(function ScheduleSection({ activeRegion, idPr
   const activeDay = selectedDay ?? todayDowServer
 
   return (
-    <section>
+    <section className="relative">
       <div className="flex items-end justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h2 className="font-spectral text-2xl font-bold text-text-bright">Weekly schedule</h2>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-dim mb-0.5">Clan calendar</div>
+            <h2 className="font-spectral text-2xl font-bold text-text-bright">Weekly schedule</h2>
+          </div>
           <p className="text-text-dim text-sm mt-1 flex items-center gap-2 flex-wrap">
             <span>🕒 Server time · {SERVER_TZ_LABEL}</span>
             {activeRegion.id !== 'ph' && (
@@ -878,16 +893,16 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
   const localEq = formatInZone(next.nextTs, activeRegion.tz)
 
   return (
-    <div className="relative rounded-2xl border border-gold/25 overflow-hidden mb-3">
+    <div className="relative rounded-2xl border border-gold/15 bg-[#0b0a09]/85 overflow-hidden mb-3 shadow-[0_14px_40px_rgba(0,0,0,0.2)]">
       <div
         className="absolute inset-0 opacity-[0.07] pointer-events-none"
         style={{ background: `radial-gradient(circle at 0% 0%, ${t.color}, transparent 60%)` }}
         aria-hidden="true"
       />
 
-      <div className="relative p-4 flex items-center gap-4 flex-wrap">
+      <div className="relative p-4 md:p-5 flex items-center gap-4 flex-wrap">
         <div
-          className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+          className="flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl bg-black/20"
           style={{ background: `${t.color}15`, border: `1px solid ${t.color}40` }}
           aria-hidden="true"
         >
@@ -971,11 +986,11 @@ const WeeklyEventTabs = React.memo(function WeeklyEventTabs({
   const panelId = `${idPrefix}-panel`
 
   return (
-    <div className="rounded-xl border border-gold/15 bg-void/30 overflow-hidden">
+    <div className="rounded-2xl border border-gold/15 bg-[#0b0a09]/70 overflow-hidden shadow-[0_12px_35px_rgba(0,0,0,0.18)]">
       <div
         role="tablist"
         aria-label="Day of the week (server time)"
-        className="flex overflow-x-auto no-scrollbar border-b border-gold/10"
+        className="flex overflow-x-auto no-scrollbar border-b border-white/[0.06] bg-black/20"
       >
         {DAY_ORDER.map(dow => {
           const isActive = dow === activeDay
@@ -994,7 +1009,7 @@ const WeeklyEventTabs = React.memo(function WeeklyEventTabs({
               tabIndex={isActive ? 0 : -1}
               onClick={() => onSelect(dow)}
               onKeyDown={e => handleKeyDown(e, dow)}
-              className={`relative flex-1 min-w-[64px] sm:min-w-[76px] flex flex-col items-center gap-0.5 px-2 py-2.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 focus-visible:-outline-offset-2 ${
+              className={`relative flex-1 min-w-[72px] sm:min-w-[82px] flex flex-col items-center gap-0.5 px-3 py-3 text-sm font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 focus-visible:-outline-offset-2 ${
                 isActive ? 'text-gold-bright' : 'text-text-dim hover:text-text-bright'
               }`}
             >
@@ -1018,7 +1033,7 @@ const WeeklyEventTabs = React.memo(function WeeklyEventTabs({
         role="tabpanel"
         aria-labelledby={`${idPrefix}-tab-${activeDay}`}
         tabIndex={0}
-        className="p-2.5 space-y-2"
+        className="p-3 md:p-4 space-y-2.5"
       >
         {events.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-text-dim italic">
@@ -1051,7 +1066,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
   const localEq = formatInZone(startTs, activeRegion.tz)
 
   return (
-    <div className="rounded-lg bg-void/50 border border-gold/10 p-3 sm:p-0 sm:px-3 sm:py-2.5 hover:border-gold/25 transition-colors">
+    <div className="rounded-xl bg-black/20 border border-white/[0.06] p-3 sm:p-0 sm:px-3.5 sm:py-3 hover:border-gold/25 hover:bg-gold/[0.025] transition-all">
       <div className="sm:hidden">
         <div className="flex items-start gap-3">
           <div
@@ -1164,12 +1179,12 @@ const StatTile = React.memo(function StatTile({ icon, label, value, onClick }) {
     <Tag
       type={clickable ? 'button' : undefined}
       onClick={onClick}
-      className={`text-left rounded-xl border border-gold/15 bg-void/40 px-4 py-3 transition-colors ${
+      className={`text-left rounded-2xl border border-white/[0.07] bg-[#0b0a09]/70 px-4 py-3.5 transition-all ${
         clickable ? 'hover:border-gold/40 hover:bg-gold/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 cursor-pointer' : ''
       }`}
     >
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className="text-lg" aria-hidden="true">{icon}</span>
+      <div className="flex items-center gap-2.5 mb-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.05] text-sm text-gold-light" aria-hidden="true">{icon}</span>
         <span className="text-[10px] text-text-dim font-semibold uppercase tracking-wider">{label}</span>
       </div>
       <div className="font-mono text-xl sm:text-2xl font-bold text-text-bright tabular-nums leading-none">{value}</div>
@@ -1182,9 +1197,9 @@ const ActionTile = React.memo(function ActionTile({ icon, label, hint, onClick }
     <button
       type="button"
       onClick={onClick}
-      className="group flex items-center gap-3 rounded-xl border border-gold/15 bg-void/40 px-4 py-3 hover:border-gold/40 hover:bg-gold/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 transition-colors text-left"
+      className="group flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-[#0b0a09]/70 px-4 py-3.5 hover:-translate-y-0.5 hover:border-gold/30 hover:bg-gold/[0.035] hover:shadow-[0_12px_30px_rgba(0,0,0,0.18)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 transition-all text-left"
     >
-      <span className="text-xl opacity-80 group-hover:opacity-100 transition-opacity" aria-hidden="true">{icon}</span>
+      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-gold/15 bg-gold/[0.05] text-base text-gold-light opacity-90 group-hover:opacity-100" aria-hidden="true">{icon}</span>
       <div className="min-w-0">
         <div className="text-sm font-semibold text-text-bright truncate">{label}</div>
         <div className="text-xs text-text-dim truncate">{hint}</div>
