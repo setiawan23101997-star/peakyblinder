@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useId, useRef } from 'react'
 
 const RARITY = {
-  material:   { label: 'Common',    color: '#4ade80', rgb: '74,222,128' },
+  common:   { label: 'Common',    color: '#4ade80', rgb: '74,222,128' },
   uncommon:   { label: 'Uncommon',  color: '#ffffff', rgb: '255,255,255' },
   rare:       { label: 'Rare',      color: '#60a5fa', rgb: '96,165,250' },
   epic:       { label: 'Epic',      color: '#f87171', rgb: '248,113,113' },
