@@ -1,3 +1,16 @@
+/*
+ * PeakyBlinder App.jsx
+ * Based directly on the user's uploaded App source:
+ * Pasted text(20260914-181933).txt
+ *
+ * This replacement keeps the existing application structure/routes and fixes:
+ * 1) Power cooldown reset regression caused by a broken verification reference.
+ * 2) Staff reset using a plain members UPDATE + separate verification.
+ * 3) Detailed Admin Audit Log records with exact before/after values.
+ * 4) Audit records for add/remove member, password reset, and Power reset.
+ *
+ * No auction/calendar/notice-board behavior was intentionally redesigned.
+ */
 import React, { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Layout from './components/Layout'
@@ -357,6 +370,27 @@ function App() {
         const normalized = normalizeMember(data[0])
         setAllMembers(prev => [...prev, normalized])
         setMembers(prev => [...prev, normalized])
+
+        await logAudit({
+          action: 'Added Member',
+          entityType: 'Member',
+          entityId: normalized.id,
+          details: {
+            member_name: normalized.name,
+            username: normalized.username || null,
+            target_role: normalized.role || null,
+            field_changes: {
+              role: { label: 'Role', before: null, after: normalized.role },
+              profile_grade: { label: 'Card Grade', before: null, after: normalized.profile_grade },
+              character_level: { label: 'Level', before: null, after: normalized.character_level },
+              awakening_stage: { label: 'Awakening', before: null, after: normalized.awakening_stage },
+              power: { label: 'Power', before: null, after: normalized.power, delta: Number(normalized.power) || 0 },
+              coins: { label: 'Coins', before: null, after: normalized.coins, delta: Number(normalized.coins) || 0 },
+            },
+            changes: ['role', 'profile_grade', 'character_level', 'awakening_stage', 'power', 'coins'],
+          },
+        })
+
         return normalized
       }
       return null
@@ -388,125 +422,159 @@ function App() {
         setAllMembers(prev => prev.map(m => Number(m.id) === numericId ? normalized : m))
         setMembers(prev => prev.map(m => Number(m.id) === numericId ? normalized : m))
 
-        // Record the exact before/after values for every important member field.
-        // This is intentionally stored as structured JSON so Admin Audit Log can
-        // display exactly what staff changed instead of only "changes: ['coins']".
-        const fieldMap = {
-          coins: 'Coins',
-          power: 'Power',
-          cls: 'Class',
-          profile_grade: 'Card Grade',
-          character_level: 'Level',
-          awakening_stage: 'Awakening',
-          role: 'Role',
-        }
-
-        const numericFields = new Set([
-          'coins',
-          'power',
-          'character_level',
-          'awakening_stage',
-        ])
+        // Record the exact before → after values for member-management changes.
+        // The Audit Log UI reads this structured object and renders each field
+        // separately instead of only showing "changes: ['coins']".
+        const fieldDefinitions = [
+          {
+            key: 'coins',
+            label: 'Coins',
+            before: Number(existingMember?.coins),
+            after: Number(normalized.coins),
+            numeric: true,
+          },
+          {
+            key: 'power',
+            label: 'Power',
+            before: Number(existingMember?.power),
+            after: Number(normalized.power),
+            numeric: true,
+          },
+          {
+            key: 'cls',
+            label: 'Class',
+            before: existingMember?.cls ?? '',
+            after: normalized.cls ?? '',
+          },
+          {
+            key: 'profile_grade',
+            label: 'Card Grade',
+            before: existingMember?.profile_grade ?? 'Legendary',
+            after: normalized.profile_grade ?? 'Legendary',
+          },
+          {
+            key: 'character_level',
+            label: 'Level',
+            before: Number(existingMember?.character_level ?? existingMember?.level ?? 1),
+            after: Number(normalized.character_level ?? 1),
+            numeric: true,
+          },
+          {
+            key: 'awakening_stage',
+            label: 'Awakening',
+            before: Number(existingMember?.awakening_stage ?? 0),
+            after: Number(normalized.awakening_stage ?? 0),
+            numeric: true,
+          },
+          {
+            key: 'role',
+            label: 'Role',
+            before: existingMember?.role ?? 'Member',
+            after: normalized.role ?? 'Member',
+          },
+        ]
 
         const fieldChanges = {}
 
-        Object.keys(updates || {}).forEach(key => {
-          if (!(key in fieldMap)) return
+        for (const field of fieldDefinitions) {
+          if (!Object.prototype.hasOwnProperty.call(updates || {}, field.key)) continue
 
-          const beforeRaw = existingMember?.[key]
-          const afterRaw = normalized?.[key]
+          const changed = field.numeric
+            ? Number(field.before) !== Number(field.after)
+            : String(field.before ?? '') !== String(field.after ?? '')
 
-          const before = numericFields.has(key)
-            ? Number(beforeRaw ?? 0)
-            : (beforeRaw ?? null)
+          if (!changed) continue
 
-          const after = numericFields.has(key)
-            ? Number(afterRaw ?? 0)
-            : (afterRaw ?? null)
-
-          const changed = numericFields.has(key)
-            ? before !== after
-            : String(before ?? '') !== String(after ?? '')
-
-          if (!changed) return
-
-          const entry = {
-            label: fieldMap[key],
-            before,
-            after,
+          const item = {
+            label: field.label,
+            before: field.before,
+            after: field.after,
           }
 
-          if (numericFields.has(key)) {
-            entry.delta = after - before
+          if (field.numeric) {
+            item.delta = Number(field.after) - Number(field.before)
           }
 
-          fieldChanges[key] = entry
-        })
+          fieldChanges[field.key] = item
+        }
 
+        // Keep a compact legacy-compatible list too.
         const changedKeys = Object.keys(fieldChanges)
 
-        const auditDetails = {
-          name: normalized.name,
-          username: normalized.username || null,
-          changes: changedKeys,
-          field_changes: fieldChanges,
-        }
+        if (changedKeys.length > 0) {
+          const auditDetails = {
+            name: normalized.name,
+            member_name: normalized.name,
+            target_role: normalized.role,
+            changes: changedKeys,
+            field_changes: fieldChanges,
+          }
 
-        // Keep legacy coin fields too so older/newer Audit Log UIs remain
-        // compatible with records written by previous versions.
-        if (fieldChanges.coins) {
-          auditDetails.coins_before = fieldChanges.coins.before
-          auditDetails.coins_after = fieldChanges.coins.after
-          auditDetails.coin_change = fieldChanges.coins.delta
-        }
+          // Preserve the simple coin fields for compatibility with older
+          // AdminAuditLog versions.
+          if (fieldChanges.coins) {
+            auditDetails.coins_before = fieldChanges.coins.before
+            auditDetails.coins_after = fieldChanges.coins.after
+            auditDetails.coin_change = fieldChanges.coins.delta
+          }
 
-        const changedPower = fieldChanges.power
-        if (changedPower) {
-          auditDetails.power_before = changedPower.before
-          auditDetails.power_after = changedPower.after
-          auditDetails.power_change = changedPower.delta
-        }
+          if (fieldChanges.power) {
+            auditDetails.power_before = fieldChanges.power.before
+            auditDetails.power_after = fieldChanges.power.after
+            auditDetails.power_change = fieldChanges.power.delta
+          }
 
-        await logAudit({
-          action: changedPower
-            ? 'Changed Member Power'
-            : fieldChanges.coins
+          await logAudit({
+            action: changedKeys.includes('coins')
               ? 'Changed Member Coins'
-              : 'Updated Member',
-          entityType: 'Member',
-          entityId: normalized.id,
-          details: auditDetails,
-        })
+              : changedKeys.includes('power')
+                ? 'Changed Member Power'
+                : 'Updated Member',
+            entityType: 'Member',
+            entityId: normalized.id,
+            details: auditDetails,
+          })
+        }
 
         return normalized
       }
 
-      return null
+      throw new Error('Member update returned no row. Check the members UPDATE/SELECT policy.')
     } catch (error) {
       console.error('Failed to update member:', error)
-      addToast(error?.message || 'Failed to update member. Please try again.', 'red', 'Error')
+      addToast(
+        error?.message || 'Failed to update member.',
+        'red',
+        'Update Failed'
+      )
       return null
     }
   }
 
-
   // Staff Power reset: Admin / Master / Elder can reset another member's
-  // 7-day Power window. This changes ONLY the window fields, never Power.
-  // The preferred database path is the reset_member_power_cooldown RPC from
-  // POWER_COOLDOWN_DEEP_REPAIR_AND_RESET_RPC.sql.
+  // 7-day Power window. This intentionally uses the same direct Supabase
+  // members UPDATE pattern that the rest of this App uses.
   //
-  // IMPORTANT: do not use UPDATE(...).select(...).maybeSingle() here.
-  // PostgREST can apply the UPDATE but return no row when SELECT/RLS rules
-  // interfere with the RETURNING step. That made the old code look like the
-  // reset failed even when the write happened.
+  // IMPORTANT:
+  // - Do NOT call the reset RPC here.
+  // - Do NOT use UPDATE(...).select() as the success condition.
+  // - Verification is performed with a real, separately declared read error.
+  //
+  // We update the three actual cooldown fields, then read the member back
+  // separately. This keeps the reset independent from RETURNING/RLS behavior.
   const resetMemberPowerCooldown = async (targetId) => {
     try {
       if (!currentUser || !['Admin', 'Master', 'Elder'].includes(currentUser.role)) {
-        addToast('Only Admin, Master, and Elder can reset a Power cooldown.', 'red', 'Not Allowed')
+        addToast(
+          'Only Admin, Master, and Elder can reset a Power cooldown.',
+          'red',
+          'Not Allowed'
+        )
         return false
       }
 
       const numericTargetId = Number(targetId)
+
       if (!Number.isFinite(numericTargetId)) {
         addToast('Invalid member ID.', 'red', 'Reset Failed')
         return false
@@ -522,8 +590,19 @@ function App() {
       }
 
       if (Number(targetMember.id) === Number(currentUser.id)) {
-        addToast('Staff already have unlimited Power updates.', 'blue', 'No Reset Needed')
+        addToast(
+          'Staff already have unlimited Power updates.',
+          'blue',
+          'No Reset Needed'
+        )
         return false
+      }
+
+      const before = {
+        power: Number(targetMember.power) || 0,
+        power_updates_used: Number(targetMember.power_updates_used) || 0,
+        power_window_started_at: targetMember.power_window_started_at || null,
+        power_next_update_at: targetMember.power_next_update_at || null,
       }
 
       console.log('[resetMemberPowerCooldown] START', {
@@ -531,94 +610,59 @@ function App() {
         targetName: targetMember.name,
         actor: currentUser.name,
         actorRole: currentUser.role,
-        before: {
-          power_updates_used: targetMember.power_updates_used,
-          power_window_started_at: targetMember.power_window_started_at,
-          power_updated_at: targetMember.power_updated_at,
-          power_next_update_at: targetMember.power_next_update_at,
-        },
+        before,
       })
 
-      // Preferred path: server-side RPC. This avoids RLS/RETURNING ambiguity
-      // and makes the reset one database operation.
-      let verified = null
-      const { data: rpcData, error: rpcError } = await supabase.rpc(
-        'reset_member_power_cooldown',
-        {
-          p_actor_id: Number(currentUser.id),
-          p_target_id: numericTargetId,
-        }
-      )
+      // This is deliberately a plain UPDATE. No RPC and no UPDATE().select().
+      const { error: updateError } = await supabase
+        .from('members')
+        .update({
+          power_updates_used: 0,
+          power_window_started_at: null,
+          power_next_update_at: null,
+        })
+        .eq('id', numericTargetId)
 
-      if (!rpcError) {
-        verified = Array.isArray(rpcData) ? rpcData[0] : rpcData
-      } else {
-        // If the migration has not been installed yet, keep a compatibility
-        // fallback so the button can still work with a permissive members
-        // UPDATE policy. Other RPC errors must not be hidden.
-        const missingRpc =
-          rpcError.code === 'PGRST202' ||
-          /reset_member_power_cooldown/i.test(rpcError.message || '')
-
-        if (!missingRpc) {
-          console.error('[resetMemberPowerCooldown] RPC FAILED:', rpcError)
-          throw rpcError
-        }
-
-        console.warn('[resetMemberPowerCooldown] RPC not installed; using direct UPDATE fallback.')
-
-        const { error: updateError } = await supabase
-          .from('members')
-          .update({
-            power_updates_used: 0,
-            power_window_started_at: null,
-            power_next_update_at: null,
-          })
-          .eq('id', numericTargetId)
-
-        if (updateError) {
-          console.error('[resetMemberPowerCooldown] UPDATE FAILED:', updateError)
-          throw updateError
-        }
-
-        // Read separately so UPDATE ... RETURNING/RLS cannot make a successful
-        // database write look like a failed reset.
-        const { data: fallbackData, error: fallbackReadError } = await supabase
-          .from('members')
-          .select('id, name, username, role, power, power_updates_used, power_window_started_at, power_updated_at, power_next_update_at')
-          .eq('id', numericTargetId)
-          .maybeSingle()
-
-        if (fallbackReadError) throw fallbackReadError
-        verified = fallbackData
+      if (updateError) {
+        console.error('[resetMemberPowerCooldown] UPDATE FAILED:', updateError)
+        throw updateError
       }
 
-      if (verifyError) {
-        console.error('[resetMemberPowerCooldown] VERIFY READ FAILED:', verifyError)
-        throw verifyError
+      // Read the row separately. The app already uses SELECT * on members,
+      // so this gives us the actual persisted state after the reset.
+      const { data: verified, error: readError } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', numericTargetId)
+        .maybeSingle()
+
+      if (readError) {
+        console.error('[resetMemberPowerCooldown] VERIFY READ FAILED:', readError)
+        throw readError
       }
 
       if (!verified) {
-        throw new Error('The member was not returned after the reset. Check the members SELECT policy.')
+        throw new Error(
+          'The member could not be read after the reset. Check the members SELECT policy.'
+        )
       }
 
       console.log('[resetMemberPowerCooldown] VERIFY RESULT:', {
         id: verified.id,
         power_updates_used: verified.power_updates_used,
         power_window_started_at: verified.power_window_started_at,
-        power_updated_at: verified.power_updated_at,
         power_next_update_at: verified.power_next_update_at,
       })
 
-      // The reset is only considered successful if the database really has no
-      // next-update timestamp and the counter/window are cleared.
+      // If another DB trigger is restoring the cooldown, do not pretend the
+      // reset succeeded. This makes the real database problem visible.
       if (
         verified.power_next_update_at !== null ||
         Number(verified.power_updates_used) !== 0 ||
         verified.power_window_started_at !== null
       ) {
         throw new Error(
-          'Database did not keep the Power reset. A database trigger or policy is restoring the cooldown. Check the Power reset SQL migration.'
+          'The database restored the Power cooldown after reset. Check the Power cooldown trigger/function in Supabase.'
         )
       }
 
@@ -627,11 +671,19 @@ function App() {
       setAllMembers(prev =>
         prev.map(m => Number(m.id) === numericTargetId ? normalized : m)
       )
+
       setMembers(prev =>
         prev.map(m => Number(m.id) === numericTargetId ? normalized : m)
       )
 
-      // Audit failure must NOT undo a successful reset.
+      // Keep the currently logged-in user's cached data correct if the target
+      // somehow matches it, although the self-reset guard above normally stops it.
+      if (Number(currentUser.id) === numericTargetId) {
+        setCurrentUser(normalized)
+        localStorage.setItem('currentUser', JSON.stringify(normalized))
+      }
+
+      // The reset itself is also a staff action and must be visible in Audit Log.
       await logAudit({
         action: 'Reset Member Power Cooldown',
         entityType: 'Member',
@@ -641,11 +693,11 @@ function App() {
           username: normalized.username || null,
           target_role: normalized.role || null,
           power: normalized.power,
-          power_updates_used_before: Number(targetMember.power_updates_used) || 0,
+          power_updates_used_before: before.power_updates_used,
           power_updates_used_after: 0,
-          power_window_started_at_before: targetMember.power_window_started_at || null,
+          power_window_started_at_before: before.power_window_started_at,
           power_window_started_at_after: null,
-          power_next_update_at_before: targetMember.power_next_update_at || null,
+          power_next_update_at_before: before.power_next_update_at,
           power_next_update_at_after: null,
           reset_by: currentUser.name || 'Unknown Staff',
           reset_by_role: currentUser.role || null,
@@ -673,6 +725,9 @@ function App() {
 
   const deleteMember = async (id) => {
     try {
+      const targetMember = (allMembers || members || []).find(
+        m => Number(m.id) === Number(id)
+      )
       const { error } = await supabase
         .from('members')
         .delete()
@@ -680,6 +735,18 @@ function App() {
       if (error) throw error
       setAllMembers(prev => prev.filter(m => m.id !== id))
       setMembers(prev => prev.filter(m => m.id !== id))
+
+      await logAudit({
+        action: 'Removed Member',
+        entityType: 'Member',
+        entityId: id,
+        details: {
+          member_name: targetMember?.name || 'Unknown Member',
+          username: targetMember?.username || null,
+          target_role: targetMember?.role || null,
+        },
+      })
+
       return true
     } catch (error) {
       console.error('Failed to delete member:', error)
@@ -690,11 +757,27 @@ function App() {
 
   const resetMemberPassword = async (targetId, newPassword) => {
     try {
+      const targetMember = (allMembers || members || []).find(
+        m => Number(m.id) === Number(targetId)
+      )
       const { error } = await supabase
         .from('members')
         .update({ password: newPassword })
         .eq('id', targetId)
       if (error) throw error
+
+      await logAudit({
+        action: 'Reset Member Password',
+        entityType: 'Member',
+        entityId: targetId,
+        details: {
+          member_name: targetMember?.name || 'Unknown Member',
+          username: targetMember?.username || null,
+          target_role: targetMember?.role || null,
+          change_type: 'Staff reset member password',
+        },
+      })
+
       return true
     } catch (error) {
       console.error('Failed to reset password:', error)
@@ -717,6 +800,18 @@ function App() {
       const updated = { ...currentUser, password: newPassword }
       setCurrentUser(updated)
       localStorage.setItem('currentUser', JSON.stringify(updated))
+
+      await logAudit({
+        action: 'Changed Own Password',
+        entityType: 'Member',
+        entityId: currentUser.id,
+        details: {
+          member_name: currentUser.name || 'Unknown Member',
+          username: currentUser.username || null,
+          change_type: 'Member changed own password',
+        },
+      })
+
       return true
     } catch (error) {
       console.error('Failed to change password:', error)
