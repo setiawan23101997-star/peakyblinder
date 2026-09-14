@@ -88,14 +88,33 @@ function actionTone(action) {
   return 'text-text-bright'
 }
 
-function detailTargetName(details) {
+function detailTargetName(details, memberList = [], entityType = '', entityId = null) {
   const d = details || {}
-  return d.member_name || d.target_name || d.player_name || d.name || null
+  const explicit =
+    d.member_name ||
+    d.target_name ||
+    d.player_name ||
+    d.name ||
+    null
+
+  if (explicit) return explicit
+
+  // Older audit rows may have only entity_type/entity_id. Resolve Member IDs
+  // from the current member list so the UI never needs to expose raw IDs.
+  if (String(entityType).toLowerCase() === 'member' && entityId != null) {
+    const target = (memberList || []).find(
+      member => String(member.id) === String(entityId)
+    )
+    return target?.name || null
+  }
+
+  return null
 }
 
 export default function AdminAuditLog({ ctx }) {
   const supabase = ctx?.supabase
   const currentUser = ctx?.currentUser
+  const allMembers = ctx?.allMembers || []
 
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -430,7 +449,12 @@ export default function AdminAuditLog({ ctx }) {
           <div className="divide-y divide-white/[0.055]">
             {filtered.map(log => {
               const details = prettyDetails(log.details)
-              const targetName = detailTargetName(log.details)
+              const targetName = detailTargetName(
+                log.details,
+                allMembers,
+                log.entityType,
+                log.entityId
+              )
               const coinChange = getCoinChange(log.details)
               const delta = coinChange?.delta ?? 0
 
@@ -469,7 +493,7 @@ export default function AdminAuditLog({ ctx }) {
                       {log.action}
                       {log.entityType && (
                         <span className="ml-1.5 text-[8px] font-normal text-text-dim">
-                          · {log.entityType}{log.entityId ? ` #${log.entityId}` : ''}
+                          · {log.entityType}
                         </span>
                       )}
                     </div>
