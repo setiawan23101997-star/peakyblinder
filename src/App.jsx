@@ -7,9 +7,9 @@ import Attendance from './components/Attendance'
 import Auctions from './components/Auctions'
 import Leaderboard from './components/Leaderboard'
 import Login from './components/Login'
+import EventCalendar from './components/EventCalendar'
 import NoticeBoard from './components/NoticeBoard'
 import AdminAuditLog from './components/AdminAuditLog'
-import EventCalendar from './components/EventCalendar'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -113,16 +113,6 @@ function App() {
     coins: Number(m.coins) || 0,
     power: Number(m.power) || 0,
     attendance: Number(m.attendance) || 0,
-    power_updated_at: m.power_updated_at ?? null,
-    power_next_update_at: m.power_next_update_at ?? null,
-    power_updates_used: Number(m.power_updates_used) || 0,
-    power_window_started_at: m.power_window_started_at ?? null,
-    character_level: Number(m.character_level) || 1,
-    awakening_stage: Number(m.awakening_stage) || 0,
-    region: m.region ?? 'STEAM',
-    server: m.server ?? '005',
-    character_image: m.character_image ?? '',
-    profile_grade: ['Epic', 'Legendary', 'Mythic'].includes(m.profile_grade) ? m.profile_grade : 'Epic',
     auction_wins: Number(m.auction_wins ?? m.auctionWins) || 0,
     join_date: m.join_date ?? m.joinDate ?? '',
     discord: m.discord ?? '',
@@ -223,6 +213,28 @@ function App() {
     return () => clearInterval(interval)
   }, [currentUser])
 
+  // Blind auctions are settled by Auctions.jsx. App.jsx must not
+  // auto-close an expired auction that has submitted bids, because doing so
+  // would bypass the blind winner/refund settlement logic.
+  const getBlindFinalBids = (auction) => {
+    const bids = Array.isArray(auction?.bids) ? auction.bids : []
+    const latestByBidder = new Map()
+
+    for (const bid of bids) {
+      if (!bid?.bidder || bid?.cancelled) continue
+      latestByBidder.set(bid.bidder, bid)
+    }
+
+    return [...latestByBidder.values()]
+      .filter(b => Number(b.amount) > 0)
+      .map(b => ({
+        ...b,
+        amount: Number(b.amount) || 0,
+        time: Number(b.time) || 0,
+      }))
+      .sort((a, b) => b.amount - a.amount || a.time - b.time)
+  }
+
   useEffect(() => {
     const autoEndExpired = async () => {
       const now = Date.now()
@@ -237,12 +249,21 @@ function App() {
       if (expired.length === 0) return
 
       for (const a of expired) {
+        // IMPORTANT: an expired blind auction with bids must remain active in
+        // the database until Auctions.jsx performs its winner/refund settlement.
+        // Otherwise App.jsx could close it using the old open-bid fields
+        // (topBidder/currentBid), causing the winner/refunds to be wrong.
+        const finalBids = getBlindFinalBids(a)
+
+        if (finalBids.length > 0) {
+          continue
+        }
+
         autoEndedRef.current.add(a.id)
 
-        const winner = a.topBidder || null
-        const finalBid = a.currentBid ?? 0
         const endedAt = a.endsAt
-        const distributedBy = winner ? 'System' : null
+        const distributedBy = null
+        const finalBid = Number(a.startBid ?? a.currentBid ?? 0) || 0
 
         const { error } = await supabase
           .from('auctions')
@@ -253,6 +274,7 @@ function App() {
             is_featured: false,
           })
           .eq('id', a.id)
+          .eq('status', 'active')
 
         if (error) {
           console.error(`Auto-end failed for auction ${a.id}:`, error)
@@ -262,15 +284,20 @@ function App() {
 
         setAuctions(prev => prev.map(x =>
           x.id === a.id
-            ? { ...x, status: 'ended', topBidder: winner, currentBid: finalBid, endsAt: endedAt, endedAt, distributedBy, isFeatured: false }
+            ? {
+                ...x,
+                status: 'ended',
+                topBidder: null,
+                currentBid: finalBid,
+                endsAt: endedAt,
+                endedAt,
+                distributedBy,
+                isFeatured: false,
+              }
             : x
         ))
 
-        if (winner) {
-          addToast(`"${a.name}" ended — won by ${winner} for ${finalBid.toLocaleString()} coins.`, 'gold', 'Auction Ended')
-        } else {
-          addToast(`"${a.name}" ended with no bids.`, 'blue', 'Auction Ended')
-        }
+        addToast(`"${a.name}" ended with no bids.`, 'blue', 'Auction Ended')
       }
     }
 
@@ -278,29 +305,6 @@ function App() {
     const id = setInterval(autoEndExpired, 5000)
     return () => clearInterval(id)
   }, [auctions])
-
-  const logAudit = async ({ action, entityType = 'System', entityId = null, details = {} }) => {
-    if (!currentUser || !['Admin', 'Master', 'Elder'].includes(currentUser.role)) return false
-    try {
-      const { error } = await supabase.from('admin_audit_logs').insert([{
-        actor_id: Number(currentUser.id) || null,
-        actor_name: currentUser.name || 'Unknown Staff',
-        actor_role: currentUser.role || null,
-        action,
-        entity_type: entityType,
-        entity_id: entityId == null ? null : String(entityId),
-        details: details || {},
-      }])
-      if (error) {
-        console.warn('Audit log write failed:', error.message || error)
-        return false
-      }
-      return true
-    } catch (error) {
-      console.warn('Audit log write failed:', error)
-      return false
-    }
-  }
 
   const saveMember = async (member) => {
     try {
@@ -313,12 +317,6 @@ function App() {
         const normalized = normalizeMember(data[0])
         setAllMembers(prev => [...prev, normalized])
         setMembers(prev => [...prev, normalized])
-        await logAudit({
-          action: 'Added Member',
-          entityType: 'Member',
-          entityId: normalized.id,
-          details: { name: normalized.name, role: normalized.role, class: normalized.cls },
-        })
         return normalized
       }
       return null
@@ -331,11 +329,6 @@ function App() {
 
   const updateMember = async (id, updates) => {
     try {
-      // Capture the member's current values before the update so audit history
-      // can show the exact coin movement (before → after and +/- delta).
-      const existingMember = (allMembers || members || []).find(m => Number(m.id) === Number(id))
-      const coinsBefore = Number(existingMember?.coins)
-
       const { data, error } = await supabase
         .from('members')
         .update(updates)
@@ -346,31 +339,6 @@ function App() {
         const normalized = normalizeMember(data[0])
         setAllMembers(prev => prev.map(m => m.id === id ? normalized : m))
         setMembers(prev => prev.map(m => m.id === id ? normalized : m))
-
-        const coinsAfter = Number(normalized.coins)
-        const coinWasChanged =
-          Object.prototype.hasOwnProperty.call(updates || {}, 'coins') &&
-          Number.isFinite(coinsBefore) &&
-          Number.isFinite(coinsAfter) &&
-          coinsBefore !== coinsAfter
-
-        const auditDetails = {
-          name: normalized.name,
-          changes: Object.keys(updates || {}),
-        }
-
-        if (coinWasChanged) {
-          auditDetails.coins_before = coinsBefore
-          auditDetails.coins_after = coinsAfter
-          auditDetails.coin_change = coinsAfter - coinsBefore
-        }
-
-        await logAudit({
-          action: coinWasChanged ? 'Changed Member Coins' : 'Updated Member',
-          entityType: 'Member',
-          entityId: normalized.id,
-          details: auditDetails,
-        })
         return normalized
       }
       return null
@@ -378,73 +346,6 @@ function App() {
       console.error('Failed to update member:', error)
       addToast('Failed to update member. Please try again.', 'red', 'Error')
       return null
-    }
-  }
-
-  const resetMemberPowerCooldown = async (targetId) => {
-    try {
-      if (!currentUser || !['Admin', 'Master', 'Elder'].includes(currentUser.role)) {
-        addToast('Only Admin, Master, and Elder can reset a Power cooldown.', 'red', 'Not Allowed')
-        return false
-      }
-
-      const targetMember = (allMembers || members || []).find(
-        m => Number(m.id) === Number(targetId)
-      )
-
-      if (!targetMember) {
-        addToast('Member not found.', 'red', 'Reset Failed')
-        return false
-      }
-
-      console.log('[resetMemberPowerCooldown] Resetting Power window:', {
-        targetId,
-        targetName: targetMember.name,
-        actor: currentUser.name,
-        actorRole: currentUser.role,
-      })
-
-      const { data, error } = await supabase
-        .from('members')
-        .update({
-          power_updates_used: 0,
-          power_window_started_at: null,
-          power_next_update_at: null,
-        })
-        .eq('id', targetId)
-        .select('*')
-        .maybeSingle()
-
-      if (error) throw error
-      if (!data) {
-        throw new Error('Member could not be read after the Power cooldown reset.')
-      }
-
-      const normalized = normalizeMember(data)
-      setAllMembers(prev => prev.map(m => m.id === normalized.id ? normalized : m))
-      setMembers(prev => prev.map(m => m.id === normalized.id ? normalized : m))
-
-      await logAudit({
-        action: 'Reset Member Power Cooldown',
-        entityType: 'Member',
-        entityId: normalized.id,
-        details: {
-          member_name: normalized.name,
-          username: normalized.username || null,
-          power: normalized.power,
-          power_updates_used_before: Number(targetMember.power_updates_used) || 0,
-          power_updates_used_after: 0,
-          reset_by: currentUser.name || 'Unknown Staff',
-          reset_by_role: currentUser.role || null,
-          reason: 'Staff manually reset 7-day Power window',
-        },
-      })
-
-      return true
-    } catch (error) {
-      console.error('[resetMemberPowerCooldown] FAILED:', error)
-      addToast(error?.message || 'Failed to reset Power cooldown.', 'red', 'Reset Failed')
-      return false
     }
   }
 
@@ -457,12 +358,6 @@ function App() {
       if (error) throw error
       setAllMembers(prev => prev.filter(m => m.id !== id))
       setMembers(prev => prev.filter(m => m.id !== id))
-      await logAudit({
-        action: 'Removed Member',
-        entityType: 'Member',
-        entityId: id,
-        details: {},
-      })
       return true
     } catch (error) {
       console.error('Failed to delete member:', error)
@@ -473,32 +368,11 @@ function App() {
 
   const resetMemberPassword = async (targetId, newPassword) => {
     try {
-      // Resolve the target before changing the password so the audit record
-      // identifies exactly which player account was changed. Never store the
-      // new password itself in the audit log.
-      const targetMember = (allMembers || members || []).find(
-        m => Number(m.id) === Number(targetId)
-      )
-
       const { error } = await supabase
         .from('members')
         .update({ password: newPassword })
         .eq('id', targetId)
-
       if (error) throw error
-
-      await logAudit({
-        action: 'Reset Member Password',
-        entityType: 'Member',
-        entityId: targetId,
-        details: {
-          member_name: targetMember?.name || 'Unknown Member',
-          username: targetMember?.username || null,
-          target_role: targetMember?.role || null,
-          change_type: 'Staff reset member password',
-        },
-      })
-
       return true
     } catch (error) {
       console.error('Failed to reset password:', error)
@@ -521,16 +395,6 @@ function App() {
       const updated = { ...currentUser, password: newPassword }
       setCurrentUser(updated)
       localStorage.setItem('currentUser', JSON.stringify(updated))
-      await logAudit({
-        action: 'Changed Own Password',
-        entityType: 'Member',
-        entityId: currentUser.id,
-        details: {
-          member_name: currentUser.name || 'Unknown Member',
-          username: currentUser.username || null,
-          change_type: 'Member changed own password',
-        },
-      })
       return true
     } catch (error) {
       console.error('Failed to change password:', error)
@@ -593,7 +457,6 @@ function App() {
     allMembers,
     saveMember,
     updateMember,
-    resetMemberPowerCooldown,
     deleteMember,
     resetMemberPassword,
     changeOwnPassword,
@@ -605,7 +468,6 @@ function App() {
     currentUser,
     setCurrentUser,
     addToast,
-    logAudit,
     handleLogin,
     handleLogout,
     loadAllData,
@@ -640,9 +502,9 @@ function App() {
       case 'attendance':  return <Attendance  ctx={ctx} />
       case 'auctions':    return <Auctions    ctx={ctx} />
       case 'leaderboard': return <Leaderboard ctx={ctx} />
-      case 'calendar': return <EventCalendar setPage={setPage} />
+      case 'calendar':    return <EventCalendar setPage={setPage} />
       case 'notice-board': return <NoticeBoard ctx={ctx} />
-      case 'admin-log': return <AdminAuditLog ctx={ctx} />
+      case 'admin-log':   return <AdminAuditLog ctx={ctx} />
       default:            return <Dashboard   ctx={ctx} setPage={setPage} />
     }
   }
