@@ -289,7 +289,7 @@ function EventCalendar({ setPage }) {
   }, [setPage])
 
   return (
-    <main className="w-full min-w-0 max-w-full overflow-x-clip space-y-4 pb-10 sm:space-y-5">
+    <main className="w-full min-w-0 max-w-full overflow-x-clip space-y-3.5 pb-8 sm:space-y-4">
       <CalendarHeader
         serverClock={serverClock}
         localClock={localClock}
@@ -305,26 +305,20 @@ function EventCalendar({ setPage }) {
       )}
 
       <section aria-label="Weekly event calendar">
-        <div className="mb-3 flex min-w-0 items-end justify-between gap-3 sm:mb-4">
-          <div className="min-w-0">
-            <div className="mb-1.5 flex flex-wrap items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_9px_rgba(242,204,96,0.65)]" aria-hidden="true" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-text-dim">
-                Schedule
-              </span>
-              <span className="rounded-full border border-white/[0.08] bg-white/[0.025] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-dim">
-                Server Time
-              </span>
-            </div>
-
-            <h2 className="font-spectral text-2xl font-bold leading-none text-text-bright sm:text-3xl">
+        <div className="mb-2.5 flex min-w-0 items-center justify-between gap-3 sm:mb-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-bright shadow-[0_0_9px_rgba(242,204,96,0.65)]" aria-hidden="true" />
+            <h2 className="font-spectral text-[22px] font-bold leading-none text-text-bright sm:text-2xl">
               Weekly Events
             </h2>
+            <span className="hidden rounded-full border border-white/[0.06] bg-white/[0.018] px-2 py-1 text-[8px] font-bold uppercase tracking-[0.12em] text-text-dim sm:inline-flex">
+              Server Time
+            </span>
           </div>
 
-          <div className="hidden items-center gap-3 sm:flex">
+          <div className="hidden items-center gap-2.5 md:flex">
             {Object.entries(TYPE).map(([key, type]) => (
-              <div key={key} className="flex items-center gap-1.5 text-[10px] text-text-dim">
+              <div key={key} className="flex items-center gap-1 text-[9px] text-text-dim">
                 <span aria-hidden="true">{type.icon}</span>
                 <span>{type.label}</span>
               </div>
@@ -388,28 +382,9 @@ function EventCalendar({ setPage }) {
         </div>
       </section>
 
-      <section
-        aria-label="Time zone information"
-        className="rounded-xl border border-white/[0.06] bg-[#090807]/78 px-3.5 py-3 sm:px-4"
-      >
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="text-gold-light" aria-hidden="true">◷</span>
-            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim">
-              Server Time
-            </span>
-            <span className="font-mono text-[11px] font-semibold text-gold-light">
-              {SERVER_TZ_LABEL}
-            </span>
-          </div>
-
-          <div className="min-w-0 text-[10px] text-text-dim sm:text-right">
-            Your Time · <span className="font-semibold text-text-bright">{AUTO_LOCAL_TZ}</span>
-            <span className="mx-1 text-white/15">·</span>
-            <span className="text-gold-light/80">{getLocalZoneLabel()}</span>
-          </div>
-        </div>
-      </section>
+      <div className="px-1 text-[8px] text-text-dim sm:text-[9px]">
+        Event schedules use server time · Local time is calculated automatically from your browser timezone.
+      </div>
     </main>
   )
 }
@@ -421,95 +396,105 @@ const CalendarHeader = React.memo(function CalendarHeader({
   onBack,
 }) {
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-gold/20 bg-[#0b0a09]/90 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
-      <div
-        className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/70 to-transparent"
-        aria-hidden="true"
-      />
-      <div
-        className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gold/[0.05] blur-3xl"
-        aria-hidden="true"
-      />
+    <header className="relative overflow-hidden rounded-2xl border border-gold/15 bg-[#090807]/92 shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/55 to-transparent" aria-hidden="true" />
+      <div className="pointer-events-none absolute -right-32 -top-32 h-64 w-64 rounded-full bg-gold/[0.04] blur-3xl" aria-hidden="true" />
 
-      <div className="relative grid min-w-0 grid-cols-1 gap-4 p-4 sm:p-5 md:p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-6">
-        <div className="min-w-0">
-          <button
-            type="button"
-            onClick={onBack}
-            className="mb-3 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim transition-colors hover:bg-white/[0.035] hover:text-gold-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
-          >
-            <span aria-hidden="true">←</span>
-            Command Center
-          </button>
+      <div className="relative px-4 py-4 sm:px-5 sm:py-4 lg:px-6">
+        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onBack}
+                className="inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim transition-colors hover:text-gold-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+              >
+                <span className="text-[12px] leading-none" aria-hidden="true">←</span>
+                Command Center
+              </button>
+              <span className="text-white/10">/</span>
+              <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-text-dim">
+                Clan Operations
+              </span>
+            </div>
 
-          <div className="mb-2 flex items-center gap-2">
-            <span
-              className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_10px_rgba(242,204,96,0.8)]"
-              aria-hidden="true"
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-gold-bright shadow-[0_0_10px_rgba(242,204,96,0.7)]" aria-hidden="true" />
+              <h1 className="font-spectral text-[27px] font-bold leading-none tracking-[-0.02em] text-text-bright sm:text-[31px]">
+                Clan Calendar
+              </h1>
+            </div>
+
+            <p className="mt-2 max-w-xl text-[11px] leading-relaxed text-text-dim sm:text-xs">
+              Server schedule is authoritative. Local times are converted automatically.
+            </p>
+
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[9px]">
+              <span className="font-semibold text-text-dim">
+                <span className="font-mono text-gold-light">{totalWeeklyEvents}</span>
+                <span className="ml-1.5">events this week</span>
+              </span>
+              <span className="text-white/10">·</span>
+              <span className="font-semibold uppercase tracking-[0.1em] text-text-dim">
+                Server <span className="ml-1 font-mono normal-case tracking-normal text-gold-light">{SERVER_TZ_LABEL}</span>
+              </span>
+              <span className="text-white/10">→</span>
+              <span className="font-semibold uppercase tracking-[0.1em] text-text-dim">
+                Local <span className="ml-1 font-mono normal-case tracking-normal text-gold-light">{getLocalZoneLabel()}</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:gap-2.5 lg:w-[338px]">
+            <ClockBox
+              label="Server"
+              zone={SERVER_TZ_LABEL}
+              value={serverClock.time}
+              sub={`${serverClock.day.slice(0, 3)} · ${serverClock.date}`}
+              accent="server"
             />
-            <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold-dim">
-              Clan Operations
-            </span>
+            <ClockBox
+              label="Your Time"
+              zone={getLocalZoneLabel()}
+              value={localClock.time}
+              sub={AUTO_LOCAL_TZ}
+              accent="local"
+            />
           </div>
-
-          <h1 className="font-spectral text-3xl font-bold leading-tight text-text-bright sm:text-4xl md:text-4xl">
-            Clan Calendar
-          </h1>
-
-          <p className="mt-2 max-w-2xl text-[12px] leading-relaxed text-text-dim sm:text-sm">
-            Server schedule is authoritative. Event times are automatically converted to your local timezone.
-          </p>
-
-          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-text-dim">
-            <span className="text-text-bright/80">{totalWeeklyEvents}</span>
-            <span>{totalWeeklyEvents === 1 ? 'Event' : 'Events'} This Week</span>
-            <span className="mx-1 text-gold-dim/35">·</span>
-            <span>Server</span>
-            <span className="font-mono font-semibold text-gold-light">{SERVER_TZ_LABEL}</span>
-            <span className="mx-1 text-gold-dim/35">·</span>
-            <span>Your Time</span>
-            <span className="font-mono font-semibold text-gold-light">{AUTO_LOCAL_TZ}</span>
-          </div>
-        </div>
-
-        <div className="grid min-w-0 grid-cols-2 gap-2 w-full lg:w-auto lg:min-w-[330px]">
-          <ClockBox
-            label={`Server · ${SERVER_TZ_LABEL}`}
-            value={serverClock.time}
-            sub={`${serverClock.day.slice(0, 3)} · ${serverClock.date}`}
-            accent="gold"
-          />
-
-          <ClockBox
-            label={`Your Time · ${getLocalZoneLabel()}`}
-            value={localClock.time}
-            sub={AUTO_LOCAL_TZ}
-            accent="local"
-          />
         </div>
       </div>
-    </section>
+    </header>
   )
 })
 
-const ClockBox = React.memo(function ClockBox({ label, value, sub, accent }) {
+const ClockBox = React.memo(function ClockBox({ label, zone, value, sub, accent }) {
   return (
-    <div className="min-w-0 rounded-xl border border-gold/15 bg-black/25 px-2.5 py-2.5 sm:px-3.5 sm:py-3">
-      <div className="truncate text-[9px] font-bold uppercase tracking-[0.12em] text-text-dim sm:text-[10px] sm:tracking-[0.16em]">
-        {label}
+    <div className={`relative min-w-0 overflow-hidden rounded-lg border px-3 py-2.5 ${
+      accent === 'local' ? 'border-gold/20 bg-gold/[0.035]' : 'border-white/[0.07] bg-black/20'
+    }`}>
+      <div
+        className={`absolute inset-y-2 left-0 w-px ${
+          accent === 'local' ? 'bg-gold-bright/70' : 'bg-white/15'
+        }`}
+        aria-hidden="true"
+      />
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <span className="truncate text-[8px] font-bold uppercase tracking-[0.15em] text-text-dim sm:text-[9px]">
+          {label}
+        </span>
+        <span className="shrink-0 rounded border border-white/[0.06] bg-black/20 px-1.5 py-0.5 font-mono text-[8px] font-semibold text-gold-light/80">
+          {zone}
+        </span>
       </div>
-
-      <div className="mt-1 font-mono tabular-nums leading-none text-gold-bright">
-        <span className="text-xl sm:text-2xl md:text-2xl">
+      <div className="mt-1.5 font-mono tabular-nums leading-none">
+        <span className={`text-[20px] font-bold sm:text-[22px] ${
+          accent === 'local' ? 'text-gold-bright' : 'text-text-bright'
+        }`}>
           {value}
         </span>
       </div>
-
-      <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] text-text-dim sm:text-[10px]">
-        <span className={accent === 'local' ? 'text-gold-light' : 'text-gold-light'}>
-          ●
-        </span>
-        <span className="truncate">{sub}</span>
+      <div className="mt-1 truncate text-[8px] text-text-dim sm:text-[9px]">
+        {sub}
       </div>
     </div>
   )
@@ -523,87 +508,74 @@ const NextEventHero = React.memo(function NextEventHero({ event, now }) {
 
   return (
     <section aria-label="Next clan event" className="relative">
-      <div className="mb-2.5 flex min-w-0 items-center justify-between gap-3 sm:mb-3">
-        <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-2">
-            <span
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-bright shadow-[0_0_8px_rgba(242,204,96,0.65)]"
-              aria-hidden="true"
-            />
-            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-text-dim">
-              Next Event
-            </span>
-          </div>
-
-          <h2 className="font-spectral text-2xl font-bold leading-none text-text-bright sm:text-3xl">
-            Coming Up Next
-          </h2>
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-3 sm:mb-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-bright shadow-[0_0_8px_rgba(242,204,96,0.65)]" aria-hidden="true" />
+          <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-text-dim">
+            Next Event
+          </span>
         </div>
-
-        <span className="hidden shrink-0 rounded-full border border-white/[0.07] bg-white/[0.02] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-text-dim sm:inline-flex">
+        <span className="shrink-0 rounded-full border border-white/[0.06] bg-white/[0.018] px-2 py-1 text-[8px] font-bold uppercase tracking-[0.12em] text-text-dim">
           Server Schedule
         </span>
       </div>
 
-      <div className="relative overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/80 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
+      <div className="relative overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/82 shadow-[0_10px_30px_rgba(0,0,0,0.15)]">
         <div
           className="absolute inset-y-0 left-0 w-[3px]"
-          style={{ background: type.color, boxShadow: `0 0 16px ${type.color}35` }}
+          style={{ background: type.color, boxShadow: `0 0 14px ${type.color}30` }}
           aria-hidden="true"
         />
 
-        <div className="flex min-w-0 items-center gap-3 px-3.5 py-3 sm:gap-4 sm:px-4 sm:py-3.5">
-          <div
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border text-lg"
-            style={{
-              color: type.color,
-              borderColor: `${type.color}35`,
-              background: `${type.color}0d`,
-            }}
-            aria-hidden="true"
-          >
-            {type.icon}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span
-                className="shrink-0 text-[9px] font-bold uppercase tracking-[0.16em]"
-                style={{ color: type.color }}
-              >
-                {type.label}
-              </span>
-
-              <span className="truncate text-[10px] text-text-dim">
-                {DAY_NAMES[event.dow].slice(0, 3)} · {to12h(event.time)} server
-              </span>
-            </div>
-
-            <div className="mt-0.5 truncate text-[15px] font-semibold text-text-bright sm:text-[16px]">
-              {event.name}
-            </div>
-
-            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-text-dim">
-              {event.boss && <span className="truncate">👾 {event.boss}</span>}
-              {event.subtitle && <span className="truncate">{event.subtitle}</span>}
-              <span className="text-gold-light/80">
-                {local.day.slice(0, 3)} {local.time} your time
-              </span>
-            </div>
-          </div>
-
-          <div className="shrink-0 border-l border-white/[0.06] pl-3 text-right sm:pl-4">
-            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim">
-              Starts In
-            </div>
-
+        <div className="grid min-w-0 gap-3 px-3.5 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-5 sm:px-4 sm:py-3.5">
+          <div className="flex min-w-0 items-center gap-3">
             <div
-              className={`mt-1 whitespace-nowrap font-mono text-[16px] font-bold leading-none tabular-nums sm:text-[18px] ${
-                urgent ? 'motion-safe:animate-pulse' : ''
-              }`}
-              style={{ color: urgent ? '#f87171' : type.color }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-base"
+              style={{ color: type.color, borderColor: `${type.color}30`, background: `${type.color}0b` }}
+              aria-hidden="true"
             >
-              {formatCountdown(remaining)}
+              {type.icon}
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: type.color }}>
+                  {type.label}
+                </span>
+                <span className="text-[9px] text-text-dim">
+                  {DAY_NAMES[event.dow].slice(0, 3)} · {to12h(event.time)} server
+                </span>
+              </div>
+              <div className="mt-0.5 truncate text-[15px] font-semibold text-text-bright sm:text-[16px]">
+                {event.name}
+              </div>
+              <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-[9px] text-text-dim">
+                {event.boss && <span className="truncate">👾 {event.boss}</span>}
+                {event.subtitle && <span className="truncate">{event.subtitle}</span>}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex min-w-0 items-center justify-between gap-5 border-t border-white/[0.055] pt-2.5 sm:min-w-[285px] sm:border-t-0 sm:border-l sm:pl-5 sm:pt-0">
+            <div className="min-w-0">
+              <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim">
+                Your Time
+              </div>
+              <div className="mt-1 font-mono text-[12px] font-bold tabular-nums text-gold-light">
+                {local.day.slice(0, 3)} · {local.time}
+              </div>
+            </div>
+
+            <div className="shrink-0 text-right">
+              <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim">
+                Starts In
+              </div>
+              <div
+                className={`mt-1 whitespace-nowrap font-mono text-[17px] font-bold leading-none tabular-nums sm:text-[18px] ${urgent ? 'motion-safe:animate-pulse' : ''}`}
+                style={{ color: urgent ? '#f87171' : type.color }}
+              >
+                {formatCountdown(remaining)}
+              </div>
             </div>
           </div>
         </div>
