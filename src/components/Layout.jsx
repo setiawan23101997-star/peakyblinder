@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef } from 'react'
 import ChangePasswordModal from './ChangePasswordModal'
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: '⌂' },
-  { id: 'calendar', label: 'Events', icon: '◷' },
-  { id: 'members', label: 'Members', icon: '♙' },
-  { id: 'attendance', label: 'Attendance', icon: '◫' },
-  { id: 'auctions', label: 'Auctions', icon: '◇' },
-  { id: 'leaderboard', label: 'Leaderboard', icon: '♛' },
+  { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+  { id: 'members', label: 'Members', icon: '👥' },
+  { id: 'attendance', label: 'Attendance', icon: '📋' },
+  { id: 'auctions', label: 'Auctions', icon: '🔨' },
+  { id: 'leaderboard', label: 'Leaderboard', icon: '🏆' },
+  { id: 'calendar', label: 'Calendar', icon: '◷' },
+  { id: 'notice-board', label: 'Notice Board', icon: '📜' },
+  { id: 'admin-log', label: 'Admin Log', icon: '🛡' , staffOnly: true },
 ]
 
 const FALLBACK_REGIONS = [
@@ -179,14 +181,14 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-1 ml-auto">
             <div className="flex items-center gap-0.5 rounded-xl border border-gold/10 bg-black/20 p-1">
-              {navItems.map(item => {
+              {navItems.filter(item => !item.staffOnly || ['Admin', 'Master', 'Elder'].includes(currentUser?.role)).map(item => {
                 const active = page === item.id
                 return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => setPage(item.id)}
-                    className={`relative inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[13px] font-semibold tracking-wide transition-all duration-150 ${
+                    className={`relative inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold tracking-wide transition-all duration-150 ${
                       active
                         ? 'bg-gold/10 text-gold-bright border border-gold/20 shadow-[0_2px_12px_rgba(212,175,55,0.08)]'
                         : 'border border-transparent text-text-dim hover:text-gold-light hover:bg-white/[0.025]'
@@ -329,7 +331,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                 </div>
 
                 <nav className="space-y-1.5" aria-label="Mobile navigation">
-                  {navItems.map(item => {
+                  {navItems.filter(item => !item.staffOnly || ['Admin', 'Master', 'Elder'].includes(currentUser?.role)).map(item => {
                     const active = page === item.id
                     return (
                       <button
