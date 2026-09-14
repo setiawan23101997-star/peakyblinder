@@ -961,7 +961,7 @@ export default function Members({ ctx }) {
   const [resetTarget, setResetTarget] = useState(null)
   const [loading, setLoading] = useState(false)
   const [newMember, setNewMember] = useState({
-    name: '', username: '', password: '', cls: 'Berserker', power: 10000, character_level: 1, awakening_stage: 0, role: 'Member',
+    name: '', username: '', password: '', cls: 'Berserker', power: 10000, character_level: 1, awakening_stage: 0, role: 'Member', profile_grade: 'Legendary',
   })
   const isAdmin = currentUser?.role === 'Admin'
   const isMaster = currentUser?.role === 'Master' || isAdmin
@@ -1103,13 +1103,13 @@ export default function Members({ ctx }) {
       role: finalRole,
       region: PROFILE_REGION,
       server: PROFILE_SERVER,
-      profile_grade: 'Legendary',
+      profile_grade: newMember.profile_grade || 'Legendary',
     }
     const saved = await saveMember(member)
     setLoading(false)
     if (saved) {
       addToast(`${member.name} added as ${finalRole}!`, 'gold', 'Member Added')
-      setNewMember({ name: '', username: '', password: '', cls: 'Berserker', power: 10000, character_level: 1, awakening_stage: 0, role: 'Member' })
+      setNewMember({ name: '', username: '', password: '', cls: 'Berserker', power: 10000, character_level: 1, awakening_stage: 0, role: 'Member', profile_grade: 'Legendary' })
       setShowAdd(false)
     }
   }
@@ -1168,7 +1168,11 @@ export default function Members({ ctx }) {
             <Field label="Power"><input className="input font-mono" type="number" min="0" value={newMember.power} onChange={e => setNewMember({ ...newMember, power: Number.parseInt(e.target.value, 10) || 0 })} disabled={loading} /></Field>
             <Field label="Level"><input className="input font-mono" type="number" min="1" value={newMember.character_level} onChange={e => setNewMember({ ...newMember, character_level: e.target.value })} disabled={loading} /></Field>
             <Field label="Awakening"><select className="input" value={newMember.awakening_stage} onChange={e => setNewMember({ ...newMember, awakening_stage: Number(e.target.value) })} disabled={loading}>{AWAKENING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+            <Field label="Card Grade"><select className="input" value={newMember.profile_grade} onChange={e => setNewMember({ ...newMember, profile_grade: e.target.value })} disabled={loading}>{Object.keys(GRADE_META).map(g => <option key={g} value={g}>{GRADE_META[g].label}</option>)}</select></Field>
             <Field label="Role"><select className="input" value={newMember.role} onChange={e => setNewMember({ ...newMember, role: e.target.value })} disabled={loading}><option value="Member">Member</option>{isMaster && <><option value="Elder">Elder</option><option value="Master">Master</option></>}{isAdmin && <option value="Admin">Admin (hidden)</option>}</select></Field>
+          </div>
+          <div className="mt-3 text-[9px] text-text-dim">
+            Card Grade is staff-managed. New characters default to <span className="font-bold text-gold-light">Legendary</span>, but staff can choose the grade when creating the character.
           </div>
           <button onClick={addMember} disabled={loading} className="btn-gold mt-4 w-full">{loading ? 'Adding...' : 'Add Character'}</button>
         </div>
