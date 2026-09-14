@@ -52,7 +52,8 @@ const TYPE = {
 }
 
 const RARITY_COLORS = {
-  material:   { color: '#4ade80', border: 'rgba(74,222,128,0.6)' },
+  material:   { color: '#ffffff', border: 'rgba(255,255,255,0.55)' },	
+  common:   { color: '#4ade80', border: 'rgba(74,222,128,0.6)' },
   uncommon:   { color: '#ffffff', border: 'rgba(255,255,255,0.55)' },
   rare:       { color: '#60a5fa', border: 'rgba(96,165,250,0.6)' },
   epic:       { color: '#f87171', border: 'rgba(248,113,113,0.7)' },
@@ -689,58 +690,62 @@ const ClanPulse = React.memo(function ClanPulse({
             </span>
           </button>
 
-          <div className="flex min-w-0 items-center gap-2.5 px-3.5 py-2.5 sm:px-4">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[11px] text-gold-light">
+          <button
+            type="button"
+            onClick={onOpenCalendar}
+            aria-label={`Open Clan Calendar — ${todayEvents.length} ${todayEvents.length === 1 ? 'event' : 'events'} today`}
+            className="group flex min-w-0 items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-gold/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[11px] text-gold-light transition-all group-hover:border-gold/35 group-hover:bg-gold/[0.07] group-hover:text-gold-bright">
               ◷
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim">
+              <span className="block truncate text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim group-hover:text-gold-dim">
                 Events Today
               </span>
-              <span className="mt-0.5 block font-mono text-[15px] font-bold leading-none tabular-nums text-text-bright">
+              <span className="mt-0.5 block font-mono text-[15px] font-bold leading-none tabular-nums text-text-bright group-hover:text-gold-light">
                 {todayEvents.length}
               </span>
             </span>
-          </div>
+          </button>
 
           <button
             type="button"
             onClick={onOpenCalendar}
-            aria-label="Open Clan Calendar"
-            className="group relative flex min-w-0 items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-gold/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
+            aria-label={`Open Clan Calendar — ${nextEvent?.name || 'Next Event'}`}
+            className="group flex min-w-0 flex-1 items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-gold/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
           >
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[11px] text-gold-light transition-all group-hover:border-gold/35 group-hover:bg-gold/[0.07] group-hover:text-gold-bright">
               →
             </span>
+
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[8px] font-bold uppercase tracking-[0.14em] text-gold-dim">
                 Next Event
               </span>
+
               {nextEvent && nextEventTimes ? (
                 <>
-                  <span className="mt-0.5 block truncate text-[10px] font-semibold leading-tight text-text-bright">
+                  <span className="mt-0.5 block truncate text-[10px] font-semibold leading-tight text-text-bright group-hover:text-gold-light">
                     {nextEvent.name}
                   </span>
 
-                  <span className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[8px] leading-none">
-                    <span className="shrink-0 text-gold-light" title="Server time">
-                      {nextEventTimes.serverTime} {SERVER_TZ_LABEL}
-                    </span>
-                    <span className="shrink-0 text-text-dim/60">→</span>
-                    <span className="min-w-0 truncate text-text-bright/75" title="Your local time">
-                      {nextEventTimes.localTime} {nextEventTimes.localZone}
-                    </span>
-                  </span>
-
-                  <span className="mt-1 flex min-w-0 items-center gap-1 text-[7px] uppercase tracking-[0.08em] text-text-dim">
-                    <span className="truncate">{nextEventTimes.serverDay}</span>
-                    <span className="text-gold-dim/40">·</span>
-                    <span className="text-gold-light/75">Your Time</span>
+                  <span className="mt-1 block truncate font-mono text-[8px] leading-none text-gold-light/85">
+                    {nextEventTimes.localTime} · {nextEventTimes.localDay}
                   </span>
                 </>
               ) : (
-                <span className="mt-0.5 block text-[10px] text-text-dim">No event scheduled</span>
+                <span className="mt-0.5 block text-[10px] text-text-dim">
+                  No event scheduled
+                </span>
               )}
+            </span>
+
+            <span
+              className="hidden shrink-0 pr-1 text-[13px] text-text-dim/40 transition-transform group-hover:translate-x-0.5 group-hover:text-gold-light sm:block"
+              aria-hidden="true"
+            >
+              →
             </span>
           </button>
         </div>
@@ -797,18 +802,21 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
         </button>
       </div>
 
-      <div
-        className="relative overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/80 shadow-[0_12px_34px_rgba(0,0,0,0.16)]"
+      <button
+        type="button"
+        onClick={onOpenCalendar}
+        aria-label={`Open Clan Calendar — ${next.name}, ${to12h(next.time)} server time`}
+        className="group relative block w-full min-w-0 cursor-pointer overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/80 text-left shadow-[0_12px_34px_rgba(0,0,0,0.16)] transition-all duration-200 hover:border-gold/20 hover:bg-[#0c0b09] hover:shadow-[0_16px_38px_rgba(0,0,0,0.25)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
       >
         <div
-          className="absolute inset-y-0 left-0 w-[3px]"
+          className="absolute inset-y-0 left-0 w-[3px] transition-all duration-200 group-hover:w-[4px]"
           style={{ background: type.color, boxShadow: `0 0 16px ${type.color}35` }}
           aria-hidden="true"
         />
 
         <div className="flex min-w-0 items-center gap-3 px-3.5 py-3 sm:gap-4 sm:px-4 sm:py-3.5">
           <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-lg"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-lg transition-colors duration-200 group-hover:brightness-110"
             style={{
               color: type.color,
               borderColor: `${type.color}35`,
@@ -832,7 +840,7 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
               </span>
             </div>
 
-            <div className="mt-0.5 truncate text-[13px] font-semibold text-text-bright sm:text-[14px]">
+            <div className="mt-0.5 truncate text-[13px] font-semibold text-text-bright transition-colors group-hover:text-gold-light sm:text-[14px]">
               {next.name}
             </div>
 
@@ -865,7 +873,7 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
             </div>
           </div>
         </div>
-      </div>
+      </button>
     </section>
   )
 })
@@ -878,18 +886,26 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
   const now = useNow()
   if (totalCount === 0) return null
 
+  // The dashboard is a command center, not the full marketplace.
+  // Show the three most urgent auctions and send the rest to Market.
+  const visibleAuctions = auctions.slice(0, 3)
+  const remainingCount = Math.max(0, totalCount - visibleAuctions.length)
+
   return (
     <section className="relative" aria-label="Live auctions">
-      <div className="mb-3 flex min-w-0 items-end justify-between gap-3 sm:mb-4">
-        <div className="min-w-0">
-          <div className="mb-1.5 flex flex-wrap items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-red-400 shadow-[0_0_9px_rgba(248,113,113,0.75)]" aria-hidden="true" />
-            <span className="text-[9px] font-bold uppercase tracking-[0.24em] text-text-dim">Market</span>
-            <span className="rounded-full border border-gold/20 bg-gold/[0.06] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-gold-light">
-              {totalCount} active
-            </span>
-          </div>
-          <h2 className="font-spectral text-xl font-bold leading-none text-text-bright sm:text-2xl">
+      <div className="mb-2.5 flex min-w-0 items-center justify-between gap-3 sm:mb-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400 shadow-[0_0_9px_rgba(248,113,113,0.7)]"
+            aria-hidden="true"
+          />
+          <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-text-dim">
+            Market
+          </span>
+          <span className="rounded-full border border-gold/20 bg-gold/[0.055] px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-gold-light">
+            {totalCount} active
+          </span>
+          <h2 className="hidden font-spectral text-xl font-bold leading-none text-text-bright sm:block">
             Live Auctions
           </h2>
         </div>
@@ -897,32 +913,32 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
         <button
           type="button"
           onClick={onOpenAll}
-          className="shrink-0 rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+          className="shrink-0 rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-[0.13em] text-text-dim transition-colors hover:bg-white/[0.03] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
         >
           View Market <span aria-hidden="true">→</span>
         </button>
       </div>
 
-      <div className="flex min-w-0 flex-wrap items-stretch gap-2.5">
-        {auctions.map(a => (
-          <div key={a.id} className="min-w-0 w-full sm:w-[calc(50%-5px)] xl:w-[calc(20%-8px)] xl:max-w-[292px]">
-            <LiveAuctionCard
-              auction={a}
-              now={now}
-              currentUserName={currentUser?.name}
-              onOpenAll={onOpenAll}
-            />
-          </div>
+      <div className="grid min-w-0 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+        {visibleAuctions.map(a => (
+          <LiveAuctionCard
+            key={a.id}
+            auction={a}
+            now={now}
+            currentUserName={currentUser?.name}
+            onOpenAll={onOpenAll}
+          />
         ))}
       </div>
 
-      {totalCount > auctions.length && (
+      {remainingCount > 0 && (
         <button
           type="button"
           onClick={onOpenAll}
-          className="mt-2 w-full rounded-lg border border-white/[0.05] bg-white/[0.015] py-2 text-center text-[10px] font-semibold uppercase tracking-wider text-text-dim transition-colors hover:bg-white/[0.03] hover:text-gold-light"
+          className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border border-white/[0.055] bg-white/[0.012] py-2 text-[9px] font-bold uppercase tracking-[0.13em] text-text-dim transition-all hover:border-gold/15 hover:bg-gold/[0.025] hover:text-gold-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
         >
-          +{totalCount - auctions.length} more {totalCount - auctions.length === 1 ? 'auction' : 'auctions'}
+          <span>+{remainingCount} more {remainingCount === 1 ? 'auction' : 'auctions'}</span>
+          <span aria-hidden="true">→</span>
         </button>
       )}
     </section>
@@ -933,47 +949,46 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
   auction: a, now, currentUserName, onOpenAll,
 }) {
   const rarity = RARITY_COLORS[a.rarity] || RARITY_COLORS.epic
-  const remaining = (a.endsAt || 0) - now
+  const remaining = Math.max(0, (a.endsAt || 0) - now)
   const isEnding = remaining > 0 && remaining < URGENT_MS
   const isLeading = a.topBidder && currentUserName === a.topBidder
   const timeLabel = formatAuctionTime(remaining)
   const currentBid = a.currentBid || 0
 
   const cardLabel =
-    `${a.name}, ${a.rarity} Rarity, Current Bid ${currentBid.toLocaleString()} Coins` +
-    (a.topBidder ? `, Top Bidder ${a.topBidder}` : ', No Bids Yet') +
-    `, Ends In ${timeLabel}` +
-    (isLeading ? ', You Are Currently Leading' : '')
+    `${a.name}, ${a.rarity} rarity, current bid ${currentBid.toLocaleString()} coins, ` +
+    `${a.topBidder ? `top bidder ${a.topBidder}` : 'no bids yet'}, ends in ${timeLabel}` +
+    (isLeading ? ', you are currently leading' : '')
 
   return (
     <button
       type="button"
       onClick={onOpenAll}
       aria-label={cardLabel}
-      className="group relative flex h-full min-h-[150px] w-full min-w-0 overflow-hidden rounded-xl border border-white/[0.07] bg-[#0a0908]/90 p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-[#0d0c0a] hover:shadow-[0_16px_38px_rgba(0,0,0,0.30)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 sm:p-3.5"
+      className="group relative flex min-h-[128px] w-full min-w-0 overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/88 text-left shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-[#0c0b09] hover:shadow-[0_14px_32px_rgba(0,0,0,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
     >
       <span
         className="absolute inset-y-3 left-0 w-[2px] rounded-full"
-        style={{ background: rarity.color, boxShadow: `0 0 12px ${rarity.color}45` }}
+        style={{ background: rarity.color, boxShadow: `0 0 11px ${rarity.color}40` }}
         aria-hidden="true"
       />
 
-      <div className="flex w-full min-w-0 flex-col gap-3 pl-1">
+      <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 px-3.5 py-3 pl-4 sm:px-4 sm:py-3.5 sm:pl-4">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-black/35">
+          <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-white/[0.09] bg-black/35 shadow-inner">
             {a.imageUrl ? (
               <img
                 src={a.imageUrl}
                 alt=""
-                width={52}
-                height={52}
+                width={48}
+                height={48}
                 loading="lazy"
                 className="h-full w-full object-cover"
                 onError={(e) => { e.currentTarget.style.display = 'none' }}
               />
             ) : (
               <span
-                className="flex h-full w-full items-center justify-center font-spectral text-xl font-bold"
+                className="flex h-full w-full items-center justify-center font-spectral text-lg font-bold"
                 style={{ color: rarity.color }}
                 aria-hidden="true"
               >
@@ -983,58 +998,76 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-start justify-between gap-2">
-              <div className="min-w-0 pt-1">
-                <span className="block truncate text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: rarity.color }}>
-                  {a.rarity}
-                </span>
-              </div>
-
-              {/* The countdown is a primary auction status, not secondary metadata. */}
+            <div className="flex min-w-0 items-center gap-2">
               <span
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-mono font-bold leading-none tabular-nums whitespace-nowrap ${
-                  isEnding
-                    ? 'border-red-400/30 bg-red-400/[0.09] text-red-300 motion-safe:animate-pulse'
-                    : 'border-gold/15 bg-gold/[0.045] text-gold-light'
-                }`}
-                aria-label={`Auction ends in ${timeLabel}`}
+                className="shrink-0 text-[8px] font-bold uppercase tracking-[0.15em]"
+                style={{ color: rarity.color }}
               >
-                <span className="text-[11px] leading-none" aria-hidden="true">◷</span>
-                <span>{isEnding ? 'ENDING · ' : ''}{timeLabel}</span>
+                {a.rarity}
               </span>
+
+              {isEnding && (
+                <span className="inline-flex items-center gap-1 text-[7px] font-bold uppercase tracking-[0.08em] text-red-300">
+                  <span className="h-1 w-1 rounded-full bg-red-400" aria-hidden="true" />
+                  Ending
+                </span>
+              )}
             </div>
 
-            <div className="mt-2 truncate text-[14px] font-semibold leading-tight sm:text-[15px]" style={{ color: rarity.color }}>
+            <div className="mt-1 truncate text-[15px] font-semibold leading-tight text-text-bright group-hover:text-gold-light sm:text-[16px]">
               {a.name}
+            </div>
+
+            <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
+              <span className="shrink-0 text-[7px] font-bold uppercase tracking-[0.12em] text-text-dim/70">
+                Bidder
+              </span>
+              <span
+                className={`min-w-0 truncate text-[10px] font-semibold leading-none ${
+                  a.topBidder ? 'text-text-bright/90' : 'text-text-dim/65'
+                }`}
+              >
+                {a.topBidder || 'No bids yet'}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-t border-white/[0.06] pt-2.5">
+        <div className="flex min-w-0 items-end justify-between gap-4 border-t border-white/[0.055] pt-2.5">
           <div className="min-w-0">
-            <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-text-dim">Current Bid</div>
-            <div className="mt-1 flex items-baseline gap-1 font-mono font-bold leading-none tabular-nums">
-              <span className="text-[17px] text-gold-bright">{currentBid.toLocaleString()}</span>
-              <span className="text-[9px] font-semibold text-gold-light/55">coins</span>
+            <div className="text-[7px] font-bold uppercase tracking-[0.13em] text-text-dim">
+              Current Bid
+            </div>
+            <div className="mt-1 flex items-baseline gap-1.5">
+              <span className="font-mono text-[16px] font-bold leading-none tabular-nums text-gold-bright">
+                {currentBid.toLocaleString()}
+              </span>
+              <span className="text-[8px] font-semibold uppercase tracking-[0.07em] text-gold-light/45">
+                coins
+              </span>
             </div>
           </div>
 
-          {isLeading ? (
-            <div className="shrink-0 text-right">
-              <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-text-dim">Your Status</div>
-              <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-green-400/25 bg-green-400/[0.08] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-green-300 whitespace-nowrap">
-                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-green-400/15 text-[9px]" aria-hidden="true">✓</span>
+          <div className="shrink-0 text-right">
+            <div className="text-[7px] font-bold uppercase tracking-[0.13em] text-text-dim">
+              Ends In
+            </div>
+            <div
+              className={`mt-1 font-mono text-[14px] font-bold leading-none tabular-nums ${
+                isEnding ? 'motion-safe:animate-pulse' : ''
+              }`}
+              style={{ color: isEnding ? '#f87171' : rarity.color }}
+            >
+              {timeLabel}
+            </div>
+
+            {isLeading && (
+              <div className="mt-1 inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-[0.07em] text-green-300">
+                <span aria-hidden="true">✓</span>
                 Leading
               </div>
-            </div>
-          ) : (
-            <div className="min-w-0 max-w-[108px] text-right">
-              <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-text-dim">Bidder</div>
-              <div className="mt-1 truncate text-[10px] font-semibold text-text-bright">
-                {a.topBidder || 'No bids'}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </button>
