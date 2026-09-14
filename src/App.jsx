@@ -112,6 +112,19 @@ function App() {
     role: m.role ?? 'Member',
     coins: Number(m.coins) || 0,
     power: Number(m.power) || 0,
+
+    // Character profile fields — keep these in React state after every
+    // Supabase load/update so Card Grade, Level and Awakening can persist.
+    character_level: Number(m.character_level ?? m.level) || 1,
+    awakening_stage: Number(m.awakening_stage) || 0,
+    profile_grade: m.profile_grade ?? 'Legendary',
+
+    // Power-window fields used by Members.jsx.
+    power_updates_used: Number(m.power_updates_used) || 0,
+    power_window_started_at: m.power_window_started_at ?? null,
+    power_updated_at: m.power_updated_at ?? null,
+    power_next_update_at: m.power_next_update_at ?? null,
+
     attendance: Number(m.attendance) || 0,
     auction_wins: Number(m.auction_wins ?? m.auctionWins) || 0,
     join_date: m.join_date ?? m.joinDate ?? '',
