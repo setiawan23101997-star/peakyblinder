@@ -100,6 +100,521 @@ function FlagIcon({ code, name, width = 20, height = 15, fallbackFlag }) {
   )
 }
 
+
+
+const NOTIFICATION_RARITY = {
+  common: {
+    text: "text-white",
+    border: "border-white/30",
+    glow: "shadow-[0_0_18px_rgba(255,255,255,0.08)]",
+  },
+  uncommon: {
+    text: "text-emerald-400",
+    border: "border-emerald-400/35",
+    glow: "shadow-[0_0_18px_rgba(52,211,153,0.12)]",
+  },
+  rare: {
+    text: "text-blue-400",
+    border: "border-blue-400/35",
+    glow: "shadow-[0_0_18px_rgba(96,165,250,0.12)]",
+  },
+  epic: {
+    text: "text-red-400",
+    border: "border-red-400/35",
+    glow: "shadow-[0_0_18px_rgba(248,113,113,0.12)]",
+  },
+  legendary: {
+    text: "text-amber-300",
+    border: "border-amber-300/45",
+    glow: "shadow-[0_0_20px_rgba(252,211,77,0.16)]",
+  },
+};
+
+const getNotificationRarity = rarity =>
+  NOTIFICATION_RARITY[String(rarity || "common").toLowerCase()] || NOTIFICATION_RARITY.common;
+
+const getNotificationAuctionImage = auction =>
+  auction?.image_url || auction?.image_data || null;
+
+const renderAuctionWonMessage = (notification, auction) => {
+  const message = notification?.message || "";
+  const itemName = auction?.name;
+
+  if (!message || !itemName) return message;
+
+  const match = message.match(/^(.*?)(["“])(.+?)(["”])(.*)$/);
+  if (!match) return message;
+
+  const rarity = getNotificationRarity(auction?.rarity);
+
+  return (
+    <>
+      {match[1]}
+      <span className={`font-semibold ${rarity.text}`}>
+        {itemName}
+      </span>
+      {match[5]}
+    </>
+  );
+};
+
+function NotificationBell({ ctx, onNavigate }) {
+  const { currentUser, supabase } = ctx
+  const [notifications, setNotifications] = useState([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const panelRef = useRef(null)
+
+  const memberId = currentUser?.id
+  const isGuest = !memberId || currentUser?.name === 'Guest'
+
+  const loadNotifications = async () => {
+    if (!supabase || isGuest) {
+      setNotifications([])
+      return
+    }
+
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('id, user_id, type, title, message, auction_id, is_read, created_at')
+        .eq('user_id', memberId)
+        .order('created_at', { ascending: false })
+        .limit(30)
+
+      if (error) throw error
+
+      const auctionIds = [...new Set(
+        (data || [])
+          .filter(n => n.type === 'auction_won' && n.auction_id)
+          .map(n => String(n.auction_id))
+      )]
+
+      let auctionMap = {}
+
+      if (auctionIds.length) {
+        const { data: auctions, error: auctionError } = await supabase
+          .from('auctions')
+          .select('id, name, rarity, image_url, image_data')
+          .in('id', auctionIds)
+
+        if (auctionError) {
+          console.warn('Load notification auction data failed:', auctionError)
+        } else {
+          auctionMap = Object.fromEntries(
+            (auctions || []).map(auction => [String(auction.id), auction])
+          )
+        }
+      }
+
+      setNotifications(
+        (data || []).map(notification => ({
+          ...notification,
+          auction: notification.auction_id
+            ? auctionMap[String(notification.auction_id)] || null
+            : null,
+        }))
+      )
+    } catch (err) {
+      console.warn('Load notifications failed:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadNotifications()
+    if (!supabase || isGuest) return
+
+    const poll = setInterval(loadNotifications, 5000)
+
+    let channel = null
+    try {
+      channel = supabase
+        .channel(`notifications-${memberId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${memberId}`,
+          },
+          async payload => {
+            let incoming = payload?.new
+            if (!incoming) return
+
+            if (incoming.type === 'auction_won' && incoming.auction_id) {
+              const { data: auction } = await supabase
+                .from('auctions')
+                .select('id, name, rarity, image_url, image_data')
+                .eq('id', incoming.auction_id)
+                .maybeSingle()
+
+              incoming = {
+                ...incoming,
+                auction: auction || null,
+              }
+            }
+
+            setNotifications(prev => [
+              incoming,
+              ...prev.filter(n => n.id !== incoming.id),
+            ].slice(0, 30))
+          }
+        )
+        .subscribe()
+    } catch (err) {
+      console.warn('Notification realtime setup failed:', err)
+    }
+
+    return () => {
+      clearInterval(poll)
+      if (channel) {
+        try { supabase.removeChannel(channel) } catch {}
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, memberId, currentUser?.name])
+
+  useEffect(() => {
+    if (!open) return
+
+    loadNotifications()
+
+    const handleOutside = e => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false)
+    }
+    const handleEscape = e => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [open])
+
+  const unreadCount = notifications.filter(n => !n.is_read).length
+
+  const formatNotificationTime = value => {
+    const time = value ? new Date(value).getTime() : NaN
+    if (!Number.isFinite(time)) return 'JUST NOW'
+
+    const diff = Math.max(0, Date.now() - time)
+    const minute = 60 * 1000
+    const hour = 60 * minute
+    const day = 24 * hour
+
+    if (diff < minute) return 'JUST NOW'
+    if (diff < hour) return `${Math.floor(diff / minute)} MIN AGO`
+    if (diff < day) return `${Math.floor(diff / hour)} HR AGO`
+    if (diff < 7 * day) return `${Math.floor(diff / day)} DAYS AGO`
+
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(new Date(time)).toUpperCase()
+  }
+
+  const markRead = async id => {
+    if (!supabase || !id) return
+
+    const previous = notifications
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
+
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', id)
+
+    if (error) {
+      console.warn('Mark notification read failed:', error)
+      setNotifications(previous)
+    }
+  }
+
+  const markAllRead = async () => {
+    if (!supabase || !memberId || unreadCount === 0) return
+
+    const previous = notifications
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', memberId)
+      .eq('is_read', false)
+
+    if (error) {
+      console.warn('Mark all notifications read failed:', error)
+      setNotifications(previous)
+    }
+  }
+
+  const clearAllNotifications = async () => {
+    if (!supabase || !memberId || notifications.length === 0) return
+
+    const previous = notifications
+    setNotifications([])
+
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('user_id', memberId)
+
+    if (error) {
+      console.warn('Clear notifications failed:', error)
+      setNotifications(previous)
+    }
+
+    setConfirmClear(false)
+  }
+
+  const handleNotificationClick = async notification => {
+    await markRead(notification.id)
+    setOpen(false)
+    if (notification.type?.startsWith('auction_') || notification.auction_id) {
+      onNavigate?.('auctions')
+    }
+  }
+
+  if (isGuest) return null
+
+  return (
+    <div ref={panelRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        className={`relative flex h-10 w-10 items-center justify-center rounded-xl border transition-all ${
+          open
+            ? 'border-gold/40 bg-gold/[.10] text-gold-bright shadow-[0_0_18px_rgba(212,175,55,.08)]'
+            : 'border-gold/15 bg-black/15 text-gold-light hover:border-gold/30 hover:bg-gold/[.06]'
+        }`}
+        aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+        aria-expanded={open}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        {unreadCount > 0 && (
+          <span className="absolute -right-1 -top-1 flex min-w-[18px] h-[18px] items-center justify-center rounded-full border-2 border-void bg-red-500 px-1 text-[8px] font-bold leading-none text-white shadow-[0_0_10px_rgba(239,68,68,.45)]">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-3 z-[120] w-[min(380px,calc(100vw-20px))] overflow-hidden rounded-[14px] border border-gold/25 bg-[#0a0807] shadow-[0_28px_90px_rgba(0,0,0,.88)]">
+          {/* Header */}
+          <div className="relative border-b border-white/[.07] px-4 pb-2.5 pt-3.5">
+            <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-gold/55 to-transparent" />
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-[9px] font-bold uppercase tracking-[.22em] text-gold-dim">
+                  Clan Center
+                </div>
+                <h3 className="mt-1 font-spectral text-[18px] font-bold leading-none text-text-bright">
+                  Notifications
+                </h3>
+              </div>
+
+              {notifications.length > 0 && (
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={markAllRead}
+                      className="rounded-lg border border-gold/15 bg-gold/[.035] px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.13em] text-gold-light transition-all hover:border-gold/30 hover:bg-gold/[.08]"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                  {!confirmClear && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmClear(true)}
+                      className="rounded-lg border border-red-400/15 bg-red-400/[.025] px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.13em] text-text-dim transition-all hover:border-red-400/30 hover:bg-red-400/[.07] hover:text-red-300"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-2.5 flex items-center justify-between">
+              <span className="text-[8px] font-bold uppercase tracking-[.18em] text-text-dim/65">
+                Recent activity
+              </span>
+              <span className="text-[8px] font-mono text-text-dim/45">
+                {notifications.length} {notifications.length === 1 ? 'NOTICE' : 'NOTICES'}
+              </span>
+            </div>
+          </div>
+
+          {confirmClear && (
+            <div className="border-b border-red-400/10 bg-red-950/[.12] px-4 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold text-text-bright">
+                    Clear all notifications?
+                  </div>
+                  <div className="mt-1 text-[9px] leading-relaxed text-text-dim">
+                    This will remove all notifications from your account.
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClear(false)}
+                    className="rounded-lg border border-white/[.08] bg-white/[.025] px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.12em] text-text-dim hover:bg-white/[.05] hover:text-text"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearAllNotifications}
+                    className="rounded-lg border border-red-400/25 bg-red-400/[.08] px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.12em] text-red-300 hover:bg-red-400/[.14]"
+                  >
+                    Clear all
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Notification list */}
+          <div className="max-h-[min(420px,calc(100vh-145px))] overflow-y-auto overscroll-contain">
+            {loading && notifications.length === 0 ? (
+              <div className="px-5 py-12 text-center">
+                <div className="mx-auto h-8 w-8 animate-pulse rounded-xl border border-gold/20 bg-gold/[.04]" />
+                <div className="mt-3 text-[10px] text-text-dim">Loading activity…</div>
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="px-5 py-14 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-gold/15 bg-gold/[.035]">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-gold-dim">
+                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <div className="mt-4 text-sm font-semibold text-text-bright">No new activity</div>
+                <div className="mt-1 text-[10px] leading-4 text-text-dim">
+                  Auction results and important clan updates will appear here.
+                </div>
+              </div>
+            ) : (
+              <div className="p-2.5">
+                {notifications.map(notification => {
+                  const unread = !notification.is_read
+                  const isAuctionWin = notification.type === 'auction_won'
+                  const rarity = isAuctionWin
+                    ? getNotificationRarity(notification.auction?.rarity)
+                    : null
+
+                  return (
+                    <button
+                      key={notification.id}
+                      type="button"
+                      onClick={() => handleNotificationClick(notification)}
+                      className={`group relative mb-1 flex w-full gap-2 overflow-hidden rounded-lg border p-2 text-left transition-all last:mb-0 ${
+                        unread
+                          ? 'border-white/[.07] bg-gold/[.045] hover:border-white/[.12] hover:bg-gold/[.06]'
+                          : 'border-white/[.035] bg-white/[.018] hover:border-white/[.08] hover:bg-white/[.035]'
+                      }`}
+                    >
+                      {/* unread rail */}
+                      {unread && (
+                        <span className="absolute bottom-2.5 left-0 top-2.5 w-[2px] rounded-r-full bg-gold-bright shadow-[0_0_8px_rgba(242,204,96,.35)]" />
+                      )}
+
+                      {isAuctionWin ? (
+                        <span
+                          className={`relative flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center overflow-hidden rounded-[9px] border bg-black/35 ${
+                            getNotificationRarity(notification.auction?.rarity).border
+                          } ${getNotificationRarity(notification.auction?.rarity).glow}`}
+                        >
+                          {getNotificationAuctionImage(notification.auction) ? (
+                            <img
+                              src={getNotificationAuctionImage(notification.auction)}
+                              alt={notification.auction?.name || 'Auction item'}
+                              className="h-full w-full rounded-[7px] object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center rounded-[8px] text-[8px] font-bold uppercase tracking-[.12em] text-text-dim/40">
+                              Item
+                            </div>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-white/[.025] text-text-dim">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          </svg>
+                        </span>
+                      )}
+
+                      <span className="min-w-0 flex-1">
+                        {!isAuctionWin && (
+                          <span className="flex items-center gap-2">
+                            <span className="text-[9px] font-bold uppercase tracking-[.16em] text-text-dim">
+                              Clan Update
+                            </span>
+                          </span>
+                        )}
+
+                        <span className={`mt-0.5 block text-[12px] font-bold leading-4 ${
+                          unread ? 'text-text-bright' : 'text-text'
+                        }`}>
+                          {isAuctionWin ? (
+                              <span className="text-[#E7C873]">Auction Won!</span>
+                            ) : String(notification.title || "").replace(/^🏆\s*/, "")}
+                        </span>
+
+                        <span className={`mt-0.5 block text-[10px] leading-[1.35] ${
+                          unread ? 'text-text-dim' : 'text-text-dim/75'
+                        }`}>
+                          {isAuctionWin ? renderAuctionWonMessage(notification, notification.auction) : notification.message}
+                        </span>
+
+                        <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[8px] font-bold uppercase tracking-[.13em] text-text-dim/50">
+                          <span>{formatNotificationTime(notification.created_at)}</span>
+                          {notification.auction_id && (
+                            <>
+                              <span>•</span>
+                              <span className="text-gold-dim transition-colors group-hover:text-gold-light">
+                                View auction →
+                              </span>
+                            </>
+                          )}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Layout({ ctx, page, setPage, children, toasts }) {
   const { currentUser, setCurrentUser, addToast } = ctx
 
@@ -149,7 +664,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
   return (
     <div className="min-h-screen flex flex-col bg-transparent">
       <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-void/95 border-b border-gold/15 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.22)]">
-        <div className="h-full px-3 sm:px-4 flex items-center justify-start md:justify-between">
+        <div className="h-full px-3 sm:px-4 flex items-center justify-between md:justify-between">
           {/* Mobile app header: menu + brand stay together on the LEFT */}
           <div className="flex min-w-0 items-center gap-2.5">
             <button
@@ -176,6 +691,11 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                 PeakyBlinder
               </span>
             </button>
+          </div>
+
+          {/* Mobile notification access */}
+          <div className="md:hidden ml-auto pl-2">
+            <NotificationBell ctx={ctx} onNavigate={setPage} />
           </div>
 
           {/* Desktop Navigation */}
@@ -222,10 +742,13 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               </div>
             </div>
 
-            {/* User */}
+            {/* User + Notifications */}
             {currentUser && (
-              <div ref={userMenuRef} className="relative ml-1 pl-2 border-l border-gold/10">
-                <button
+              <div className="relative ml-1 pl-2 border-l border-gold/10 flex items-center gap-1.5">
+                <NotificationBell ctx={ctx} onNavigate={setPage} />
+
+                <div ref={userMenuRef} className="relative">
+                  <button
                   type="button"
                   onClick={() => setUserMenuOpen(o => !o)}
                   className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition-all ${
@@ -272,6 +795,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                     </button>
                   </div>
                 )}
+                </div>
               </div>
             )}
           </div>
@@ -292,7 +816,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
           >
             {/* Compact drawer header */}
             <div className="shrink-0 px-3.5 pt-[calc(0.7rem+env(safe-area-inset-top))] pb-3 border-b border-gold/10">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-2.5">
                 <button
                   type="button"
                   onClick={() => { setPage('dashboard'); setMobileOpen(false) }}
@@ -323,7 +847,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2.5 py-2">
               {/* Primary navigation — one clean vertical list */}
               <div>
                 <div className="px-1 mb-2 text-[9px] font-bold uppercase tracking-[0.18em] text-text-dim">
@@ -338,7 +862,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                         key={item.id}
                         type="button"
                         onClick={() => { setPage(item.id); setMobileOpen(false) }}
-                        className={`relative flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                        className={`relative flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-all ${
                           active
                             ? 'border-gold/30 bg-gold/[0.09] text-gold-bright'
                             : 'border-transparent bg-transparent text-text-dim hover:border-white/[0.06] hover:bg-white/[0.025] hover:text-gold-light'
@@ -387,7 +911,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
 
                     <div className="mt-2 flex items-center justify-between border-t border-white/[0.05] pt-2">
                       <span className="text-[8px] uppercase tracking-[0.14em] text-text-dim">Your Time</span>
-                      <span className="text-[9px] font-mono text-gold-light/80">
+                      <span className="text-[8px] font-mono text-gold-light/80">
                         {getLocalZoneLabel()}
                       </span>
                     </div>
@@ -438,7 +962,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
       )}
 
       {/* Original content dimensions intentionally preserved */}
-      <main className="flex-1 mt-16 px-3 py-3.5 sm:p-4 md:p-6 max-w-7xl mx-auto w-full">
+      <main className="flex-1 mt-16 px-2.5 py-2.5.5 sm:p-4 md:p-6 max-w-7xl mx-auto w-full">
         {children}
       </main>
 
