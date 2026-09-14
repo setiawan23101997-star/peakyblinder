@@ -129,6 +129,10 @@ function getCooldown(member) {
   return 0
 }
 
+function isStaffRole(role) {
+  return ['Admin', 'Master', 'Elder'].includes(role)
+}
+
 function getPowerUpdatesUsed(member) {
   const used = Number(member?.power_updates_used)
   if (Number.isFinite(used) && used >= 0) return Math.min(3, used)
@@ -365,7 +369,7 @@ function Stat({ label, value }) {
   )
 }
 
-function ProfileModal({ member, members, isSelf, onClose, onPowerUpdate, onPowerCooldownReset, onProfileUpdate, onStaffEdit, canResetPowerCooldown }) {
+function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUpdate, onPowerCooldownReset, onProfileUpdate, onStaffEdit, canResetPowerCooldown }) {
   const [powerValue, setPowerValue] = useState(formatPowerInput(member.power ?? 0))
   const [selectedClass, setSelectedClass] = useState(member.cls || 'Berserker')
   const [selectedGrade, setSelectedGrade] = useState(member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary'))
@@ -375,7 +379,8 @@ function ProfileModal({ member, members, isSelf, onClose, onPowerUpdate, onPower
   const [profileSaving, setProfileSaving] = useState(false)
   const [, setClock] = useState(0)
 
-  const cooldown = getCooldown(member)
+  const isStaff = isStaffRole(member?.role)
+  const cooldown = isStaff ? 0 : getCooldown(member)
 
   useEffect(() => {
     if (!member?.power_next_update_at) return undefined
@@ -410,8 +415,11 @@ function ProfileModal({ member, members, isSelf, onClose, onPowerUpdate, onPower
 
   const currentLevel = Number(member.character_level || member.level || 1)
   const currentAwakening = Number(member.awakening_stage) || 0
+  const canManageOwnGrade = Boolean(isSelf && currentUser?.role && ['Admin', 'Master', 'Elder'].includes(currentUser.role))
+  const currentGradeKey = member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary')
   const hasProfileChanges =
     selectedClass !== (member.cls || 'Berserker') ||
+    (canManageOwnGrade && selectedGrade !== currentGradeKey) ||
     Number(selectedLevel || 1) !== currentLevel ||
     Number(selectedAwakening || 0) !== currentAwakening
 
@@ -521,12 +529,27 @@ function ProfileModal({ member, members, isSelf, onClose, onPowerUpdate, onPower
 
                     <div>
                       <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-text-dim">Card Grade</span>
-                      <div className="flex h-[42px] items-center justify-between rounded-md border border-gold/20 bg-gold/[0.04] px-3">
-                        <span className="text-sm font-semibold text-gold-light">
-                          {(member.profile_grade === 'Mythic' || member.profile_grade === 'Mythical') ? 'Mythical' : (member.profile_grade || 'Legendary')}
-                        </span>
-                        <span className="text-[8px] font-black uppercase tracking-[0.12em] text-text-dim">Staff Only</span>
-                      </div>
+                      {canManageOwnGrade ? (
+                        <select
+                          className="input w-full"
+                          value={selectedGrade}
+                          onChange={e => setSelectedGrade(e.target.value)}
+                          disabled={profileSaving}
+                        >
+                          {Object.keys(GRADE_META).map(g => (
+                            <option key={g} value={g}>
+                              {GRADE_META[g].label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="flex h-[42px] items-center justify-between rounded-md border border-gold/20 bg-gold/[0.04] px-3">
+                          <span className="text-sm font-semibold text-gold-light">
+                            {(member.profile_grade === 'Mythic' || member.profile_grade === 'Mythical') ? 'Mythical' : (member.profile_grade || 'Legendary')}
+                          </span>
+                          <span className="text-[8px] font-black uppercase tracking-[0.12em] text-text-dim">Staff Only</span>
+                        </div>
+                      )}
                     </div>
 
                     <label>
@@ -554,7 +577,10 @@ function ProfileModal({ member, members, isSelf, onClose, onPowerUpdate, onPower
                   <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/20 px-3 py-2.5">
                     <div className="flex items-center gap-2 text-[9px] leading-relaxed text-text-dim">
                       <span className="text-gold-bright">◆</span>
-                      <span>Card Grade is managed by <strong className="font-bold text-white/75">Elder and Master only</strong>. Ask a staff member if you want to change your grade.</span>
+                      <span>{canManageOwnGrade
+                        ? <>As <strong className="font-bold text-white/75">{member.role}</strong>, you can change your own Card Grade.</>
+                        : <>Card Grade is managed by <strong className="font-bold text-white/75">Admin, Master, or Elder</strong>. Ask a staff member if you want to change your grade.</>
+                      }</span>
                     </div>
                   </div>
 
@@ -564,11 +590,13 @@ function ProfileModal({ member, members, isSelf, onClose, onPowerUpdate, onPower
                       const nextLevel = Math.max(1, Number.parseInt(selectedLevel, 10) || 1)
                       const nextAwakening = Math.min(1, Math.max(0, Number.parseInt(selectedAwakening, 10) || 0))
                       setProfileSaving(true)
-                      const ok = await onProfileUpdate(member, {
+                      const profileUpdates = {
                         cls: selectedClass,
                         character_level: nextLevel,
                         awakening_stage: nextAwakening,
-                      })
+                      }
+                      if (canManageOwnGrade) profileUpdates.profile_grade = selectedGrade
+                      const ok = await onProfileUpdate(member, profileUpdates)
                       setProfileSaving(false)
                       if (ok) onClose()
                     }}
@@ -606,22 +634,24 @@ function ProfileModal({ member, members, isSelf, onClose, onPowerUpdate, onPower
                 <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] px-4 py-3.5 sm:px-5">
                   <div>
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-light">Update My Power</div>
-                    <div className="mt-1 text-[10px] text-text-dim">Up to 3 updates in each 7-day window.</div>
+                    <div className="mt-1 text-[10px] text-text-dim">{isStaff ? "Unlimited Power updates for staff." : "Up to 3 updates in each 7-day window."}</div>
                   </div>
 
                   <div className={`shrink-0 rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] ${
-                    cooldown > 0
-                      ? 'border-white/10 bg-white/[0.02] text-text-dim'
-                      : 'border-emerald-400/25 bg-emerald-400/[0.05] text-emerald-300'
+                    isStaff
+                      ? 'border-gold/30 bg-gold/[0.06] text-gold-bright'
+                      : cooldown > 0
+                        ? 'border-white/10 bg-white/[0.02] text-text-dim'
+                        : 'border-emerald-400/25 bg-emerald-400/[0.05] text-emerald-300'
                   }`}>
-                    {cooldown > 0 ? `LOCKED · ${cooldownText(cooldown)}` : `${getPowerWindowRemaining(member)} / 3 LEFT`}
+                    {isStaff ? 'UNLIMITED' : cooldown > 0 ? `LOCKED · ${cooldownText(cooldown)}` : `${getPowerWindowRemaining(member)} / 3 LEFT`}
                   </div>
                 </div>
 
                 <div className="px-4 py-4 sm:px-5">
                   <div className="mb-4 flex items-center gap-2">
                     {[0, 1, 2].map(index => {
-                      const active = cooldown <= 0 && index < getPowerWindowRemaining(member)
+                      const active = isStaff || (cooldown <= 0 && index < getPowerWindowRemaining(member))
                       return (
                         <div
                           key={index}
@@ -631,7 +661,7 @@ function ProfileModal({ member, members, isSelf, onClose, onPowerUpdate, onPower
                     })}
                   </div>
 
-                  {cooldown <= 0 ? (
+                  {isStaff || cooldown <= 0 ? (
                     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
                       <div>
                         <div className="mb-1.5 flex items-center justify-between">
@@ -973,7 +1003,14 @@ export default function Members({ ctx }) {
     }
     const ok = await updateMember(member.id, updates)
     if (ok) {
-      addToast('Your character profile was updated. Card Grade is staff-managed.', 'gold', 'Character Updated')
+      const gradeChanged = Object.prototype.hasOwnProperty.call(updates || {}, 'profile_grade')
+      addToast(
+        gradeChanged
+          ? 'Your character profile and Card Grade were updated.'
+          : 'Your character profile was updated.',
+        'gold',
+        'Character Updated'
+      )
       return true
     }
     return false
@@ -1003,22 +1040,30 @@ export default function Members({ ctx }) {
       addToast('You can only update your own Power.', 'red', 'Not Allowed')
       return false
     }
-    const remaining = getCooldown(member)
-    if (remaining > 0) {
+
+    const isStaff = isStaffRole(currentUser.role)
+    const remaining = isStaff ? 0 : getCooldown(member)
+
+    if (!isStaff && remaining > 0) {
       addToast(`Power is locked for ${cooldownText(remaining)}.`, 'red', 'Power Locked')
       return false
     }
+
     const updates = { power: newPower }
     const ok = await updateMember(member.id, updates)
     if (ok) {
-      const remainingUpdates = Math.max(0, 3 - (getPowerUpdatesUsed(member) + 1))
-      addToast(
-        remainingUpdates > 0
-          ? `Power updated to ${formatNumber(newPower)}. You have ${remainingUpdates} Power update${remainingUpdates === 1 ? '' : 's'} remaining.`
-          : `Power updated to ${formatNumber(newPower)}. Your Power is now locked until the next 7-day window.`,
-        'gold',
-        'Power Updated'
-      )
+      if (isStaff) {
+        addToast(`Power updated to ${formatNumber(newPower)}. Staff Power updates are unlimited.`, 'gold', 'Power Updated')
+      } else {
+        const remainingUpdates = Math.max(0, 3 - (getPowerUpdatesUsed(member) + 1))
+        addToast(
+          remainingUpdates > 0
+            ? `Power updated to ${formatNumber(newPower)}. You have ${remainingUpdates} Power update${remainingUpdates === 1 ? '' : 's'} remaining.`
+            : `Power updated to ${formatNumber(newPower)}. Your Power is now locked until the next 7-day window.`,
+          'gold',
+          'Power Updated'
+        )
+      }
       return true
     }
     return false
@@ -1058,7 +1103,7 @@ export default function Members({ ctx }) {
       role: finalRole,
       region: PROFILE_REGION,
       server: PROFILE_SERVER,
-      profile_grade: 'Epic',
+      profile_grade: 'Legendary',
     }
     const saved = await saveMember(member)
     setLoading(false)
@@ -1180,6 +1225,7 @@ export default function Members({ ctx }) {
           member={selected}
           members={ranked}
           isSelf={selected.id === currentUser?.id}
+          currentUser={currentUser}
           onClose={() => setSelected(null)}
           onPowerUpdate={handlePowerUpdate}
           onPowerCooldownReset={() => handlePowerCooldownReset(selected)}
