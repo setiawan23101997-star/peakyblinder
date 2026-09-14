@@ -4,10 +4,12 @@ import Layout from './components/Layout'
 import Dashboard from './components/Dashboard'
 import Members from './components/Members'
 import Attendance from './components/Attendance'
-import EventCalendar from './components/EventCalendar'
 import Auctions from './components/Auctions'
 import Leaderboard from './components/Leaderboard'
 import Login from './components/Login'
+import NoticeBoard from './components/NoticeBoard'
+import AdminAuditLog from './components/AdminAuditLog'
+import EventCalendar from './components/EventCalendar'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -267,6 +269,29 @@ function App() {
     return () => clearInterval(id)
   }, [auctions])
 
+  const logAudit = async ({ action, entityType = 'System', entityId = null, details = {} }) => {
+    if (!currentUser || !['Admin', 'Master', 'Elder'].includes(currentUser.role)) return false
+    try {
+      const { error } = await supabase.from('admin_audit_logs').insert([{
+        actor_id: Number(currentUser.id) || null,
+        actor_name: currentUser.name || 'Unknown Staff',
+        actor_role: currentUser.role || null,
+        action,
+        entity_type: entityType,
+        entity_id: entityId == null ? null : String(entityId),
+        details: details || {},
+      }])
+      if (error) {
+        console.warn('Audit log write failed:', error.message || error)
+        return false
+      }
+      return true
+    } catch (error) {
+      console.warn('Audit log write failed:', error)
+      return false
+    }
+  }
+
   const saveMember = async (member) => {
     try {
       const { data, error } = await supabase
@@ -278,6 +303,12 @@ function App() {
         const normalized = normalizeMember(data[0])
         setAllMembers(prev => [...prev, normalized])
         setMembers(prev => [...prev, normalized])
+        await logAudit({
+          action: 'Added Member',
+          entityType: 'Member',
+          entityId: normalized.id,
+          details: { name: normalized.name, role: normalized.role, class: normalized.cls },
+        })
         return normalized
       }
       return null
@@ -290,6 +321,11 @@ function App() {
 
   const updateMember = async (id, updates) => {
     try {
+      // Capture the member's current values before the update so audit history
+      // can show the exact coin movement (before → after and +/- delta).
+      const existingMember = (allMembers || members || []).find(m => Number(m.id) === Number(id))
+      const coinsBefore = Number(existingMember?.coins)
+
       const { data, error } = await supabase
         .from('members')
         .update(updates)
@@ -300,6 +336,31 @@ function App() {
         const normalized = normalizeMember(data[0])
         setAllMembers(prev => prev.map(m => m.id === id ? normalized : m))
         setMembers(prev => prev.map(m => m.id === id ? normalized : m))
+
+        const coinsAfter = Number(normalized.coins)
+        const coinWasChanged =
+          Object.prototype.hasOwnProperty.call(updates || {}, 'coins') &&
+          Number.isFinite(coinsBefore) &&
+          Number.isFinite(coinsAfter) &&
+          coinsBefore !== coinsAfter
+
+        const auditDetails = {
+          name: normalized.name,
+          changes: Object.keys(updates || {}),
+        }
+
+        if (coinWasChanged) {
+          auditDetails.coins_before = coinsBefore
+          auditDetails.coins_after = coinsAfter
+          auditDetails.coin_change = coinsAfter - coinsBefore
+        }
+
+        await logAudit({
+          action: coinWasChanged ? 'Changed Member Coins' : 'Updated Member',
+          entityType: 'Member',
+          entityId: normalized.id,
+          details: auditDetails,
+        })
         return normalized
       }
       return null
@@ -319,6 +380,12 @@ function App() {
       if (error) throw error
       setAllMembers(prev => prev.filter(m => m.id !== id))
       setMembers(prev => prev.filter(m => m.id !== id))
+      await logAudit({
+        action: 'Removed Member',
+        entityType: 'Member',
+        entityId: id,
+        details: {},
+      })
       return true
     } catch (error) {
       console.error('Failed to delete member:', error)
@@ -329,11 +396,32 @@ function App() {
 
   const resetMemberPassword = async (targetId, newPassword) => {
     try {
+      // Resolve the target before changing the password so the audit record
+      // identifies exactly which player account was changed. Never store the
+      // new password itself in the audit log.
+      const targetMember = (allMembers || members || []).find(
+        m => Number(m.id) === Number(targetId)
+      )
+
       const { error } = await supabase
         .from('members')
         .update({ password: newPassword })
         .eq('id', targetId)
+
       if (error) throw error
+
+      await logAudit({
+        action: 'Reset Member Password',
+        entityType: 'Member',
+        entityId: targetId,
+        details: {
+          member_name: targetMember?.name || 'Unknown Member',
+          username: targetMember?.username || null,
+          target_role: targetMember?.role || null,
+          change_type: 'Staff reset member password',
+        },
+      })
+
       return true
     } catch (error) {
       console.error('Failed to reset password:', error)
@@ -356,6 +444,16 @@ function App() {
       const updated = { ...currentUser, password: newPassword }
       setCurrentUser(updated)
       localStorage.setItem('currentUser', JSON.stringify(updated))
+      await logAudit({
+        action: 'Changed Own Password',
+        entityType: 'Member',
+        entityId: currentUser.id,
+        details: {
+          member_name: currentUser.name || 'Unknown Member',
+          username: currentUser.username || null,
+          change_type: 'Member changed own password',
+        },
+      })
       return true
     } catch (error) {
       console.error('Failed to change password:', error)
@@ -429,6 +527,7 @@ function App() {
     currentUser,
     setCurrentUser,
     addToast,
+    logAudit,
     handleLogin,
     handleLogout,
     loadAllData,
@@ -461,9 +560,11 @@ function App() {
       case 'dashboard':   return <Dashboard   ctx={ctx} setPage={setPage} />
       case 'members':     return <Members     ctx={ctx} />
       case 'attendance':  return <Attendance  ctx={ctx} />
-      case 'calendar':    return <EventCalendar setPage={setPage} />
       case 'auctions':    return <Auctions    ctx={ctx} />
       case 'leaderboard': return <Leaderboard ctx={ctx} />
+      case 'calendar': return <EventCalendar setPage={setPage} />
+      case 'notice-board': return <NoticeBoard ctx={ctx} />
+      case 'admin-log': return <AdminAuditLog ctx={ctx} />
       default:            return <Dashboard   ctx={ctx} setPage={setPage} />
     }
   }
