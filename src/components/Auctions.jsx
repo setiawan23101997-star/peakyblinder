@@ -12,8 +12,8 @@ const RARITY = {
 const GLOW_RARITIES = new Set(['legendary'])
 const URGENT_MS = 5 * 60 * 1000
 const BID_LOCK_MS = 30 * 1000
-const OUTBID_EXTENSION_MS = 2 * 60 * 1000
-const MIN_BID_INCREMENT = 10
+const MAX_BID_CHANGES = 2
+const MAX_BID_SUBMISSIONS = 1 + MAX_BID_CHANGES
 
 const SERVER_TZ_LABEL = 'UTC+08:00 (GMT+8)'
 const SERVER_TZ_SHORT = 'UTC+08:00'
@@ -181,8 +181,51 @@ function formatRelativePast(ms) {
 function isBiddingOpen(auction, now) {
   return auction.status === 'active' && (auction.endsAt - now) > BID_LOCK_MS
 }
+
+function getStartingBid(auction) {
+  return Number(auction?.startBid ?? auction?.minBid ?? auction?.currentBid ?? 0) || 0
+}
+
+// Blind auctions do not have an open "current highest bid".
+// The only minimum is the auction's starting bid.
 function minNextBidFor(auction) {
-  return (auction?.currentBid || 0) + MIN_BID_INCREMENT
+  return getStartingBid(auction)
+}
+
+function getOwnBidState(auction, memberName) {
+  const bids = Array.isArray(auction?.bids) ? auction.bids : []
+  const mine = bids.filter(b => b?.bidder === memberName)
+  const last = mine[mine.length - 1] || null
+  if (last?.cancelled) {
+    return { hasBid: false, amount: 0, submissions: 0, changesUsed: 0, changesLeft: 0, cancelled: true }
+  }
+  const submissions = mine.filter(b => !b?.cancelled)
+  const changesUsed = Math.max(0, submissions.length - 1)
+  return {
+    hasBid: submissions.length > 0,
+    amount: Number(last?.amount) || 0,
+    submissions: submissions.length,
+    changesUsed,
+    changesLeft: Math.max(0, MAX_BID_CHANGES - changesUsed),
+    cancelled: false,
+  }
+}
+
+function getFinalBidEntries(auction) {
+  const bids = Array.isArray(auction?.bids) ? auction.bids : []
+  const latestByBidder = new Map()
+  for (const bid of bids) {
+    if (!bid?.bidder) continue
+    latestByBidder.set(bid.bidder, bid)
+  }
+  return [...latestByBidder.values()]
+    .filter(b => !b.cancelled && Number(b.amount) > 0)
+    .map(b => ({ ...b, amount: Number(b.amount) || 0, time: Number(b.time) || 0 }))
+    .sort((a, b) => b.amount - a.amount || a.time - b.time)
+}
+
+function getAuctionWinner(auction) {
+  return getFinalBidEntries(auction)[0] || null
 }
 
 function displayNameForLibraryImage(img) {
@@ -307,7 +350,7 @@ export default function Auctions({ ctx }) {
     setBidAmounts(prev => {
       const next = { ...prev }
       let changed = false
-      for (const a of auctions) {
+      for (const a of (Array.isArray(auctions) ? auctions : [])) {
         if (a.status !== 'active') continue
         const current = next[a.id]
         if (current === undefined || current === '' || current === null) {
@@ -466,77 +509,189 @@ export default function Auctions({ ctx }) {
   }
 
   const createAuction = async () => {
-    if (!newItem.name.trim()) {
+    const itemName = String(newItem?.name ?? '').trim()
+    if (!itemName) {
       addToast('Enter an item name.', 'red', 'Error')
       return
     }
 
-    const startBid = parseInt(newItem.startBid) || 100
-    const durationMin = parseInt(newItem.duration) || 60
-    const endsAt = Date.now() + durationMin * 60 * 1000
-    const id = String(Date.now())
-    const description = finalDescription
+    if (!supabase) {
+      addToast('Database connection is unavailable.', 'red', 'Connection Error')
+      return
+    }
+
+    const startBid = Math.max(1, parseInt(newItem?.startBid, 10) || 100)
+    const durationMin = Math.max(1, parseInt(newItem?.duration, 10) || 60)
+    const startedAt = Date.now()
+    const endsAt = startedAt + durationMin * 60 * 1000
+    const id = String(startedAt)
+    const description = finalDescription || null
 
     setUploading(true)
 
-    let imageUrl = null
     try {
-      imageUrl = await uploadImage()
+      const imageUrl = await uploadImage()
+
+      const payload = {
+        id,
+        name: itemName,
+        description,
+        rarity: newItem?.rarity || 'epic',
+        status: 'active',
+        started_at: startedAt,
+        ends_at: endsAt,
+        current_bid: startBid,
+        min_bid: startBid,
+        top_bidder: null,
+        bids: [],
+        distributed_by: null,
+        image_url: imageUrl,
+        is_featured: false,
+      }
+
+      // The payload is already complete. Do not chain .select() here:
+      // INSERT + SELECT can fail under an RLS policy that permits INSERT
+      // but does not permit the client to read the inserted row back.
+      const { error } = await supabase
+        .from('auctions')
+        .insert([payload])
+
+      if (error) throw error
+
+      const row = payload
+
+      const newAuction = {
+        id: String(row.id ?? id),
+        name: row.name ?? itemName,
+        description: row.description ?? '',
+        rarity: row.rarity ?? payload.rarity,
+        status: row.status ?? 'active',
+        currentBid: Number(row.current_bid ?? startBid) || startBid,
+        startBid: Number(row.min_bid ?? startBid) || startBid,
+        topBidder: row.top_bidder ?? null,
+        endsAt: Number(row.ends_at ?? endsAt) || endsAt,
+        startedAt: Number(row.started_at ?? startedAt) || startedAt,
+        endedAt: Number(row.ended_at ?? 0) || 0,
+        bids: Array.isArray(row.bids)
+          ? row.bids
+          : (typeof row.bids === 'string'
+              ? (() => { try { return JSON.parse(row.bids) || [] } catch { return [] } })()
+              : []),
+        distributedBy: row.distributed_by ?? null,
+        imageUrl: row.image_url ?? imageUrl ?? null,
+        isFeatured: row.is_featured === true,
+      }
+
+      setAuctions(prev => {
+        const safePrev = Array.isArray(prev) ? prev : []
+        return [newAuction, ...safePrev.filter(a => String(a?.id) !== String(newAuction.id))]
+      })
+
+      setNewItem({
+        name: '',
+        description: '',
+        rarity: 'epic',
+        startBid: 100,
+        duration: 60,
+      })
+      setDescChoice('')
+      setCustomDesc('')
+      clearImage()
+      setShowCreate(false)
+
+      addToast(`"${itemName}" is now up for auction!`, 'gold', 'Auction Live')
     } catch (err) {
-      console.error('Image upload failed:', err)
-      addToast(`Couldn't upload image: ${err.message}`, 'red', 'Upload Failed')
+      console.error('Create auction failed:', err)
+      addToast(
+        `Couldn't start auction: ${err?.message || 'Unknown error'}`,
+        'red',
+        'Auction Not Started'
+      )
+    } finally {
       setUploading(false)
-      return
+    }
+  }
+
+  const finalizingRef = useRef(new Set())
+
+  const settleAuction = async (auctionId, { early = false } = {}) => {
+    if (!supabase) return false
+    const auction = auctions.find(a => a.id === auctionId)
+    if (!auction || auction.status !== 'active') return false
+
+    const endedAt = Date.now()
+    const finalBids = getFinalBidEntries(auction)
+    const winner = finalBids[0] || null
+    const losers = finalBids.slice(1)
+
+    // Claim the auction transition first. The status guard prevents two
+    // browsers from settling the same auction twice.
+    const { data: claimed, error: claimErr } = await supabase
+      .from('auctions')
+      .update({
+        status: 'ended',
+        current_bid: winner?.amount || getStartingBid(auction),
+        top_bidder: winner?.bidder || null,
+        is_featured: false,
+      })
+      .eq('id', auctionId)
+      .eq('status', 'active')
+      .select('id')
+      .maybeSingle()
+
+    if (claimErr) {
+      console.error('Auction settlement claim failed:', claimErr)
+      if (early) addToast(`Couldn't end auction: ${claimErr.message}`, 'red', 'Save Failed')
+      return false
     }
 
-    const { error } = await supabase.from('auctions').insert([{
-      id,
-      name: newItem.name.trim(),
-      description,
-      rarity: newItem.rarity,
-      status: 'active',
-      started_at: Date.now(),
-      ends_at: endsAt,
-      current_bid: startBid,
-      min_bid: startBid,
-      top_bidder: null,
-      bids: [],
-      distributed_by: null,
-      image_url: imageUrl,
-      is_featured: false,
-    }])
-
-    setUploading(false)
-
-    if (error) {
-      console.error('Create auction failed:', error)
-      addToast(`Couldn't create auction: ${error.message}`, 'red', 'Save Failed')
-      return
+    if (!claimed) {
+      // Another browser already finalized it.
+      return false
     }
 
-    setAuctions(prev => [{
-      id,
-      name: newItem.name.trim(),
-      description,
-      rarity: newItem.rarity,
-      status: 'active',
-      currentBid: startBid,
-      startBid,
-      topBidder: null,
-      endsAt,
-      startedAt: Date.now(),
-      bids: [],
-      distributedBy: null,
-      imageUrl,
+    let refundFailed = false
+    for (const loser of losers) {
+      const member = members.find(m => m.name === loser.bidder)
+      if (!member || loser.amount <= 0) continue
+
+      const { error: refundErr } = await supabase
+        .from('members')
+        .update({ coins: (Number(member.coins) || 0) + loser.amount })
+        .eq('id', member.id)
+
+      if (refundErr) {
+        refundFailed = true
+        console.error('Loser refund failed:', refundErr)
+      } else {
+        setMembers(prev => prev.map(m =>
+          m.id === member.id ? { ...m, coins: (Number(m.coins) || 0) + loser.amount } : m
+        ))
+      }
+    }
+
+    setAuctions(prev => prev.map(a => a.id === auctionId ? {
+      ...a,
+      status: 'ended',
+      currentBid: winner?.amount || getStartingBid(a),
+      topBidder: winner?.bidder || null,
+      endedAt,
       isFeatured: false,
-    }, ...prev])
+    } : a))
 
-    setNewItem({ name: '', description: '', rarity: 'epic', startBid: 100, duration: 60 })
-    setDescChoice('')
-    setCustomDesc('')
-    clearImage()
-    setShowCreate(false)
-    addToast(`"${newItem.name}" is now up for auction!`, 'gold', 'Auction Live')
+    if (refundFailed) {
+      addToast(`"${auction.name}" ended, but one or more losing-bid refunds need attention.`, 'red', 'Refund Warning')
+    } else if (winner) {
+      addToast(
+        `"${auction.name}" ended. Winner: ${winner.bidder} at ${winner.amount.toLocaleString()} coins.`,
+        'gold',
+        early ? 'Auction Ended' : 'Auction Complete'
+      )
+    } else {
+      addToast(`"${auction.name}" ended with no final bids.`, 'blue', 'Auction Complete')
+    }
+
+    return true
   }
 
   const placeBid = async (auctionId) => {
@@ -553,38 +708,55 @@ export default function Auctions({ ctx }) {
       return
     }
 
+    const bidder = members.find(m => m.name === currentUser?.name)
+    if (!bidder) {
+      addToast('Your member record could not be found.', 'red', 'Bid Failed')
+      return
+    }
+
+    const own = getOwnBidState(auction, currentUser.name)
+    if (own.cancelled) {
+      addToast('You cancelled your bid and cannot bid again on this auction.', 'red', 'Bid Cancelled')
+      return
+    }
+    if (own.submissions >= MAX_BID_SUBMISSIONS) {
+      addToast('You have used your initial bid plus both allowed changes.', 'red', 'No Changes Left')
+      return
+    }
+
     const raw = bidAmounts[auctionId]
     const amount = (raw === '' || raw === undefined || raw === null)
-      ? minNextBidFor(auction)
-      : parseInt(raw)
+      ? (own.hasBid ? own.amount : getStartingBid(auction))
+      : parseInt(raw, 10)
 
-    if (!amount || amount <= 0) {
+    const startingBid = getStartingBid(auction)
+
+    if (!Number.isFinite(amount) || amount <= 0) {
       addToast('Enter a valid bid amount.', 'red', 'Invalid Bid')
       return
     }
 
-    const minNext = minNextBidFor(auction)
-    if (amount < minNext) {
-      addToast(`Minimum bid is ${minNext.toLocaleString()} coins (current + ${MIN_BID_INCREMENT}).`, 'red', 'Bid Too Low')
+    if (amount < startingBid) {
+      addToast(`Your bid must be at least ${startingBid.toLocaleString()} coins.`, 'red', 'Bid Too Low')
       return
     }
 
-    const bidder = members.find(m => m.name === currentUser.name)
-    if (!bidder || bidder.coins < amount) {
-      addToast('Not enough coins.', 'red', 'Insufficient Funds')
+    if (own.hasBid && amount === own.amount) {
+      addToast('Enter a different amount to use a bid change.', 'red', 'No Change')
       return
     }
 
-    const prevBidder = auction.topBidder
-    const prevAmount = auction.currentBid
+    // Only the latest bid is reserved. A change up reserves the difference;
+    // a change down immediately releases the difference.
+    const previousReserved = own.amount
+    const availableForNewBid = (Number(bidder.coins) || 0) + previousReserved
+    if (amount > availableForNewBid) {
+      addToast('Not enough available coins for that bid.', 'red', 'Insufficient Funds')
+      return
+    }
 
-    // Soft-close / anti-sniping:
-    // only a genuine outbid extends the auction. Raising your own bid does
-    // not add time. A bid accepted before the 30-second lock adds 2 minutes
-    // to the current end time.
-    const isOutbid = !!prevBidder && prevBidder !== currentUser.name
-    const extensionMs = isOutbid ? OUTBID_EXTENSION_MS : 0
-    const newEndsAt = auction.endsAt + extensionMs
+    const delta = amount - previousReserved
+    const newCoins = (Number(bidder.coins) || 0) - delta
 
     const newBids = [
       ...(auction.bids || []),
@@ -592,101 +764,162 @@ export default function Auctions({ ctx }) {
         bidder: currentUser.name,
         amount,
         time: bidNow,
-        previousBidder: prevBidder || null,
-        previousAmount: prevBidder ? prevAmount : null,
-        extendedByMs: extensionMs,
-        endsAt: newEndsAt,
+        previousAmount: previousReserved || null,
+        changeNumber: own.submissions,
+        isChange: own.submissions > 0,
+        cancelled: false,
       },
     ]
+
+    // Reserve/release the coin difference first. If the auction write fails,
+    // roll the member balance back to its previous value.
+    const { error: coinErr } = await supabase
+      .from('members')
+      .update({ coins: newCoins })
+      .eq('id', bidder.id)
+
+    if (coinErr) {
+      console.error('Bid reserve update failed:', coinErr)
+      addToast(`Couldn't reserve coins: ${coinErr.message}`, 'red', 'Save Failed')
+      return
+    }
 
     const { error: auctionErr } = await supabase
       .from('auctions')
       .update({
-        current_bid: amount,
-        top_bidder: currentUser.name,
         bids: newBids,
-        ends_at: newEndsAt,
+        current_bid: startingBid,
+        top_bidder: null,
       })
       .eq('id', auctionId)
+      .eq('status', 'active')
 
     if (auctionErr) {
-      console.error('Bid update failed:', auctionErr)
-      addToast(`Couldn't place bid: ${auctionErr.message}`, 'red', 'Save Failed')
+      await supabase.from('members').update({ coins: bidder.coins }).eq('id', bidder.id)
+      console.error('Blind bid save failed:', auctionErr)
+      addToast(`Couldn't save your bid: ${auctionErr.message}`, 'red', 'Save Failed')
       return
     }
 
-    const { error: bidderCoinsErr } = await supabase
-      .from('members')
-      .update({ coins: bidder.coins - amount })
-      .eq('id', bidder.id)
-
-    if (bidderCoinsErr) {
-      console.error('Bidder coin update failed:', bidderCoinsErr)
-      addToast(`Bid was saved, but coin deduction failed: ${bidderCoinsErr.message}`, 'red', 'Coin Update Failed')
-      return
-    }
-
-    if (prevBidder) {
-      const prev = members.find(m => m.name === prevBidder)
-      if (prev) {
-        const { error: refundErr } = await supabase
-          .from('members')
-          .update({ coins: prev.coins + prevAmount })
-          .eq('id', prev.id)
-
-        if (refundErr) {
-          console.error('Previous bidder refund failed:', refundErr)
-          addToast(`Bid was saved, but the previous bidder refund failed: ${refundErr.message}`, 'red', 'Refund Update Failed')
-          return
-        }
-      }
-    }
-
-    setMembers(prev => prev.map(m => {
-      if (m.id === bidder.id) return { ...m, coins: m.coins - amount }
-      if (prevBidder && m.name === prevBidder) return { ...m, coins: m.coins + prevAmount }
-      return m
-    }))
-
-    setAuctions(prev => prev.map(a => a.id === auctionId
-      ? {
-          ...a,
-          currentBid: amount,
-          topBidder: currentUser.name,
-          bids: newBids,
-          endsAt: newEndsAt,
-        }
-      : a))
-
+    setMembers(prev => prev.map(m => m.id === bidder.id ? { ...m, coins: newCoins } : m))
+    setAuctions(prev => prev.map(a => a.id === auctionId ? {
+      ...a,
+      bids: newBids,
+      currentBid: startingBid,
+      topBidder: null,
+    } : a))
     setBidAmounts(prev => ({ ...prev, [auctionId]: '' }))
 
-    if (isOutbid) {
+    if (own.hasBid) {
       addToast(
-        `Bid of ${amount.toLocaleString()} coins placed. Auction extended by 2 minutes.`,
+        `Your bid changed to ${amount.toLocaleString()} coins. ${Math.max(0, MAX_BID_CHANGES - own.changesUsed - 1)} change${Math.max(0, MAX_BID_CHANGES - own.changesUsed - 1) === 1 ? '' : 's'} remaining.`,
         'gold',
-        'Anti-Snipe Extension'
+        'Bid Changed'
       )
     } else {
-      addToast(`Bid of ${amount.toLocaleString()} coins placed on ${auction.name}.`, 'gold', 'Bid Placed')
+      addToast(`Your blind bid of ${amount.toLocaleString()} coins is locked in.`, 'gold', 'Bid Submitted')
     }
   }
+
+  const cancelBid = async (auctionId) => {
+    const auction = auctions.find(a => a.id === auctionId)
+    const bidNow = Date.now()
+    if (!auction || auction.status !== 'active') {
+      addToast('This auction has already ended.', 'red', 'Auction Ended')
+      return
+    }
+    if (!isBiddingOpen(auction, bidNow)) {
+      addToast('Bid cancellation is disabled during the final 30 seconds.', 'red', 'Cancellation Locked')
+      return
+    }
+
+    const own = getOwnBidState(auction, currentUser?.name)
+    if (!own.hasBid || own.amount <= 0) {
+      addToast('You do not have an active bid to cancel.', 'red', 'No Active Bid')
+      return
+    }
+
+    if (!window.confirm(
+      `Cancel Blind Bid?\n\nYour current bid of ${own.amount.toLocaleString()} coins will be cancelled.\n\nThe ${own.amount.toLocaleString()} reserved coins will be returned immediately.\nYou will not be able to bid again on this auction.`
+    )) return
+
+    const bidder = members.find(m => m.name === currentUser?.name)
+    if (!bidder) {
+      addToast('Your member record could not be found.', 'red', 'Cancel Failed')
+      return
+    }
+
+    const newBids = [
+      ...(auction.bids || []),
+      {
+        bidder: currentUser.name,
+        amount: 0,
+        time: bidNow,
+        previousAmount: own.amount,
+        cancelled: true,
+        changeNumber: own.submissions,
+      },
+    ]
+
+    const refundedCoins = (Number(bidder.coins) || 0) + own.amount
+
+    const { error: coinErr } = await supabase
+      .from('members')
+      .update({ coins: refundedCoins })
+      .eq('id', bidder.id)
+
+    if (coinErr) {
+      console.error('Bid cancellation refund failed:', coinErr)
+      addToast(`Couldn't return your coins: ${coinErr.message}`, 'red', 'Cancel Failed')
+      return
+    }
+
+    const { error: auctionErr } = await supabase
+      .from('auctions')
+      .update({
+        bids: newBids,
+        current_bid: getStartingBid(auction),
+        top_bidder: null,
+      })
+      .eq('id', auctionId)
+      .eq('status', 'active')
+
+    if (auctionErr) {
+      await supabase.from('members').update({ coins: bidder.coins }).eq('id', bidder.id)
+      console.error('Bid cancellation save failed:', auctionErr)
+      addToast(`Couldn't cancel the bid: ${auctionErr.message}`, 'red', 'Cancel Failed')
+      return
+    }
+
+    setMembers(prev => prev.map(m => m.id === bidder.id ? { ...m, coins: refundedCoins } : m))
+    setAuctions(prev => prev.map(a => a.id === auctionId ? {
+      ...a,
+      bids: newBids,
+      currentBid: getStartingBid(a),
+      topBidder: null,
+    } : a))
+    setBidAmounts(prev => ({ ...prev, [auctionId]: '' }))
+    addToast(`Your ${own.amount.toLocaleString()}-coin bid was cancelled and fully returned.`, 'blue', 'Bid Cancelled')
+  }
+
+  useEffect(() => {
+    for (const auction of auctions) {
+      if (auction.status !== 'active' || !auction.endsAt || auction.endsAt > now) continue
+      if (finalizingRef.current.has(auction.id)) continue
+      finalizingRef.current.add(auction.id)
+      settleAuction(auction.id).finally(() => finalizingRef.current.delete(auction.id))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [now, auctions])
 
   const endAuction = async (auctionId) => {
     if (!isMaster) return
     const auction = auctions.find(a => a.id === auctionId)
     if (!auction) return
-    const hasWinner = !!auction.topBidder
-    const winnerNote = hasWinner
-      ? `\n\nWinner: ${auction.topBidder} for ${auction.currentBid.toLocaleString()} coins.`
-      : `\n\nNo bids were placed — item goes undistributed.`
-    if (window.confirm(`End "${auction.name}" early?${winnerNote}`)) {
-      const { error } = await supabase
-        .from('auctions')
-        .update({ status: 'ended', is_featured: false })
-        .eq('id', auctionId)
-      if (error) { addToast(`Couldn't end auction: ${error.message}`, 'red', 'Save Failed'); return }
-      setAuctions(prev => prev.map(a => a.id === auctionId ? { ...a, status: 'ended', endedAt: Date.now(), isFeatured: false } : a))
-      addToast(`"${auction.name}" ended. Now pick who distributes it.`, 'gold', 'Auction Ended')
+    if (window.confirm(
+      `End "${auction.name}" early?\n\nAll submitted blind bids will be revealed and the highest final bid will win.\nIf two final bids are tied, the earliest final bid wins.`
+    )) {
+      await settleAuction(auctionId, { early: true })
     }
   }
 
@@ -708,23 +941,29 @@ export default function Auctions({ ctx }) {
     if (!isElder) return
     const auction = auctions.find(a => a.id === auctionId)
     if (!auction) return
-    const refundNote = auction.status === 'active' && auction.topBidder
-      ? `\n\n${auction.topBidder} will be refunded ${auction.currentBid.toLocaleString()} coins.`
+
+    const finalBids = auction.status === 'active' ? getFinalBidEntries(auction) : []
+    const refundNote = finalBids.length
+      ? `\n\n${finalBids.reduce((sum, b) => sum + b.amount, 0).toLocaleString()} reserved coins across ${finalBids.length} active bidder${finalBids.length === 1 ? '' : 's'} will be returned.`
       : ''
+
     if (!window.confirm(`Delete "${auction.name}" permanently?${refundNote}`)) return
 
-    if (auction.status === 'active' && auction.topBidder && auction.currentBid > 0) {
-      const bidder = members.find(m => m.name === auction.topBidder)
-      if (bidder) {
+    if (auction.status === 'active') {
+      for (const bid of finalBids) {
+        const member = members.find(m => m.name === bid.bidder)
+        if (!member || bid.amount <= 0) continue
         const { error: refundErr } = await supabase
           .from('members')
-          .update({ coins: bidder.coins + auction.currentBid })
-          .eq('id', bidder.id)
-        if (!refundErr) {
-          setMembers(prev => prev.map(m =>
-            m.id === bidder.id ? { ...m, coins: m.coins + auction.currentBid } : m
-          ))
+          .update({ coins: (Number(member.coins) || 0) + bid.amount })
+          .eq('id', member.id)
+        if (refundErr) {
+          addToast(`Couldn't refund ${bid.bidder}: ${refundErr.message}`, 'red', 'Delete Failed')
+          return
         }
+        setMembers(prev => prev.map(m =>
+          m.id === member.id ? { ...m, coins: (Number(m.coins) || 0) + bid.amount } : m
+        ))
       }
     }
 
@@ -873,9 +1112,9 @@ export default function Auctions({ ctx }) {
 
   const toggleBidsExpanded = (id) => setExpandedBids(prev => ({ ...prev, [id]: !prev[id] }))
 
-  const activeAuctions = useMemo(() => auctions.filter(a => a.status === 'active'), [auctions])
+  const activeAuctions = useMemo(() => (Array.isArray(auctions) ? auctions : []).filter(a => a?.status === 'active'), [auctions])
   const endedAuctions = useMemo(
-    () => [...auctions.filter(a => a.status === 'ended')].sort((a, b) => {
+    () => [...(Array.isArray(auctions) ? auctions : []).filter(a => a?.status === 'ended')].sort((a, b) => {
       const ax = a.endedAt || a.endsAt || 0
       const bx = b.endedAt || b.endsAt || 0
       return bx - ax
@@ -883,7 +1122,7 @@ export default function Auctions({ ctx }) {
     [auctions]
   )
   const pendingDistribution = useMemo(
-    () => endedAuctions.filter(a => a.topBidder && !a.distributedBy).length,
+    () => endedAuctions.filter(a => getAuctionWinner(a) && !a.distributedBy).length,
     [endedAuctions]
   )
 
@@ -991,7 +1230,7 @@ export default function Auctions({ ctx }) {
           <div className="grid grid-cols-1 sm:flex sm:flex-wrap sm:items-center gap-2.5 sm:gap-x-5 sm:gap-y-2 text-[11px] text-text-dim">
             <div className="flex min-w-0 items-center gap-2.5">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↗</span>
-              <span className="min-w-0">Minimum increment <strong className="text-text-bright whitespace-nowrap">+{MIN_BID_INCREMENT}</strong></span>
+              <span className="min-w-0">Minimum bid <strong className="text-text-bright whitespace-nowrap">starting bid</strong></span>
             </div>
 
             <span className="hidden sm:inline text-white/10">|</span>
@@ -1005,7 +1244,7 @@ export default function Auctions({ ctx }) {
 
             <div className="flex min-w-0 items-center gap-2.5">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↻</span>
-              <span className="min-w-0">Genuine outbid adds <strong className="text-text-bright whitespace-nowrap">+2 minutes</strong></span>
+              <span className="min-w-0">Everyone gets <strong className="text-text-bright whitespace-nowrap">1 bid + 2 changes</strong></span>
             </div>
 
             <span className="hidden sm:inline text-white/10">|</span>
@@ -1217,6 +1456,7 @@ export default function Auctions({ ctx }) {
           bidAmount={bidAmounts[featuredAuction.id] || ''}
           onBidChange={v => setBidAmounts(prev => ({ ...prev, [featuredAuction.id]: v }))}
           onPlaceBid={() => placeBid(featuredAuction.id)}
+          onCancelBid={() => cancelBid(featuredAuction.id)}
           onEndEarly={() => endAuction(featuredAuction.id)}
           onDelete={() => deleteAuction(featuredAuction.id)}
           isBidsExpanded={!!expandedBids[featuredAuction.id]}
@@ -1254,6 +1494,7 @@ export default function Auctions({ ctx }) {
                 bidAmount={bidAmounts[auction.id] || ''}
                 onBidChange={v => setBidAmounts(prev => ({ ...prev, [auction.id]: v }))}
                 onPlaceBid={() => placeBid(auction.id)}
+                onCancelBid={() => cancelBid(auction.id)}
                 onEndEarly={() => endAuction(auction.id)}
                 onDelete={() => deleteAuction(auction.id)}
                 isBidsExpanded={!!expandedBids[auction.id]}
@@ -1314,172 +1555,286 @@ function RarityBadge({ rarity }) {
   )
 }
 
+function BlindStatusPill({ children, tone = 'gold' }) {
+  const toneClass = tone === 'green'
+    ? 'border-green-500/25 bg-green-500/[.06] text-green-400'
+    : tone === 'red'
+      ? 'border-red-500/25 bg-red-500/[.06] text-red-400'
+      : 'border-gold/20 bg-gold/[.045] text-gold-light'
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${toneClass}`}>
+      {children}
+    </span>
+  )
+}
+
+function BlindBidPanel({
+  auction, now, currentUser, bidAmount, onBidChange, onPlaceBid, onCancelBid,
+}) {
+  const biddingOpen = isBiddingOpen(auction, now)
+  const own = getOwnBidState(auction, currentUser?.name)
+  const startingBid = getStartingBid(auction)
+  const canSubmit = biddingOpen && !own.cancelled && own.submissions < MAX_BID_SUBMISSIONS
+  const isUrgent = auction.endsAt - now > 0 && auction.endsAt - now < URGENT_MS
+
+  return (
+    <div className="rounded-xl border border-gold/20 bg-gold/[.025] p-3 sm:p-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-[.16em] text-gold-light">Blind Bid</span>
+          <BlindStatusPill tone="gold">Private</BlindStatusPill>
+        </div>
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ${
+            biddingOpen
+              ? 'bg-green-400 shadow-[0_0_9px_rgba(74,222,128,.55)]'
+              : 'bg-red-400 shadow-[0_0_9px_rgba(239,68,68,.45)]'
+          }`}
+          aria-label={biddingOpen ? 'Bidding open' : 'Bidding locked'}
+        />
+      </div>
+
+      <div className="mt-2.5 flex items-center justify-between gap-3 border-b border-white/[.06] pb-2.5">
+        <span className="text-[10px] text-text-dim">Your bid is hidden from everyone until close.</span>
+        <span className="shrink-0 text-[9px] font-mono text-text-dim">
+          {own.cancelled ? 'CANCELLED' : `${own.submissions}/${MAX_BID_SUBMISSIONS} submitted`}
+        </span>
+      </div>
+
+      {own.cancelled ? (
+        <div className="mt-2.5 flex items-center justify-between gap-3 rounded-lg border border-red-500/20 bg-red-500/[.035] px-3 py-2.5">
+          <div className="min-w-0">
+            <BlindStatusPill tone="red">Bid Cancelled</BlindStatusPill>
+            <div className="mt-1 text-[9px] leading-4 text-text-dim">
+              Reserved coins returned. You cannot bid again.
+            </div>
+          </div>
+          <span className="shrink-0 text-lg text-red-400/70">×</span>
+        </div>
+      ) : (
+        <>
+          <div className="mt-2.5 flex items-end justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Your Current Bid</div>
+              <div className={`mt-0.5 font-mono text-xl font-bold tabular-nums ${own.hasBid ? 'text-green-300' : 'text-text-dim'}`}>
+                {own.hasBid ? own.amount.toLocaleString() : '—'}
+                {own.hasBid && <span className="ml-1 text-[9px] font-normal text-text-dim">coins</span>}
+              </div>
+            </div>
+
+            <div className="text-right">
+              <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Changes Left</div>
+              <div className="mt-0.5 font-mono text-lg font-bold tabular-nums text-gold-light">{own.changesLeft}</div>
+            </div>
+          </div>
+
+          {currentUser && auction.status === 'active' && (
+            canSubmit ? (
+              <div className="mt-2.5">
+                <label htmlFor={`blind-bid-${auction.id}`} className="sr-only">
+                  Blind bid amount for {auction.name}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id={`blind-bid-${auction.id}`}
+                    className="input min-w-0 flex-1 text-base font-mono"
+                    type="number"
+                    inputMode="numeric"
+                    min={startingBid}
+                    step="1"
+                    placeholder={String(own.hasBid ? own.amount : startingBid)}
+                    value={bidAmount}
+                    onChange={e => onBidChange(e.target.value)}
+                    onFocus={e => {
+                      if (!e.target.value) onBidChange(String(own.hasBid ? own.amount : startingBid))
+                    }}
+                    aria-label="Your blind bid amount"
+                  />
+                  <button
+                    type="button"
+                    onClick={onPlaceBid}
+                    className="btn-gold shrink-0 min-w-[76px] px-3 font-bold"
+                  >
+                    {own.hasBid ? 'Change' : 'Bid'}
+                  </button>
+                </div>
+
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[9px] text-text-dim">
+                  <span>
+                    {own.hasBid
+                      ? `${own.changesLeft} change${own.changesLeft === 1 ? '' : 's'} remaining`
+                      : 'Your first bid is hidden from other members'}
+                  </span>
+                  <span className="shrink-0 text-gold-dim">Min {startingBid.toLocaleString()}</span>
+                </div>
+
+                {own.hasBid && (
+                  <button
+                    type="button"
+                    onClick={onCancelBid}
+                    disabled={!biddingOpen || typeof onCancelBid !== 'function'}
+                    className="mt-2 w-full rounded-lg border border-red-500/25 bg-red-500/[.025] px-3 py-2 text-[9px] font-bold uppercase tracking-[.1em] text-red-400 transition-colors hover:border-red-500/45 hover:bg-red-500/[.07] hover:text-red-300 focus:outline-none focus:ring-2 focus:ring-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Cancel / Remove Bid
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className={`mt-2.5 flex items-center gap-2 rounded-lg border px-3 py-2.5 ${
+                isUrgent
+                  ? 'border-red-500/25 bg-red-500/[.045]'
+                  : 'border-red-500/15 bg-red-500/[.025]'
+              }`}>
+                <span className="text-sm">🔒</span>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold text-red-400">Bidding Locked</div>
+                  <div className="text-[9px] text-text-dim">Final 30 seconds — bids, changes and cancellations are closed.</div>
+                </div>
+              </div>
+            )
+          )}
+
+          {!currentUser && (
+            <div className="mt-2.5 rounded-lg border border-white/[.06] bg-black/15 px-3 py-2.5 text-[10px] text-text-dim">
+              Sign in to participate.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function FeaturedAuctionCard({
   auction, now, currentUser, isElder, isMaster,
   isPinned, onToggleFeatured, featuringInFlight,
-  bidAmount, onBidChange, onPlaceBid, onEndEarly, onDelete,
-  isBidsExpanded, onToggleBids,
+  bidAmount, onBidChange, onPlaceBid, onCancelBid, onEndEarly, onDelete,
 }) {
-  const isWinning = auction.topBidder === currentUser?.name
-  const bids = auction.bids || []
-  const history = useMemo(() => [...bids].reverse(), [bids])
   const rm = getRarityMeta(auction.rarity)
   const remaining = auction.endsAt - now
   const isUrgent = remaining > 0 && remaining < URGENT_MS
-  const biddingOpen = isBiddingOpen(auction, now)
-  const minNextBid = auction.currentBid + MIN_BID_INCREMENT
 
   return (
     <section
       className="relative overflow-hidden rounded-2xl border bg-[#0b0908]/95"
       style={{
-        borderColor: rgba(rm.rgb, 0.34),
-        boxShadow: `0 22px 60px -34px ${rgba(rm.rgb, 0.42)}, inset 0 1px 0 rgba(255,255,255,.035)`,
+        borderColor: rgba(rm.rgb, 0.30),
+        boxShadow: `0 18px 45px -32px ${rgba(rm.rgb, 0.38)}, inset 0 1px 0 rgba(255,255,255,.03)`,
       }}
-      aria-label={`Featured auction: ${auction.name}`}
+      aria-label={`Featured blind auction: ${auction.name}`}
     >
       <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{
-        background: `radial-gradient(circle at 0% 0%, ${rgba(rm.rgb,.12)}, transparent 34%), radial-gradient(circle at 100% 100%, ${rgba(rm.rgb,.045)}, transparent 40%)`,
+        background: `radial-gradient(circle at 0% 0%, ${rgba(rm.rgb,.08)}, transparent 32%)`,
       }} />
 
       <div className="relative">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[.06] bg-black/25 px-5 py-3.5">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center justify-between gap-3 border-b border-white/[.06] bg-black/20 px-4 py-2.5 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2">
             <FeaturedPill rarityMeta={rm} />
-            <div className="hidden sm:block">
-              <div className="text-[9px] font-bold uppercase tracking-[.18em] text-gold-dim">Featured Lot</div>
-              <div className="text-[11px] text-text-dim">Priority auction selected by clan leadership</div>
-            </div>
+            <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Featured Blind Lot</span>
           </div>
-          <div className="flex items-center gap-2.5">
-            <span className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Time Remaining</span>
-            <span className={`rounded-lg border px-2.5 py-1.5 font-mono text-sm font-bold tabular-nums ${isUrgent ? 'border-red-500/30 bg-red-500/[.07] text-red-400 motion-safe:animate-pulse' : 'border-gold/20 bg-gold/[.04]'}`} style={!isUrgent ? { color: rm.color } : undefined}>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="hidden sm:inline text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Time</span>
+            <span
+              className={`rounded-md border px-2 py-1 font-mono text-xs font-bold tabular-nums ${
+                isUrgent
+                  ? 'border-red-500/30 bg-red-500/[.07] text-red-400 motion-safe:animate-pulse'
+                  : 'border-gold/20 bg-gold/[.04]'
+              }`}
+              style={!isUrgent ? { color: rm.color } : undefined}
+            >
               {formatCountdown(auction.endsAt, now)}
             </span>
           </div>
         </div>
 
-        <div className="p-5 md:p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-[148px_minmax(0,1fr)_330px] gap-5 lg:gap-7">
+        <div className="p-4 sm:p-5">
+          <div className="grid grid-cols-1 lg:grid-cols-[112px_minmax(0,1fr)_300px] gap-4 lg:gap-5">
             <div className="flex justify-center lg:justify-start">
               {auction.imageUrl ? (
-                <div className="relative h-[148px] w-[148px] overflow-hidden rounded-2xl border bg-black/40" style={{ borderColor: rgba(rm.rgb,.45), boxShadow: `0 18px 40px -20px ${rgba(rm.rgb,.5)}` }}>
+                <div
+                  className="relative h-28 w-28 overflow-hidden rounded-xl border bg-black/40"
+                  style={{ borderColor: rgba(rm.rgb,.36), boxShadow: `0 14px 30px -20px ${rgba(rm.rgb,.45)}` }}
+                >
                   <img src={auction.imageUrl} alt={auction.name} loading="lazy" className="h-full w-full object-cover" onError={e => { e.currentTarget.style.display='none' }} />
-                  <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: `inset 0 0 0 1px ${rgba(rm.rgb,.1)}` }} />
                 </div>
               ) : (
-                <div className="flex h-[148px] w-[148px] items-center justify-center rounded-2xl border bg-black/30 font-spectral text-5xl font-bold" style={{ borderColor: rgba(rm.rgb,.45), color: rm.color, backgroundColor: rgba(rm.rgb,.07) }}>
+                <div className="flex h-28 w-28 items-center justify-center rounded-xl border bg-black/30 font-spectral text-4xl font-bold" style={{ borderColor: rgba(rm.rgb,.36), color: rm.color, backgroundColor: rgba(rm.rgb,.06) }}>
                   {auction.name.charAt(0).toUpperCase()}
                 </div>
               )}
             </div>
 
             <div className="min-w-0 flex flex-col justify-center">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <RarityBadge rarity={auction.rarity} />
-                {isWinning && <span className="rounded-full border border-green-500/25 bg-green-500/[.06] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-green-400">Leading</span>}
-              </div>
-              <h2 className="mt-2 font-spectral text-2xl md:text-3xl xl:text-[36px] font-bold leading-[1.04] text-text-bright break-words">{auction.name}</h2>
-              {auction.description && <p className="mt-2 max-w-2xl text-sm leading-6 text-text-dim">{auction.description}</p>}
-
-              <div className="mt-5 grid grid-cols-2 gap-2.5 max-w-xl">
-                <div className="rounded-xl border border-white/[.07] bg-black/25 px-3.5 py-3">
-                  <div className="text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Current Bid</div>
-                  <div className="mt-1 flex items-baseline gap-1.5">
-                    <span className="font-mono text-2xl font-bold tabular-nums" style={{ color: rm.color }}>{auction.currentBid.toLocaleString()}</span>
-                    <span className="text-[10px] text-text-dim">coins</span>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-white/[.07] bg-black/25 px-3.5 py-3 min-w-0">
-                  <div className="text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Leading Bidder</div>
-                  <div className={`mt-1 truncate text-sm font-semibold ${isWinning ? 'text-green-400' : 'text-text-bright'}`}>{auction.topBidder || 'No bids yet'}</div>
-                </div>
+                <BlindStatusPill>Blind</BlindStatusPill>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-text-dim">
-                <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  <span>Ends <span className="font-mono text-gold-light">{formatDateTime(auction.endsAt)}</span> <span className="text-text-dim">{SERVER_TZ_SHORT}</span></span>
-                  <span className="text-white/15">·</span>
-                  <span className="text-text-dim">Local <span className="font-mono text-text-bright">{formatLocalDateTime(auction.endsAt)}</span></span>
-                </span>
-                {isWinning && <span className="font-semibold text-green-400">✓ You are currently leading</span>}
-              </div>
-            </div>
+              <h2 className="mt-1.5 font-spectral text-2xl font-bold leading-tight text-text-bright break-words">
+                {auction.name}
+              </h2>
 
-            <div className="rounded-2xl border border-gold/20 bg-gradient-to-b from-gold/[.055] to-black/25 p-4 md:p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[.18em] text-gold-dim">Place Your Bid</div>
-                  <div className="mt-1 text-xs text-text-dim">Minimum accepted bid</div>
-                </div>
-                <span className={`mt-1 h-2 w-2 rounded-full ${biddingOpen ? 'bg-green-400 shadow-[0_0_10px_rgba(74,222,128,.55)]' : 'bg-red-400 shadow-[0_0_10px_rgba(239,68,68,.45)]'}`} />
-              </div>
-
-              <div className="mt-4 rounded-xl border border-white/[.07] bg-black/25 p-3">
-                <div className="text-[9px] font-bold uppercase tracking-wider text-text-dim">Minimum Bid</div>
-                <div className="mt-1 font-mono text-lg font-bold text-gold-light">{minNextBid.toLocaleString()} <span className="text-[10px] font-normal text-text-dim">coins</span></div>
-              </div>
-
-              {currentUser && auction.status === 'active' ? (
-                biddingOpen ? (
-                  <div className="mt-3">
-                    <label htmlFor={`featured-bid-${auction.id}`} className="sr-only">Bid amount for {auction.name}</label>
-                    <div className="flex gap-2">
-                      <input id={`featured-bid-${auction.id}`} className="input min-w-0 flex-1 text-base font-mono" type="number" min={minNextBid} step={MIN_BID_INCREMENT} placeholder={String(minNextBid)} value={bidAmount} onChange={e => onBidChange(e.target.value)} onFocus={e => { if (!e.target.value) onBidChange(String(minNextBid)) }} />
-                      <button onClick={onPlaceBid} className="btn-gold px-5 font-bold">Bid</button>
-                    </div>
-                    <div className="mt-2 text-[10px] text-text-dim">Minimum increment is <span className="font-semibold text-gold-light">{MIN_BID_INCREMENT}</span> coins. A genuine outbid adds 2 minutes.</div>
-                  </div>
-                ) : (
-                  <div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/[.06] p-3">
-                    <div className="text-xs font-bold text-red-400">🔒 Bidding Locked</div>
-                    <div className="mt-1 text-[10px] leading-4 text-text-dim">Bidding closes during the final 30 seconds.</div>
-                  </div>
-                )
-              ) : (
-                <div className="mt-3 rounded-xl border border-white/[.07] bg-black/20 p-3 text-xs text-text-dim">Sign in to participate in this auction.</div>
+              {auction.description && (
+                <p className="mt-1 text-[11px] leading-4 text-text-dim line-clamp-2">{auction.description}</p>
               )}
+
+              <div className="mt-3 grid max-w-md grid-cols-2 gap-2">
+                <div className="rounded-lg border border-white/[.06] bg-black/20 px-3 py-2">
+                  <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Starting Bid</div>
+                  <div className="mt-0.5 font-mono text-lg font-bold tabular-nums" style={{ color: rm.color }}>
+                    {getStartingBid(auction).toLocaleString()} <span className="text-[8px] font-normal text-text-dim">coins</span>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-white/[.06] bg-black/20 px-3 py-2">
+                  <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Other Bids</div>
+                  <div className="mt-0.5 text-sm font-semibold text-text-bright">Hidden</div>
+                  <div className="text-[8px] text-text-dim">names · amounts · count</div>
+                </div>
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[8px] text-text-dim">
+                <span>Ends <span className="font-mono text-text-bright">{formatDateTime(auction.endsAt)}</span> {SERVER_TZ_SHORT}</span>
+                <span className="text-white/15">·</span>
+                <span>Local <span className="font-mono text-text-bright">{formatLocalDateTime(auction.endsAt)}</span></span>
+              </div>
             </div>
+
+            <BlindBidPanel
+              auction={auction}
+              now={now}
+              currentUser={currentUser}
+              bidAmount={bidAmount}
+              onBidChange={onBidChange}
+              onPlaceBid={onPlaceBid}
+              onCancelBid={onCancelBid}
+            />
           </div>
 
-          {history.length > 0 && (
-            <div className="mt-6 border-t border-white/[.06] pt-4">
-              <button type="button" onClick={onToggleBids} aria-expanded={isBidsExpanded} className="inline-flex items-center gap-2 rounded-lg text-[10px] font-bold uppercase tracking-[.16em] text-text-dim hover:text-gold-light">
-                <span className={`transition-transform ${isBidsExpanded ? 'rotate-180' : ''}`}>⌄</span>
-                Bid Activity <span className="font-mono text-gold-light">{history.length}</span>
-              </button>
-              {isBidsExpanded && (
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-[220px] overflow-y-auto pr-1" role="list">
-                  {history.map((b, idx) => {
-                    const isCurrentTop = idx === 0
-                    return (
-                      <div key={b.time || idx} role="listitem" className={`rounded-xl border px-3.5 py-3 ${isCurrentTop ? 'border-green-500/25 bg-green-500/[.055]' : 'border-white/[.06] bg-black/20'}`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`truncate text-xs font-semibold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
-                          <span className={`font-mono text-xs font-bold tabular-nums ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
-                        </div>
-                        <div className={`mt-1 text-[10px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>
-                          {isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span>
-                          <span className="text-white/15"> · </span>
-                          <span className="text-text-dim">Local {formatLocalClock(b.time)}</span>
-                          {b.extendedByMs > 0 && <span className="ml-1 text-gold-light">↻ +2m</span>}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
           {isElder && (
-            <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/[.06] pt-4">
-              <span className="mr-1 text-[9px] font-bold uppercase tracking-[.16em] text-text-dim">Admin</span>
-              {isMaster && <button onClick={onEndEarly} className="rounded-lg border border-yellow-500/20 bg-yellow-500/[.035] px-3 py-2 text-[11px] font-semibold text-yellow-400 hover:bg-yellow-500/[.08]">⏹ End Early</button>}
-              <button onClick={onToggleFeatured} disabled={featuringInFlight} className={`rounded-lg border px-3 py-2 text-[11px] font-semibold ${isPinned ? 'border-gold/35 bg-gold/[.08] text-gold-bright' : 'border-white/[.08] bg-black/20 text-text-dim hover:text-gold-light'}`}>
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/[.05] pt-3">
+              <span className="mr-1 text-[8px] font-bold uppercase tracking-[.15em] text-text-dim">Admin</span>
+              {isMaster && (
+                <button type="button" onClick={onEndEarly} className="rounded-lg border border-yellow-500/15 bg-yellow-500/[.025] px-2.5 py-1.5 text-[9px] font-semibold text-yellow-400 hover:bg-yellow-500/[.07]">
+                  End Early
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onToggleFeatured}
+                disabled={featuringInFlight}
+                className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-semibold ${
+                  isPinned
+                    ? 'border-gold/35 bg-gold/[.08] text-gold-bright'
+                    : 'border-white/[.08] bg-black/20 text-text-dim hover:text-gold-light'
+                }`}
+              >
                 {featuringInFlight ? '…' : isPinned ? '★ Unfeature' : '☆ Feature'}
               </button>
-              <button onClick={onDelete} className="ml-auto rounded-lg px-3 py-2 text-[11px] font-semibold text-red-400/80 hover:bg-red-500/[.06] hover:text-red-300">Delete</button>
+              <button type="button" onClick={onDelete} className="ml-auto rounded-lg px-2.5 py-1.5 text-[9px] font-semibold text-red-400/75 hover:bg-red-500/[.06] hover:text-red-300">
+                Delete
+              </button>
             </div>
           )}
         </div>
@@ -1491,136 +1846,108 @@ function FeaturedAuctionCard({
 function AuctionCard({
   auction, now, currentUser, isElder, isMaster,
   isFeatured, onToggleFeatured, featuringInFlight,
-  bidAmount, onBidChange, onPlaceBid, onEndEarly, onDelete,
-  isBidsExpanded, onToggleBids,
+  bidAmount, onBidChange, onPlaceBid, onCancelBid, onEndEarly, onDelete,
 }) {
-  const isWinning = auction.topBidder === currentUser?.name
-  const bids = auction.bids || []
-  const history = useMemo(() => [...bids].reverse(), [bids])
   const rm = getRarityMeta(auction.rarity)
   const remaining = auction.endsAt - now
   const isUrgent = remaining > 0 && remaining < URGENT_MS
-  const glow = GLOW_RARITIES.has(auction.rarity)
-  const biddingOpen = isBiddingOpen(auction, now)
-  const minNextBid = auction.currentBid + MIN_BID_INCREMENT
 
   return (
     <article
-      className={`group relative overflow-hidden rounded-2xl border bg-[#0c0a09]/90 transition-all duration-200 hover:-translate-y-0.5 ${isWinning ? 'border-green-500/25' : 'border-white/[.07] hover:border-white/[.13]'}`}
-      style={{
-        boxShadow: glow && !isWinning ? `0 18px 42px -30px ${rgba(rm.rgb,.38)}` : undefined,
-      }}
+      className="group relative overflow-hidden rounded-xl border border-white/[.07] bg-[#0c0a09]/90 transition-colors duration-200 hover:border-white/[.13]"
+      style={{ boxShadow: GLOW_RARITIES.has(auction.rarity) ? `0 14px 34px -28px ${rgba(rm.rgb,.34)}` : undefined }}
     >
-      <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${rm.color}, ${rgba(rm.rgb,.18)})` }} />
+      <div className="h-0.5 w-full" style={{ background: `linear-gradient(90deg, ${rm.color}, ${rgba(rm.rgb,.12)})` }} />
 
       {isElder && (
-        <button type="button" onClick={onToggleFeatured} disabled={featuringInFlight} title={isFeatured ? 'Remove from featured' : 'Pin as featured'} aria-label={isFeatured ? 'Remove from featured' : 'Pin as featured'} className={`absolute right-3 top-3 z-10 h-8 w-8 rounded-lg border flex items-center justify-center text-sm transition-colors ${isFeatured ? 'border-gold/40 bg-gold text-black' : 'border-white/[.08] bg-black/50 text-gold-light/70 hover:border-gold/35 hover:text-gold-bright'}`}>
+        <button
+          type="button"
+          onClick={onToggleFeatured}
+          disabled={featuringInFlight}
+          title={isFeatured ? 'Remove from featured' : 'Pin as featured'}
+          aria-label={isFeatured ? 'Remove from featured' : 'Pin as featured'}
+          className={`absolute right-2.5 top-2.5 z-10 h-7 w-7 rounded-md border flex items-center justify-center text-xs ${
+            isFeatured
+              ? 'border-gold/40 bg-gold text-black'
+              : 'border-white/[.08] bg-black/55 text-gold-light/70 hover:border-gold/35 hover:text-gold-bright'
+          }`}
+        >
           {featuringInFlight ? '…' : isFeatured ? '★' : '☆'}
         </button>
       )}
 
-      <div className="p-4">
+      <div className="p-3.5">
         <div className="flex gap-3">
           {auction.imageUrl ? (
-            <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl border bg-black/35" style={{ borderColor: rgba(rm.rgb,.28) }}>
+            <div className="relative h-[68px] w-[68px] shrink-0 overflow-hidden rounded-lg border bg-black/35" style={{ borderColor: rgba(rm.rgb,.28) }}>
               <img src={auction.imageUrl} alt={auction.name} loading="lazy" className="h-full w-full object-cover" onError={e => { e.currentTarget.style.display='none' }} />
             </div>
           ) : (
-            <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-xl border bg-black/30 font-spectral text-2xl font-bold" style={{ borderColor: rgba(rm.rgb,.28), color: rm.color }}>{auction.name.charAt(0).toUpperCase()}</div>
+            <div className="flex h-[68px] w-[68px] shrink-0 items-center justify-center rounded-lg border bg-black/30 font-spectral text-xl font-bold" style={{ borderColor: rgba(rm.rgb,.28), color: rm.color }}>
+              {auction.name.charAt(0).toUpperCase()}
+            </div>
           )}
 
-          <div className="min-w-0 flex-1 pr-8">
+          <div className="min-w-0 flex-1 pr-7">
             <div className="flex flex-wrap items-center gap-1.5">
               <RarityBadge rarity={auction.rarity} />
-              {isWinning && <span className="rounded-full bg-green-500/[.08] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-green-400">Leading</span>}
+              <BlindStatusPill>Blind</BlindStatusPill>
             </div>
-            <h3 className="mt-1.5 truncate text-base font-bold" style={{ color: rm.color }}>{auction.name}</h3>
-            {auction.description && <p className="mt-0.5 truncate text-[11px] text-text-dim">{auction.description}</p>}
+            <h3 className="mt-1 truncate text-[15px] font-bold" style={{ color: rm.color }}>{auction.name}</h3>
+            {auction.description && <p className="mt-0.5 truncate text-[10px] text-text-dim">{auction.description}</p>}
           </div>
-        </div>
 
-        <div className={`mt-4 rounded-xl border ${isUrgent ? 'border-red-500/20 bg-red-500/[.035]' : 'border-white/[.06] bg-black/20'} px-3 py-2.5`}>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Time Remaining</div>
-              <div className={`mt-0.5 font-mono text-sm font-bold tabular-nums ${isUrgent ? 'text-red-400 motion-safe:animate-pulse' : 'text-gold-light'}`}>{formatCountdown(auction.endsAt, now)}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Ends</div>
-              <div className="mt-0.5 text-[10px] font-mono text-text-dim">{formatDateTime(auction.endsAt)} <span className="text-[9px]">{SERVER_TZ_SHORT}</span></div>
-              <div className="mt-0.5 text-[9px] font-mono text-text-dim">Local {formatLocalDateTime(auction.endsAt)}</div>
+          <div className="hidden sm:block shrink-0 text-right">
+            <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Time</div>
+            <div className={`mt-0.5 font-mono text-sm font-bold tabular-nums ${isUrgent ? 'text-red-400 motion-safe:animate-pulse' : 'text-gold-light'}`}>
+              {formatCountdown(auction.endsAt, now)}
             </div>
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-xl border border-white/[.06] bg-black/15 px-3 py-2.5">
-            <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Current Bid</div>
-            <div className="mt-0.5 font-mono text-lg font-bold tabular-nums" style={{ color: rm.color }}>{auction.currentBid.toLocaleString()}</div>
-            <div className="text-[9px] text-text-dim">coins</div>
+        <div className="mt-2.5 flex items-center justify-between gap-2 border-y border-white/[.05] py-2">
+          <div className="min-w-0">
+            <span className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Starting Bid </span>
+            <span className="font-mono text-sm font-bold tabular-nums" style={{ color: rm.color }}>{getStartingBid(auction).toLocaleString()}</span>
+            <span className="ml-1 text-[8px] text-text-dim">coins</span>
           </div>
-          <div className="rounded-xl border border-white/[.06] bg-black/15 px-3 py-2.5 min-w-0">
-            <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Leading Bidder</div>
-            <div className={`mt-1 truncate text-xs font-semibold ${isWinning ? 'text-green-400' : 'text-text-bright'}`}>{auction.topBidder || 'No bids yet'}</div>
-            <div className="mt-1 text-[9px] text-text-dim">{history.length} bid{history.length === 1 ? '' : 's'}</div>
+
+          <div className="text-right">
+            <span className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Other Bids </span>
+            <span className="text-[10px] font-semibold text-text-bright">Hidden</span>
           </div>
         </div>
 
-        {currentUser && auction.status === 'active' && (
-          biddingOpen ? (
-            <div className="mt-3 rounded-xl border border-gold/15 bg-gold/[.025] p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-[9px] font-bold uppercase tracking-[.14em] text-gold-dim">Your Bid</span>
-                <span className="text-[10px] text-text-dim">Min <span className="font-mono font-bold text-gold-light">{minNextBid.toLocaleString()}</span></span>
-              </div>
-              <div className="flex gap-2">
-                <label htmlFor={`bid-${auction.id}`} className="sr-only">Bid amount for {auction.name}</label>
-                <input id={`bid-${auction.id}`} className="input min-w-0 flex-1 text-sm font-mono" type="number" min={minNextBid} step={MIN_BID_INCREMENT} placeholder={String(minNextBid)} value={bidAmount} onChange={e => onBidChange(e.target.value)} onFocus={e => { if (!e.target.value) onBidChange(String(minNextBid)) }} />
-                <button onClick={onPlaceBid} className="btn-gold px-4 text-sm font-bold">Bid</button>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/[.05] p-3">
-              <div className="text-xs font-bold text-red-400">🔒 Bidding Locked</div>
-              <div className="mt-1 text-[10px] text-text-dim">Final 30 seconds — bidding is locked.</div>
-            </div>
-          )
-        )}
+        <div className="mt-2.5 sm:hidden flex items-center justify-between gap-2 text-[8px] text-text-dim">
+          <span>Time Remaining</span>
+          <span className={`font-mono font-bold ${isUrgent ? 'text-red-400' : 'text-gold-light'}`}>{formatCountdown(auction.endsAt, now)}</span>
+        </div>
 
-        {history.length > 0 && (
-          <div className="mt-3 border-t border-white/[.06] pt-3">
-            <button type="button" onClick={onToggleBids} aria-expanded={isBidsExpanded} className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.13em] text-text-dim hover:text-gold-light">
-              <span className={`transition-transform ${isBidsExpanded ? 'rotate-180' : ''}`}>⌄</span>
-              Bid History <span className="font-mono text-gold-light">{history.length}</span>
-            </button>
-            {isBidsExpanded && (
-              <div className="mt-2 max-h-[180px] space-y-1.5 overflow-y-auto pr-1" role="list">
-                {history.map((b, idx) => {
-                  const isCurrentTop = idx === 0
-                  return (
-                    <div key={b.time || idx} role="listitem" className={`rounded-lg border px-2.5 py-2 ${isCurrentTop ? 'border-green-500/20 bg-green-500/[.05]' : 'border-white/[.05] bg-black/15'}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`truncate text-[11px] font-semibold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
-                        <span className={`font-mono text-[11px] font-bold ${isCurrentTop ? 'text-green-300' : 'text-text-dim'}`}>{b.amount.toLocaleString()}</span>
-                      </div>
-                      <div className={`mt-0.5 text-[9px] ${isCurrentTop ? 'text-green-400' : 'text-text-dim/70'}`}>
-                        {isCurrentTop ? (auction.topBidder === currentUser?.name ? 'Winning' : 'Leading') : 'Outbid'} · {formatClock(b.time)} <span className="text-text-dim">{SERVER_TZ_SHORT}</span>
-                        <span className="text-white/15"> · </span>
-                        <span className="text-text-dim">Local {formatLocalClock(b.time)}</span>
-                        {b.extendedByMs > 0 && <span className="ml-1 text-gold-light">↻ +2m</span>}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        <BlindBidPanel
+          auction={auction}
+          now={now}
+          currentUser={currentUser}
+          bidAmount={bidAmount}
+          onBidChange={onBidChange}
+          onPlaceBid={onPlaceBid}
+          onCancelBid={onCancelBid}
+        />
+
+        <div className="mt-2 flex items-center justify-between gap-2 text-[8px] text-text-dim">
+          <span>Ends {formatDateTime(auction.endsAt)} {SERVER_TZ_SHORT}</span>
+          <span>Local {formatLocalDateTime(auction.endsAt)}</span>
+        </div>
 
         {isElder && (
-          <div className="mt-3 flex items-center gap-2 border-t border-white/[.06] pt-3">
-            {isMaster && <button onClick={onEndEarly} className="rounded-lg px-2 py-1.5 text-[10px] font-semibold text-yellow-400 hover:bg-yellow-500/[.07]">End Early</button>}
-            <button onClick={onDelete} aria-label={`Delete auction: ${auction.name}`} className="ml-auto rounded-lg px-2 py-1.5 text-[10px] font-semibold text-red-400/80 hover:bg-red-500/[.07]">Delete</button>
+          <div className="mt-2.5 flex items-center gap-2 border-t border-white/[.05] pt-2.5">
+            {isMaster && (
+              <button type="button" onClick={onEndEarly} className="rounded-md px-2 py-1.5 text-[9px] font-semibold text-yellow-400 hover:bg-yellow-500/[.07]">
+                End Early
+              </button>
+            )}
+            <button type="button" onClick={onDelete} aria-label={`Delete auction: ${auction.name}`} className="ml-auto rounded-md px-2 py-1.5 text-[9px] font-semibold text-red-400/75 hover:bg-red-500/[.07]">
+              Delete
+            </button>
           </div>
         )}
       </div>
@@ -1632,108 +1959,90 @@ function EndedAuctionRow({
   auction: a, now, currentUser, isElder, distributors,
   isExpanded, onToggle, onAssignDistributor, onDelete,
 }) {
-  const bids = a.bids || []
-  const totalBids = bids.length
-  const rm = getRarityMeta(a.rarity)
-  const winner = a.topBidder
-  const isMe = winner && currentUser?.name === winner
+  const finalBids = getFinalBidEntries(a)
+  const winnerEntry = finalBids[0] || null
+  const winner = winnerEntry?.bidder || a.topBidder || ''
+  const finalAmount = winnerEntry?.amount || Number(a.currentBid) || 0
+  const isMe = !!winner && currentUser?.name === winner
   const endedAt = a.endedAt || a.endsAt || 0
   const agoLabel = endedAt > 0 ? formatRelativePast(now - endedAt) : ''
   const assignedName = a.distributedBy || ''
+  const rm = getRarityMeta(a.rarity)
 
   return (
-    <li className={`${isMe ? 'bg-green-500/[.025]' : ''}`}>
-      {/* ── Mobile archive row ───────────────────────────────────────── */}
-      <div className="md:hidden px-3 py-3">
-        <div className="flex items-start gap-3">
-          {a.imageUrl ? (
-            <ItemImage src={a.imageUrl} alt={a.name} size={56} />
-          ) : (
-            <div
-              className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg border bg-black/20 font-spectral text-lg font-bold"
-              style={{ borderColor: rgba(rm.rgb, .25), color: rm.color }}
-            >
-              {a.name.charAt(0).toUpperCase()}
-            </div>
-          )}
+    <li className={isMe ? 'bg-green-500/[.018]' : ''}>
+      <div className="px-3 py-3 sm:px-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {a.imageUrl ? (
+              <ItemImage src={a.imageUrl} alt={a.name} size={48} />
+            ) : (
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border bg-black/20 font-spectral text-lg font-bold" style={{ borderColor: rgba(rm.rgb,.25), color: rm.color }}>
+                {a.name.charAt(0).toUpperCase()}
+              </div>
+            )}
 
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: rm.color }} />
-              <span className="min-w-0 truncate text-[13px] font-bold leading-5" style={{ color: rm.color }}>
-                {a.name}
-              </span>
-              <RarityBadge rarity={a.rarity} />
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: rm.color }} />
+                <span className="truncate text-[13px] font-bold" style={{ color: rm.color }}>{a.name}</span>
+                <RarityBadge rarity={a.rarity} />
+                {isMe && (
+                  <span className="shrink-0 rounded-full border border-green-500/20 bg-green-500/[.05] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-green-400">
+                    You Won
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 truncate text-[9px] text-text-dim">
+                {endedAt > 0 ? `${agoLabel || 'Closed'} · ${SERVER_TZ_SHORT}` : 'Closed'}
+              </div>
             </div>
+          </div>
 
-            <div className="mt-1 flex min-w-0 items-center gap-2">
-              <span className={`min-w-0 truncate text-[11px] font-semibold ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
+          <div className="grid grid-cols-2 gap-x-5 gap-y-2 sm:grid-cols-3 lg:flex lg:items-center lg:gap-7">
+            <div className="min-w-0">
+              <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Winner</div>
+              <div className={`mt-0.5 max-w-[150px] truncate text-[11px] font-semibold ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
                 {winner || <span className="italic font-normal text-text-dim">No bids</span>}
-              </span>
-              {isMe && (
-                <span className="flex-shrink-0 rounded-full border border-green-500/20 bg-green-500/[.05] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-green-400">
-                  You Won
-                </span>
-              )}
+              </div>
             </div>
 
-            {a.description && (
-              <div className="mt-0.5 truncate text-[9px] leading-4 text-text-dim">
-                {a.description}
+            <div>
+              <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Winning Bid</div>
+              <div className="mt-0.5 font-mono text-sm font-bold tabular-nums text-gold-bright">
+                {finalAmount.toLocaleString()} <span className="text-[8px] font-semibold text-text-dim">coins</span>
+              </div>
+            </div>
+
+            {winner && (
+              <div className="min-w-0">
+                <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Distribution</div>
+                {isElder ? (
+                  <select
+                    className="input mt-0.5 h-7 max-w-[160px] px-2 py-0 text-[9px]"
+                    value={assignedName}
+                    onChange={e => onAssignDistributor(e.target.value)}
+                    aria-label={`Distributor for ${a.name}`}
+                  >
+                    <option value="">Not yet assigned</option>
+                    {distributors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  </select>
+                ) : (
+                  <div className="mt-0.5"><DistributorStatusBadge name={assignedName} /></div>
+                )}
               </div>
             )}
           </div>
-        </div>
 
-        <div className="mt-2.5 grid grid-cols-[1fr_auto] items-end gap-3 border-t border-white/[.045] pt-2.5">
-          <div className="min-w-0">
-            <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Distribution</div>
-            {winner ? (
-              isElder ? (
-                <select
-                  className="input mt-1 h-7 max-w-full px-2 py-0 text-[9px]"
-                  value={assignedName}
-                  onChange={e => onAssignDistributor(e.target.value)}
-                  aria-label={`Distributor for ${a.name}`}
-                >
-                  <option value="">Not yet assigned</option>
-                  {distributors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-                </select>
-              ) : (
-                <div className="mt-1">
-                  <DistributorStatusBadge name={assignedName} />
-                </div>
-              )
-            ) : (
-              <div className="mt-1 text-[9px] text-text-dim">No distribution required</div>
-            )}
-          </div>
-
-          <div className="text-right">
-            <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Final Bid</div>
-            <div className="mt-0.5 flex items-baseline justify-end gap-1.5">
-              <span className="font-mono text-[16px] font-bold tabular-nums text-gold-bright">
-                {(a.currentBid || 0).toLocaleString()}
-              </span>
-              <span className="text-[9px] font-semibold text-text-dim">coins</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <div className="min-w-0 truncate text-[8px] text-text-dim">
-            {endedAt > 0 ? `${agoLabel || 'Closed'} · ${SERVER_TZ_SHORT}` : 'Closed'}
-          </div>
-
-          <div className="flex flex-shrink-0 items-center gap-1">
-            {totalBids > 0 && (
+          <div className="flex shrink-0 items-center justify-end gap-1.5 border-t border-white/[.05] pt-2.5 lg:border-0 lg:pt-0">
+            {finalBids.length > 0 && (
               <button
                 type="button"
                 onClick={onToggle}
                 aria-expanded={isExpanded}
-                className="rounded-md border border-white/[.07] bg-black/15 px-2.5 py-1.5 text-[9px] font-bold text-gold-light hover:border-gold/25"
+                className="rounded-md border border-white/[.07] bg-black/15 px-2.5 py-1.5 text-[9px] font-bold text-gold-light hover:border-gold/25 hover:bg-gold/[.025]"
               >
-                {isExpanded ? 'Hide Bids' : `${totalBids} Bid${totalBids === 1 ? '' : 's'}`}
+                {isExpanded ? 'Hide Results' : 'Reveal Results'}
               </button>
             )}
             {isElder && (
@@ -1749,142 +2058,37 @@ function EndedAuctionRow({
           </div>
         </div>
 
-        {isExpanded && totalBids > 0 && (
-          <div className="mt-2.5 overflow-hidden rounded-lg border border-white/[.06] bg-black/20">
-            <ul className="divide-y divide-white/[.04]">
-              {bids.map((b, idx) => {
-                const isLast = idx === bids.length - 1
+        {isExpanded && finalBids.length > 0 && (
+          <div className="mt-2.5 overflow-hidden rounded-lg border border-white/[.06] bg-black/15">
+            <div className="divide-y divide-white/[.04]">
+              {finalBids.map((b, idx) => {
+                const isWinner = idx === 0
                 return (
-                  <li
-                    key={b.time || idx}
-                    className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-2.5 py-2 text-[10px] ${
-                      isLast ? 'bg-green-500/[.035]' : ''
+                  <div
+                    key={`${b.bidder}-${b.time}-${idx}`}
+                    className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2 ${
+                      isWinner ? 'bg-green-500/[.03]' : ''
                     }`}
                   >
-                    <span className={`min-w-0 truncate font-semibold ${isLast ? 'text-green-300' : 'text-text-dim'}`}>
+                    <div className={`min-w-0 truncate text-[10px] font-semibold ${isWinner ? 'text-green-300' : 'text-text-dim'}`}>
                       {b.bidder}
-                    </span>
-                    <span className={`text-right font-mono font-bold tabular-nums ${isLast ? 'text-green-300' : 'text-text-dim'}`}>
+                    </div>
+                    <div className={`text-right font-mono text-[10px] font-bold tabular-nums ${isWinner ? 'text-green-300' : 'text-text-dim'}`}>
                       {b.amount.toLocaleString()} <span className="text-[8px] font-semibold text-text-dim">coins</span>
-                    </span>
-                    <span className={`font-mono text-[8px] ${isLast ? 'text-green-400' : 'text-text-dim'}`}>
-                      {formatClock(b.time)} {SERVER_TZ_SHORT} · Local {formatLocalClock(b.time)}
-                      {b.extendedByMs > 0 && <span className="ml-1 text-gold-light">↻ +2m</span>}
-                    </span>
-                    <span className="text-right text-[8px] font-bold uppercase tracking-wider text-green-400">
-                      {isLast ? 'Winner' : ''}
-                    </span>
-                  </li>
+                    </div>
+                    <div className={`font-mono text-[8px] ${isWinner ? 'text-green-400' : 'text-text-dim'}`}>
+                      Final bid · {formatClock(b.time)} {SERVER_TZ_SHORT} · Local {formatLocalClock(b.time)}
+                    </div>
+                    <div className="text-right text-[8px] font-bold uppercase tracking-wider text-green-400">
+                      {isWinner ? 'Winner' : ''}
+                    </div>
+                  </div>
                 )
               })}
-            </ul>
+            </div>
             {endedAt > 0 && (
-              <div className="border-t border-white/[.05] px-2.5 py-1.5 text-[8px] leading-4 text-text-dim">
+              <div className="border-t border-white/[.05] px-3 py-1.5 text-[8px] text-text-dim">
                 Closed {formatDateTime(endedAt)} {SERVER_TZ_SHORT} · Local {formatLocalDateTime(endedAt)}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Desktop/tablet archive row ───────────────────────────────── */}
-      <div className="hidden px-4 py-3.5 md:block md:px-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          {a.imageUrl ? (
-            <ItemImage src={a.imageUrl} alt={a.name} size={48} />
-          ) : (
-            <div
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border bg-black/20 font-spectral text-lg font-bold"
-              style={{ borderColor: rgba(rm.rgb,.25), color: rm.color }}
-            >
-              {a.name.charAt(0).toUpperCase()}
-            </div>
-          )}
-
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: rm.color }} />
-              <span className="truncate text-sm font-bold" style={{ color: rm.color }}>{a.name}</span>
-              <RarityBadge rarity={a.rarity} />
-              {isMe && <span className="rounded-full border border-green-500/20 bg-green-500/[.05] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-green-400">You Won</span>}
-            </div>
-            {a.description && <div className="mt-0.5 truncate text-[10px] text-text-dim">{a.description}</div>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-5 lg:flex lg:items-center lg:gap-6">
-            <div className="min-w-[100px]">
-              <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Winner</div>
-              <div className={`mt-0.5 max-w-[130px] truncate text-xs font-semibold ${isMe ? 'text-green-400' : 'text-text-bright'}`}>{winner || <span className="italic font-normal text-text-dim">No bids</span>}</div>
-            </div>
-
-            <div>
-              <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Final Bid</div>
-              <div className="mt-0.5 flex items-baseline gap-1.5">
-                <span className="font-mono text-sm font-bold tabular-nums text-gold-bright">{(a.currentBid || 0).toLocaleString()}</span>
-                <span className="text-[9px] font-semibold text-text-dim">coins</span>
-              </div>
-            </div>
-
-            <div className="min-w-[145px]">
-              <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Distribution</div>
-              {winner ? (
-                isElder ? (
-                  <select className="input mt-0.5 h-7 max-w-[160px] px-2 py-0 text-[10px]" value={assignedName} onChange={e => onAssignDistributor(e.target.value)} aria-label={`Distributor for ${a.name}`}>
-                    <option value="">Not yet assigned</option>
-                    {distributors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-                  </select>
-                ) : (
-                  <div className="mt-1"><DistributorStatusBadge name={assignedName} /></div>
-                )
-              ) : <div className="mt-0.5 text-[10px] text-text-dim">No distribution required</div>}
-            </div>
-
-            <div className="hidden min-w-[120px] sm:block">
-              <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Closed</div>
-              <div className="mt-0.5 text-[10px] font-mono text-text-bright">{endedAt > 0 ? formatDateTime(endedAt) : '—'} <span className="text-[9px] text-text-dim">{SERVER_TZ_SHORT}</span></div>
-              <div className="text-[9px] text-text-dim">{endedAt > 0 ? `Local ${formatLocalDateTime(endedAt)}` : ''}</div>
-              <div className="text-[9px] text-text-dim">{agoLabel ? `${agoLabel} · ${SERVER_TZ_SHORT}` : ''}</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1 lg:ml-auto">
-            {totalBids > 0 && (
-              <button type="button" onClick={onToggle} aria-expanded={isExpanded} className="rounded-lg border border-white/[.07] bg-black/15 px-2.5 py-2 text-[10px] font-bold text-gold-light hover:border-gold/25">
-                {isExpanded ? 'Hide Bids' : `${totalBids} Bid${totalBids === 1 ? '' : 's'}`}
-              </button>
-            )}
-            {isElder && <button type="button" onClick={onDelete} aria-label={`Delete auction: ${a.name}`} className="rounded-lg px-2.5 py-2 text-[10px] font-semibold text-red-400/75 hover:bg-red-500/[.07] hover:text-red-300">Delete</button>}
-          </div>
-        </div>
-
-        {isExpanded && totalBids > 0 && (
-          <div className="mt-3 overflow-hidden rounded-xl border border-white/[.06] bg-black/20">
-            <div className="hidden border-b border-white/[.05] px-3 py-2 text-[9px] font-bold uppercase tracking-[.12em] text-text-dim sm:grid sm:grid-cols-[80px_minmax(0,1fr)_100px_auto] sm:gap-3">
-              <span>Time</span><span>Bidder</span><span className="text-right">Amount</span><span />
-            </div>
-            <ul className="divide-y divide-white/[.04]">
-              {bids.map((b, idx) => {
-                const isLast = idx === bids.length - 1
-                return (
-                  <li key={b.time || idx} className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2.5 text-[11px] sm:grid-cols-[80px_minmax(0,1fr)_100px_auto] sm:py-2 ${isLast ? 'bg-green-500/[.035]' : ''}`}>
-                    <span className={`col-start-1 row-start-2 font-mono tabular-nums text-[9px] sm:col-auto sm:row-auto sm:text-[11px] ${isLast ? 'text-green-400' : 'text-text-dim'}`}>
-                      {formatClock(b.time)} <span className="text-[8px] sm:text-[9px]">{SERVER_TZ_SHORT}</span>
-                      <span className="text-white/15"> · </span>
-                      <span className="text-[8px] sm:text-[9px]">Local {formatLocalClock(b.time)}</span>
-                      {b.extendedByMs > 0 && <span className="ml-1 text-[8px] text-gold-light">↻ +2m</span>}
-                    </span>
-                    <span className={`col-start-1 row-start-1 min-w-0 truncate font-semibold text-xs sm:col-auto sm:row-auto sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>{b.bidder}</span>
-                    <span className={`col-start-2 row-start-1 row-span-2 text-right font-mono text-sm font-bold tabular-nums sm:col-auto sm:row-auto sm:text-[11px] ${isLast ? 'text-green-300' : 'text-text-dim'}`}>
-                      {b.amount.toLocaleString()} <span className="text-[8px] font-semibold text-text-dim">coins</span>
-                    </span>
-                    <span className="col-start-1 row-start-3 text-[9px] font-bold uppercase tracking-wider text-green-400 sm:col-auto sm:row-auto">{isLast ? 'Winner' : ''}</span>
-                  </li>
-                )
-              })}
-            </ul>
-            {endedAt > 0 && (
-              <div className="border-t border-white/[.05] px-3 py-2 text-[9px] text-text-dim">
-                Closed {formatDateTime(endedAt)} {SERVER_TZ_SHORT} · Local {formatLocalDateTime(endedAt)} ({formatLocalTimeLabel(endedAt)})
               </div>
             )}
           </div>
@@ -1893,3 +2097,4 @@ function EndedAuctionRow({
     </li>
   )
 }
+
