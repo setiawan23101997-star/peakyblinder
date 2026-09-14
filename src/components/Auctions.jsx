@@ -1169,11 +1169,11 @@ export default function Auctions({ ctx }) {
                 <span className="text-[9px] font-bold uppercase tracking-[.24em] text-gold-dim">Clan Auction House</span>
               </div>
 
-              <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <div className="mt-1.5 flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3 sm:gap-y-1">
                 <h1 className="font-spectral text-[28px] font-bold leading-none tracking-tight text-text-bright sm:text-[32px]">
                   Auctions
                 </h1>
-                <span className="text-[10px] text-text-dim">Blind bidding · final 30s locked</span>
+                <span className="text-[10px] leading-4 text-text-dim sm:whitespace-nowrap">Blind bidding · final 30s locked</span>
               </div>
 
               <p className="mt-1.5 max-w-xl text-[11px] leading-4 text-text-dim sm:text-xs">
@@ -1181,18 +1181,18 @@ export default function Auctions({ ctx }) {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-stretch gap-2 lg:justify-end">
-              <div className="min-w-[92px] rounded-lg border border-white/[.07] bg-black/25 px-3 py-2">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-stretch lg:justify-end">
+              <div className="min-w-0 rounded-lg border border-white/[.07] bg-black/25 px-3 py-2 sm:min-w-[92px]">
                 <div className="text-[8px] font-bold uppercase tracking-[.16em] text-text-dim">Live</div>
                 <div className="mt-0.5 font-mono text-lg font-bold leading-none tabular-nums text-gold-bright">{activeAuctions.length}</div>
               </div>
 
-              <div className="min-w-[92px] rounded-lg border border-white/[.07] bg-black/25 px-3 py-2">
+              <div className="min-w-0 rounded-lg border border-white/[.07] bg-black/25 px-3 py-2 sm:min-w-[92px]">
                 <div className="text-[8px] font-bold uppercase tracking-[.16em] text-text-dim">Completed</div>
                 <div className="mt-0.5 font-mono text-lg font-bold leading-none tabular-nums text-text-bright">{endedAuctions.length}</div>
               </div>
 
-              <div className="min-w-[148px] rounded-lg border border-gold/20 bg-gold/[.045] px-3 py-2">
+              <div className="col-span-2 min-w-0 rounded-lg border border-gold/20 bg-gold/[.045] px-3 py-2 sm:col-span-1 sm:min-w-[148px]">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[8px] font-bold uppercase tracking-[.16em] text-gold-dim">Your Coins</div>
                   <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_7px_rgba(242,204,96,.55)]" />
@@ -1203,7 +1203,7 @@ export default function Auctions({ ctx }) {
                 <div className="mt-1 text-[8px] text-text-dim">Available to bid</div>
               </div>
 
-              <div className="min-w-[148px] rounded-lg border border-white/[.07] bg-black/25 px-3 py-2">
+              <div className="min-w-0 rounded-lg border border-white/[.07] bg-black/25 px-3 py-2 sm:min-w-[148px]">
                 <div className="text-[8px] font-bold uppercase tracking-[.16em] text-text-dim">Server Time</div>
                 <div className="mt-0.5 font-mono text-sm font-bold leading-none tabular-nums text-text-bright">
                   {formatClock(now)} <span className="text-[8px] font-semibold text-text-dim">{SERVER_TZ_SHORT}</span>
@@ -1220,7 +1220,7 @@ export default function Auctions({ ctx }) {
                 <button
                   type="button"
                   onClick={() => setShowCreate(!showCreate)}
-                  className="btn-gold min-h-[60px] rounded-lg px-4 text-xs font-bold shadow-[0_8px_22px_-15px_rgba(242,204,96,.7)]"
+                  className="min-h-[60px] w-full rounded-lg px-3 text-xs font-bold shadow-[0_8px_22px_-15px_rgba(242,204,96,.7)] sm:w-auto sm:min-w-[148px] sm:px-4 btn-gold"
                   aria-expanded={showCreate}
                 >
                   {showCreate ? '✕ Close' : '+ Create Auction'}
@@ -1229,13 +1229,13 @@ export default function Auctions({ ctx }) {
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/[.055] pt-3">
+          <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-white/[.055] pt-3 sm:flex sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
             <div className="inline-flex items-center gap-2 text-[9px] text-text-dim">
               <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
               <span><span className="font-semibold text-text-bright">{activeAuctions.length}</span> live lot{activeAuctions.length === 1 ? '' : 's'}</span>
             </div>
             <span className="hidden sm:inline text-white/10">•</span>
-            <div className="text-[9px] text-text-dim">
+            <div className="text-[9px] leading-4 text-text-dim">
               Minimum <span className="font-semibold text-text-bright">starting bid</span>
             </div>
             <span className="hidden sm:inline text-white/10">•</span>
@@ -1260,8 +1260,8 @@ export default function Auctions({ ctx }) {
 
       {/* Compact auction rules */}
       <div className="rounded-xl border border-white/[.065] bg-[#0b0908]/70 px-3.5 py-2.5 sm:px-4">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[9px] text-text-dim">
-          <div className="inline-flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[9px] text-text-dim sm:flex sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-2">
+          <div className="inline-flex min-w-0 items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↗</span>
             <span>Minimum = <strong className="text-text-bright">starting bid</strong></span>
           </div>
@@ -1761,7 +1761,7 @@ function FeaturedAuctionCard({
       }} />
 
       <div className="relative">
-        <div className="flex items-center justify-between gap-3 border-b border-white/[.06] bg-black/20 px-4 py-2.5 sm:px-5">
+        <div className="flex items-center justify-between gap-2 border-b border-white/[.06] bg-black/20 px-3 py-2.5 sm:gap-3 sm:px-5">
           <div className="flex min-w-0 items-center gap-2">
             <FeaturedPill rarityMeta={rm} />
             <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Featured Blind Lot</span>
@@ -1782,18 +1782,18 @@ function FeaturedAuctionCard({
           </div>
         </div>
 
-        <div className="p-4 sm:p-5">
-          <div className="grid grid-cols-1 lg:grid-cols-[112px_minmax(0,1fr)_300px] gap-4 lg:gap-5">
+        <div className="p-3 sm:p-5">
+          <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-[112px_minmax(0,1fr)_300px] lg:gap-5">
             <div className="flex justify-center lg:justify-start">
               {auction.imageUrl ? (
                 <div
-                  className="relative h-28 w-28 overflow-hidden rounded-xl border bg-black/40"
+                  className="relative h-24 w-24 overflow-hidden rounded-xl border bg-black/40 sm:h-28 sm:w-28"
                   style={{ borderColor: rgba(rm.rgb,.36), boxShadow: `0 14px 30px -20px ${rgba(rm.rgb,.45)}` }}
                 >
                   <img src={auction.imageUrl} alt={auction.name} loading="lazy" className="h-full w-full object-cover" onError={e => { e.currentTarget.style.display='none' }} />
                 </div>
               ) : (
-                <div className="flex h-28 w-28 items-center justify-center rounded-xl border bg-black/30 font-spectral text-4xl font-bold" style={{ borderColor: rgba(rm.rgb,.36), color: rm.color, backgroundColor: rgba(rm.rgb,.06) }}>
+                <div className="flex h-24 w-24 items-center justify-center rounded-xl border bg-black/30 font-spectral text-3xl font-bold sm:h-28 sm:w-28 sm:text-4xl" style={{ borderColor: rgba(rm.rgb,.36), color: rm.color, backgroundColor: rgba(rm.rgb,.06) }}>
                   {auction.name.charAt(0).toUpperCase()}
                 </div>
               )}
@@ -1813,7 +1813,7 @@ function FeaturedAuctionCard({
                 <p className="mt-1 text-[11px] leading-4 text-text-dim line-clamp-2">{auction.description}</p>
               )}
 
-              <div className="mt-3 grid max-w-md grid-cols-2 gap-2">
+              <div className="mt-2.5 grid max-w-md grid-cols-2 gap-2 sm:mt-3">
                 <div className="rounded-lg border border-white/[.06] bg-black/20 px-3 py-2">
                   <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Starting Bid</div>
                   <div className="mt-0.5 font-mono text-lg font-bold tabular-nums" style={{ color: rm.color }}>
@@ -1909,7 +1909,7 @@ function AuctionCard({
         </button>
       )}
 
-      <div className="p-3.5">
+      <div className="p-3 sm:p-3.5">
         <div className="flex gap-3">
           {auction.imageUrl ? (
             <div className="relative h-[68px] w-[68px] shrink-0 overflow-hidden rounded-lg border bg-black/35" style={{ borderColor: rgba(rm.rgb,.28) }}>
@@ -1926,8 +1926,8 @@ function AuctionCard({
               <RarityBadge rarity={auction.rarity} />
               <BlindStatusPill>Blind</BlindStatusPill>
             </div>
-            <h3 className="mt-1 truncate text-[15px] font-bold" style={{ color: rm.color }}>{auction.name}</h3>
-            {auction.description && <p className="mt-0.5 truncate text-[10px] text-text-dim">{auction.description}</p>}
+            <h3 className="mt-1 break-words text-[15px] font-bold leading-5" style={{ color: rm.color }}>{auction.name}</h3>
+            {auction.description && <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-text-dim">{auction.description}</p>}
           </div>
 
           <div className="hidden sm:block shrink-0 text-right">
@@ -1938,7 +1938,7 @@ function AuctionCard({
           </div>
         </div>
 
-        <div className="mt-2.5 flex items-center justify-between gap-2 border-y border-white/[.05] py-2">
+        <div className="mt-2 flex items-center justify-between gap-2 border-y border-white/[.05] py-2 sm:mt-2.5">
           <div className="min-w-0">
             <span className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Starting Bid </span>
             <span className="font-mono text-sm font-bold tabular-nums" style={{ color: rm.color }}>{getStartingBid(auction).toLocaleString()}</span>
@@ -2007,7 +2007,7 @@ function EndedAuctionRow({
     <li className={isMe ? 'bg-green-500/[.018]' : ''}>
       <div className="px-3 py-3 sm:px-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-2.5 sm:items-center sm:gap-3">
             {a.imageUrl ? (
               <ItemImage src={a.imageUrl} alt={a.name} size={48} />
             ) : (
@@ -2017,7 +2017,7 @@ function EndedAuctionRow({
             )}
 
             <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-1.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: rm.color }} />
                 <span className="truncate text-[13px] font-bold" style={{ color: rm.color }}>{a.name}</span>
                 <RarityBadge rarity={a.rarity} />
@@ -2033,7 +2033,7 @@ function EndedAuctionRow({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-x-5 gap-y-2 sm:grid-cols-3 lg:flex lg:items-center lg:gap-7">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-3 sm:gap-x-5 lg:flex lg:items-center lg:gap-7">
             <div className="min-w-0">
               <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Winner</div>
               <div className={`mt-0.5 max-w-[150px] truncate text-[11px] font-semibold ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
