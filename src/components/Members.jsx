@@ -423,14 +423,14 @@ function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUp
       <div className="max-h-[94vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-gold/20 bg-[#08090b] shadow-[0_35px_120px_rgba(0,0,0,.78)]">
         <div className="grid max-h-[94vh] overflow-y-auto lg:grid-cols-[minmax(390px,43%)_1fr]">
           {/* YMIR-style character side */}
-          <div className="relative min-h-[620px] overflow-y-auto border-b border-white/[0.07] bg-[#08090b] lg:border-b-0 lg:border-r">
+          <div className="relative min-h-0 overflow-visible border-b border-white/[0.07] bg-[#08090b] lg:min-h-[620px] lg:overflow-y-auto lg:border-b-0 lg:border-r">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(245,197,66,.08),transparent_42%)]" />
 
-            <div className="relative px-5 pt-5 sm:px-7 sm:pt-7">
+            <div className="relative px-3 pt-3 sm:px-7 sm:pt-7">
               <CharacterArtwork member={member} variant="modal" />
             </div>
 
-            <div className="relative mt-4 mx-7 border-t border-white/[0.07] px-1 pt-4 pb-2">
+            <div className="relative mt-3 mx-4 border-t border-white/[0.07] px-1 pt-3 pb-3 sm:mt-4 sm:mx-7 sm:pt-4 sm:pb-2">
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <div className="text-[8px] font-black uppercase tracking-[0.24em] text-gold-light">
