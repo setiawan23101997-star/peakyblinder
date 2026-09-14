@@ -319,6 +319,33 @@ function App() {
     return () => clearInterval(id)
   }, [auctions])
 
+  // Audit writes must never make a successful member update look like a failure.
+  // The previous App.jsx accidentally referenced logAudit without defining it,
+  // so reset/update operations could change the database and then fall into
+  // the catch block with a ReferenceError.
+  const logAudit = async ({ action, entityType = 'System', entityId = null, details = {} }) => {
+    if (!currentUser || !['Admin', 'Master', 'Elder'].includes(currentUser.role)) return false
+    try {
+      const { error } = await supabase.from('admin_audit_logs').insert([{
+        actor_id: Number(currentUser.id) || null,
+        actor_name: currentUser.name || 'Unknown Staff',
+        actor_role: currentUser.role || null,
+        action,
+        entity_type: entityType,
+        entity_id: entityId == null ? null : String(entityId),
+        details: details || {},
+      }])
+      if (error) {
+        console.warn('[logAudit] Audit log write failed:', error.message || error)
+        return false
+      }
+      return true
+    } catch (error) {
+      console.warn('[logAudit] Audit log write failed:', error)
+      return false
+    }
+  }
+
   const saveMember = async (member) => {
     try {
       const { data, error } = await supabase
@@ -352,6 +379,15 @@ function App() {
         const normalized = normalizeMember(data[0])
         setAllMembers(prev => prev.map(m => m.id === id ? normalized : m))
         setMembers(prev => prev.map(m => m.id === id ? normalized : m))
+
+        // Audit is best-effort. Never report a successful DB update as failed
+        // just because the audit table has an RLS/configuration problem.
+        await logAudit({
+          action: 'Updated Member',
+          entityType: 'Member',
+          entityId: normalized.id,
+          details: { name: normalized.name, changes: Object.keys(updates || {}) },
+        })
         return normalized
       }
       return null
@@ -359,6 +395,187 @@ function App() {
       console.error('Failed to update member:', error)
       addToast('Failed to update member. Please try again.', 'red', 'Error')
       return null
+    }
+  }
+
+  // Staff Power reset: Admin / Master / Elder can reset another member's
+  // 7-day Power window. This changes ONLY the window fields, never Power.
+  // The preferred database path is the reset_member_power_cooldown RPC from
+  // POWER_COOLDOWN_DEEP_REPAIR_AND_RESET_RPC.sql.
+  //
+  // IMPORTANT: do not use UPDATE(...).select(...).maybeSingle() here.
+  // PostgREST can apply the UPDATE but return no row when SELECT/RLS rules
+  // interfere with the RETURNING step. That made the old code look like the
+  // reset failed even when the write happened.
+  const resetMemberPowerCooldown = async (targetId) => {
+    try {
+      if (!currentUser || !['Admin', 'Master', 'Elder'].includes(currentUser.role)) {
+        addToast('Only Admin, Master, and Elder can reset a Power cooldown.', 'red', 'Not Allowed')
+        return false
+      }
+
+      const numericTargetId = Number(targetId)
+      if (!Number.isFinite(numericTargetId)) {
+        addToast('Invalid member ID.', 'red', 'Reset Failed')
+        return false
+      }
+
+      const targetMember = (allMembers || members || []).find(
+        m => Number(m.id) === numericTargetId
+      )
+
+      if (!targetMember) {
+        addToast('Member not found.', 'red', 'Reset Failed')
+        return false
+      }
+
+      if (Number(targetMember.id) === Number(currentUser.id)) {
+        addToast('Staff already have unlimited Power updates.', 'blue', 'No Reset Needed')
+        return false
+      }
+
+      console.log('[resetMemberPowerCooldown] START', {
+        targetId: numericTargetId,
+        targetName: targetMember.name,
+        actor: currentUser.name,
+        actorRole: currentUser.role,
+        before: {
+          power_updates_used: targetMember.power_updates_used,
+          power_window_started_at: targetMember.power_window_started_at,
+          power_updated_at: targetMember.power_updated_at,
+          power_next_update_at: targetMember.power_next_update_at,
+        },
+      })
+
+      // Preferred path: server-side RPC. This avoids RLS/RETURNING ambiguity
+      // and makes the reset one database operation.
+      let verified = null
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        'reset_member_power_cooldown',
+        {
+          p_actor_id: Number(currentUser.id),
+          p_target_id: numericTargetId,
+        }
+      )
+
+      if (!rpcError) {
+        verified = Array.isArray(rpcData) ? rpcData[0] : rpcData
+      } else {
+        // If the migration has not been installed yet, keep a compatibility
+        // fallback so the button can still work with a permissive members
+        // UPDATE policy. Other RPC errors must not be hidden.
+        const missingRpc =
+          rpcError.code === 'PGRST202' ||
+          /reset_member_power_cooldown/i.test(rpcError.message || '')
+
+        if (!missingRpc) {
+          console.error('[resetMemberPowerCooldown] RPC FAILED:', rpcError)
+          throw rpcError
+        }
+
+        console.warn('[resetMemberPowerCooldown] RPC not installed; using direct UPDATE fallback.')
+
+        const { error: updateError } = await supabase
+          .from('members')
+          .update({
+            power_updates_used: 0,
+            power_window_started_at: null,
+            power_next_update_at: null,
+          })
+          .eq('id', numericTargetId)
+
+        if (updateError) {
+          console.error('[resetMemberPowerCooldown] UPDATE FAILED:', updateError)
+          throw updateError
+        }
+
+        // Read separately so UPDATE ... RETURNING/RLS cannot make a successful
+        // database write look like a failed reset.
+        const { data: fallbackData, error: fallbackReadError } = await supabase
+          .from('members')
+          .select('id, name, username, role, power, power_updates_used, power_window_started_at, power_updated_at, power_next_update_at')
+          .eq('id', numericTargetId)
+          .maybeSingle()
+
+        if (fallbackReadError) throw fallbackReadError
+        verified = fallbackData
+      }
+
+      if (verifyError) {
+        console.error('[resetMemberPowerCooldown] VERIFY READ FAILED:', verifyError)
+        throw verifyError
+      }
+
+      if (!verified) {
+        throw new Error('The member was not returned after the reset. Check the members SELECT policy.')
+      }
+
+      console.log('[resetMemberPowerCooldown] VERIFY RESULT:', {
+        id: verified.id,
+        power_updates_used: verified.power_updates_used,
+        power_window_started_at: verified.power_window_started_at,
+        power_updated_at: verified.power_updated_at,
+        power_next_update_at: verified.power_next_update_at,
+      })
+
+      // The reset is only considered successful if the database really has no
+      // next-update timestamp and the counter/window are cleared.
+      if (
+        verified.power_next_update_at !== null ||
+        Number(verified.power_updates_used) !== 0 ||
+        verified.power_window_started_at !== null
+      ) {
+        throw new Error(
+          'Database did not keep the Power reset. A database trigger or policy is restoring the cooldown. Check the Power reset SQL migration.'
+        )
+      }
+
+      const normalized = normalizeMember(verified)
+
+      setAllMembers(prev =>
+        prev.map(m => Number(m.id) === numericTargetId ? normalized : m)
+      )
+      setMembers(prev =>
+        prev.map(m => Number(m.id) === numericTargetId ? normalized : m)
+      )
+
+      // Audit failure must NOT undo a successful reset.
+      await logAudit({
+        action: 'Reset Member Power Cooldown',
+        entityType: 'Member',
+        entityId: normalized.id,
+        details: {
+          member_name: normalized.name,
+          username: normalized.username || null,
+          target_role: normalized.role || null,
+          power: normalized.power,
+          power_updates_used_before: Number(targetMember.power_updates_used) || 0,
+          power_updates_used_after: 0,
+          power_window_started_at_before: targetMember.power_window_started_at || null,
+          power_window_started_at_after: null,
+          power_next_update_at_before: targetMember.power_next_update_at || null,
+          power_next_update_at_after: null,
+          reset_by: currentUser.name || 'Unknown Staff',
+          reset_by_role: currentUser.role || null,
+          reason: 'Staff manually reset 7-day Power window',
+        },
+      })
+
+      addToast(
+        `${normalized.name} now has 3 fresh Power updates.`,
+        'gold',
+        'Power Reset'
+      )
+
+      return true
+    } catch (error) {
+      console.error('[resetMemberPowerCooldown] FAILED:', error)
+      addToast(
+        error?.message || 'Failed to reset Power cooldown.',
+        'red',
+        'Reset Failed'
+      )
+      return false
     }
   }
 
@@ -472,6 +689,7 @@ function App() {
     updateMember,
     deleteMember,
     resetMemberPassword,
+    resetMemberPowerCooldown,
     changeOwnPassword,
     reloadMembers,
     auctions,
