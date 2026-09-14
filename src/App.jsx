@@ -4,6 +4,7 @@ import Layout from './components/Layout'
 import Dashboard from './components/Dashboard'
 import Members from './components/Members'
 import Attendance from './components/Attendance'
+import EventCalendar from './components/EventCalendar'
 import Auctions from './components/Auctions'
 import Leaderboard from './components/Leaderboard'
 import Login from './components/Login'
@@ -460,6 +461,7 @@ function App() {
       case 'dashboard':   return <Dashboard   ctx={ctx} setPage={setPage} />
       case 'members':     return <Members     ctx={ctx} />
       case 'attendance':  return <Attendance  ctx={ctx} />
+      case 'calendar':    return <EventCalendar setPage={setPage} />
       case 'auctions':    return <Auctions    ctx={ctx} />
       case 'leaderboard': return <Leaderboard ctx={ctx} />
       default:            return <Dashboard   ctx={ctx} setPage={setPage} />
