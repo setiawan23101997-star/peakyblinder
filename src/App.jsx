@@ -113,6 +113,16 @@ function App() {
     coins: Number(m.coins) || 0,
     power: Number(m.power) || 0,
     attendance: Number(m.attendance) || 0,
+    power_updated_at: m.power_updated_at ?? null,
+    power_next_update_at: m.power_next_update_at ?? null,
+    power_updates_used: Number(m.power_updates_used) || 0,
+    power_window_started_at: m.power_window_started_at ?? null,
+    character_level: Number(m.character_level) || 1,
+    awakening_stage: Number(m.awakening_stage) || 0,
+    region: m.region ?? 'STEAM',
+    server: m.server ?? '005',
+    character_image: m.character_image ?? '',
+    profile_grade: ['Epic', 'Legendary', 'Mythic'].includes(m.profile_grade) ? m.profile_grade : 'Epic',
     auction_wins: Number(m.auction_wins ?? m.auctionWins) || 0,
     join_date: m.join_date ?? m.joinDate ?? '',
     discord: m.discord ?? '',
@@ -371,6 +381,73 @@ function App() {
     }
   }
 
+  const resetMemberPowerCooldown = async (targetId) => {
+    try {
+      if (!currentUser || !['Admin', 'Master', 'Elder'].includes(currentUser.role)) {
+        addToast('Only Admin, Master, and Elder can reset a Power cooldown.', 'red', 'Not Allowed')
+        return false
+      }
+
+      const targetMember = (allMembers || members || []).find(
+        m => Number(m.id) === Number(targetId)
+      )
+
+      if (!targetMember) {
+        addToast('Member not found.', 'red', 'Reset Failed')
+        return false
+      }
+
+      console.log('[resetMemberPowerCooldown] Resetting Power window:', {
+        targetId,
+        targetName: targetMember.name,
+        actor: currentUser.name,
+        actorRole: currentUser.role,
+      })
+
+      const { data, error } = await supabase
+        .from('members')
+        .update({
+          power_updates_used: 0,
+          power_window_started_at: null,
+          power_next_update_at: null,
+        })
+        .eq('id', targetId)
+        .select('*')
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) {
+        throw new Error('Member could not be read after the Power cooldown reset.')
+      }
+
+      const normalized = normalizeMember(data)
+      setAllMembers(prev => prev.map(m => m.id === normalized.id ? normalized : m))
+      setMembers(prev => prev.map(m => m.id === normalized.id ? normalized : m))
+
+      await logAudit({
+        action: 'Reset Member Power Cooldown',
+        entityType: 'Member',
+        entityId: normalized.id,
+        details: {
+          member_name: normalized.name,
+          username: normalized.username || null,
+          power: normalized.power,
+          power_updates_used_before: Number(targetMember.power_updates_used) || 0,
+          power_updates_used_after: 0,
+          reset_by: currentUser.name || 'Unknown Staff',
+          reset_by_role: currentUser.role || null,
+          reason: 'Staff manually reset 7-day Power window',
+        },
+      })
+
+      return true
+    } catch (error) {
+      console.error('[resetMemberPowerCooldown] FAILED:', error)
+      addToast(error?.message || 'Failed to reset Power cooldown.', 'red', 'Reset Failed')
+      return false
+    }
+  }
+
   const deleteMember = async (id) => {
     try {
       const { error } = await supabase
@@ -516,6 +593,7 @@ function App() {
     allMembers,
     saveMember,
     updateMember,
+    resetMemberPowerCooldown,
     deleteMember,
     resetMemberPassword,
     changeOwnPassword,
