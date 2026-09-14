@@ -7,7 +7,7 @@ const navItems = [
   { id: 'attendance', label: 'Attendance', icon: '📋' },
   { id: 'auctions', label: 'Auctions', icon: '🔨' },
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆' },
-  { id: 'calendar', label: 'Calendar', icon: '◷' },
+  { id: 'calendar', label: 'Calendar', icon: '📅' },
   { id: 'notice-board', label: 'Notice Board', icon: '📜' },
   { id: 'admin-log', label: 'Admin Log', icon: '🛡' , staffOnly: true },
 ]
