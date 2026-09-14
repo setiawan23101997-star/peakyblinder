@@ -369,34 +369,126 @@ function App() {
 
   const updateMember = async (id, updates) => {
     try {
+      const numericId = Number(id)
+      const existingMember = (allMembers || members || []).find(
+        m => Number(m.id) === numericId
+      )
+
       const { data, error } = await supabase
         .from('members')
         .update(updates)
         .eq('id', id)
         .select()
+
       if (error) throw error
+
       if (data && data.length > 0) {
         const normalized = normalizeMember(data[0])
-        setAllMembers(prev => prev.map(m => m.id === id ? normalized : m))
-        setMembers(prev => prev.map(m => m.id === id ? normalized : m))
 
-        // Audit is best-effort. Never report a successful DB update as failed
-        // just because the audit table has an RLS/configuration problem.
+        setAllMembers(prev => prev.map(m => Number(m.id) === numericId ? normalized : m))
+        setMembers(prev => prev.map(m => Number(m.id) === numericId ? normalized : m))
+
+        // Record the exact before/after values for every important member field.
+        // This is intentionally stored as structured JSON so Admin Audit Log can
+        // display exactly what staff changed instead of only "changes: ['coins']".
+        const fieldMap = {
+          coins: 'Coins',
+          power: 'Power',
+          cls: 'Class',
+          profile_grade: 'Card Grade',
+          character_level: 'Level',
+          awakening_stage: 'Awakening',
+          role: 'Role',
+        }
+
+        const numericFields = new Set([
+          'coins',
+          'power',
+          'character_level',
+          'awakening_stage',
+        ])
+
+        const fieldChanges = {}
+
+        Object.keys(updates || {}).forEach(key => {
+          if (!(key in fieldMap)) return
+
+          const beforeRaw = existingMember?.[key]
+          const afterRaw = normalized?.[key]
+
+          const before = numericFields.has(key)
+            ? Number(beforeRaw ?? 0)
+            : (beforeRaw ?? null)
+
+          const after = numericFields.has(key)
+            ? Number(afterRaw ?? 0)
+            : (afterRaw ?? null)
+
+          const changed = numericFields.has(key)
+            ? before !== after
+            : String(before ?? '') !== String(after ?? '')
+
+          if (!changed) return
+
+          const entry = {
+            label: fieldMap[key],
+            before,
+            after,
+          }
+
+          if (numericFields.has(key)) {
+            entry.delta = after - before
+          }
+
+          fieldChanges[key] = entry
+        })
+
+        const changedKeys = Object.keys(fieldChanges)
+
+        const auditDetails = {
+          name: normalized.name,
+          username: normalized.username || null,
+          changes: changedKeys,
+          field_changes: fieldChanges,
+        }
+
+        // Keep legacy coin fields too so older/newer Audit Log UIs remain
+        // compatible with records written by previous versions.
+        if (fieldChanges.coins) {
+          auditDetails.coins_before = fieldChanges.coins.before
+          auditDetails.coins_after = fieldChanges.coins.after
+          auditDetails.coin_change = fieldChanges.coins.delta
+        }
+
+        const changedPower = fieldChanges.power
+        if (changedPower) {
+          auditDetails.power_before = changedPower.before
+          auditDetails.power_after = changedPower.after
+          auditDetails.power_change = changedPower.delta
+        }
+
         await logAudit({
-          action: 'Updated Member',
+          action: changedPower
+            ? 'Changed Member Power'
+            : fieldChanges.coins
+              ? 'Changed Member Coins'
+              : 'Updated Member',
           entityType: 'Member',
           entityId: normalized.id,
-          details: { name: normalized.name, changes: Object.keys(updates || {}) },
+          details: auditDetails,
         })
+
         return normalized
       }
+
       return null
     } catch (error) {
       console.error('Failed to update member:', error)
-      addToast('Failed to update member. Please try again.', 'red', 'Error')
+      addToast(error?.message || 'Failed to update member. Please try again.', 'red', 'Error')
       return null
     }
   }
+
 
   // Staff Power reset: Admin / Master / Elder can reset another member's
   // 7-day Power window. This changes ONLY the window fields, never Power.
