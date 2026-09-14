@@ -968,6 +968,21 @@ export default function Members({ ctx }) {
   const isElder = currentUser?.role === 'Elder' || isMaster
   const visibleMembers = useMemo(() => isAdmin ? members : members.filter(m => m.role !== 'Admin'), [members, isAdmin])
 
+  // Keep an open profile modal synchronized with the latest member row.
+  // App.jsx refreshes members every 5 seconds and staff resets can update the
+  // selected member while the modal is still open. Without this sync, the
+  // modal kept rendering the old cooldown timestamp even after the database
+  // reset succeeded.
+  useEffect(() => {
+    if (!selected) return
+    const fresh = members.find(m => Number(m.id) === Number(selected.id))
+    if (!fresh) {
+      setSelected(null)
+      return
+    }
+    setSelected(fresh)
+  }, [members, selected?.id])
+
   const ranked = useMemo(() => [...visibleMembers].sort((a, b) => Number(b.power || 0) - Number(a.power || 0)), [visibleMembers])
   const rankMap = useMemo(() => new Map(ranked.map((m, i) => [m.id, i + 1])), [ranked])
 
