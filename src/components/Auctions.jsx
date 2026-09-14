@@ -314,6 +314,12 @@ export default function Auctions({ ctx }) {
     members, setMembers, auctions, setAuctions, currentUser, addToast, supabase,
   } = ctx
 
+  const currentMember = useMemo(
+    () => (Array.isArray(members) ? members.find(m => m?.name === currentUser?.name) : null),
+    [members, currentUser?.name]
+  )
+  const currentCoins = Math.max(0, Number(currentMember?.coins) || 0)
+
   const [showCreate, setShowCreate] = useState(false)
   const [showLegend, setShowLegend] = useState(false)
   const [newItem, setNewItem] = useState({
@@ -1144,76 +1150,77 @@ export default function Auctions({ ctx }) {
   const hasSelectedImage = !!(imageFile || pickedLibraryImg)
 
   return (
-    <div className="space-y-6">
-      {/* Page header */}
-      <header className="relative overflow-hidden rounded-2xl border border-gold/15 bg-[#0c0a09]/90">
+    <div className="space-y-4">
+      {/* Premium auction header */}
+      <header className="relative overflow-hidden rounded-2xl border border-white/[.08] bg-[#0b0908]/95 shadow-[0_18px_60px_-42px_rgba(0,0,0,.9)]">
         <div
           className="absolute inset-0 pointer-events-none"
           aria-hidden="true"
           style={{
-            background: 'radial-gradient(circle at 0% 0%, rgba(242,204,96,.07), transparent 38%), linear-gradient(120deg, rgba(255,255,255,.02), transparent 42%)',
+            background:
+              'radial-gradient(circle at 8% 0%, rgba(242,204,96,.075), transparent 30%), radial-gradient(circle at 88% 100%, rgba(242,204,96,.035), transparent 28%)',
           }}
         />
-        <div className="relative p-5 md:p-6">
-          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
+        <div className="relative px-4 py-4 sm:px-5 sm:py-5 lg:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_10px_rgba(242,204,96,.7)]" />
-                <span className="text-[10px] font-bold uppercase tracking-[.22em] text-gold-dim">Clan Auction House</span>
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_9px_rgba(242,204,96,.65)]" />
+                <span className="text-[9px] font-bold uppercase tracking-[.24em] text-gold-dim">Clan Auction House</span>
               </div>
-              <h1 className="font-spectral text-3xl md:text-4xl font-bold tracking-tight text-text-bright">
-                Auctions
-              </h1>
-              <p className="mt-1.5 text-sm text-text-dim max-w-2xl">
-                Compete for rare clan items, track live bids, and secure your next reward.
+
+              <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1 className="font-spectral text-[28px] font-bold leading-none tracking-tight text-text-bright sm:text-[32px]">
+                  Auctions
+                </h1>
+                <span className="text-[10px] text-text-dim">Blind bidding · final 30s locked</span>
+              </div>
+
+              <p className="mt-1.5 max-w-xl text-[11px] leading-4 text-text-dim sm:text-xs">
+                Compete for rare clan items. Your bids stay private until the auction closes.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <div className="rounded-xl border border-white/[.07] bg-black/20 px-3.5 py-2.5 min-w-[105px]">
-                <div className="text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Live</div>
-                <div className="mt-1 text-xl font-mono font-bold tabular-nums text-gold-bright">{activeAuctions.length}</div>
+            <div className="flex flex-wrap items-stretch gap-2 lg:justify-end">
+              <div className="min-w-[92px] rounded-lg border border-white/[.07] bg-black/25 px-3 py-2">
+                <div className="text-[8px] font-bold uppercase tracking-[.16em] text-text-dim">Live</div>
+                <div className="mt-0.5 font-mono text-lg font-bold leading-none tabular-nums text-gold-bright">{activeAuctions.length}</div>
               </div>
-              <div className="rounded-xl border border-white/[.07] bg-black/20 px-3.5 py-2.5 min-w-[105px]">
-                <div className="text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Completed</div>
-                <div className="mt-1 text-xl font-mono font-bold tabular-nums text-text-bright">{endedAuctions.length}</div>
-              </div>
-              <div className="col-span-2 sm:col-span-1 rounded-xl border border-gold/20 bg-gold/[.045] px-3.5 py-2.5 min-w-[105px]">
-                <div className="text-[9px] font-bold uppercase tracking-[.15em] text-gold-dim">Server Time</div>
-                <div className="mt-1 text-sm font-mono font-bold tabular-nums text-gold-light whitespace-nowrap">
-                  {formatClock(now)}
-                </div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-[9px] text-text-dim">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_7px_rgba(74,222,128,.65)]" />
-                  <span className="font-semibold text-text-bright">{SERVER_TZ_SHORT}</span>
-                  <span>· {SERVER_TZ_NAME}</span>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-2 rounded-lg border border-white/[.07] bg-black/20 px-3 py-2 text-[11px] text-text-dim">
-              <span className="text-green-400">●</span>
-              <span><span className="text-text-bright font-semibold">{activeAuctions.length}</span> live auction{activeAuctions.length === 1 ? '' : 's'}</span>
-            </div>
-            {featuredAuction && (
-              <div className="inline-flex items-center gap-2 rounded-lg border border-gold/20 bg-gold/[.04] px-3 py-2 text-[11px] text-gold-light">
-                <span>★</span>
-                <span>Featured lot active</span>
+              <div className="min-w-[92px] rounded-lg border border-white/[.07] bg-black/25 px-3 py-2">
+                <div className="text-[8px] font-bold uppercase tracking-[.16em] text-text-dim">Completed</div>
+                <div className="mt-0.5 font-mono text-lg font-bold leading-none tabular-nums text-text-bright">{endedAuctions.length}</div>
               </div>
-            )}
-            {pendingDistribution > 0 && isElder && (
-              <div className="inline-flex items-center gap-2 rounded-lg border border-yellow-500/25 bg-yellow-500/[.04] px-3 py-2 text-[11px] text-yellow-400">
-                <span>!</span>
-                <span><strong>{pendingDistribution}</strong> awaiting distribution</span>
+
+              <div className="min-w-[148px] rounded-lg border border-gold/20 bg-gold/[.045] px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[8px] font-bold uppercase tracking-[.16em] text-gold-dim">Your Coins</div>
+                  <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_7px_rgba(242,204,96,.55)]" />
+                </div>
+                <div className="mt-0.5 font-mono text-lg font-bold leading-none tabular-nums text-gold-bright">
+                  {currentCoins.toLocaleString()}
+                </div>
+                <div className="mt-1 text-[8px] text-text-dim">Available to bid</div>
               </div>
-            )}
-            <div className="ml-auto">
+
+              <div className="min-w-[148px] rounded-lg border border-white/[.07] bg-black/25 px-3 py-2">
+                <div className="text-[8px] font-bold uppercase tracking-[.16em] text-text-dim">Server Time</div>
+                <div className="mt-0.5 font-mono text-sm font-bold leading-none tabular-nums text-text-bright">
+                  {formatClock(now)} <span className="text-[8px] font-semibold text-text-dim">{SERVER_TZ_SHORT}</span>
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-[8px] text-text-dim">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,.55)]" />
+                  <span>{SERVER_TZ_NAME}</span>
+                  <span>·</span>
+                  <span>{formatLocalClock(now)} local</span>
+                </div>
+              </div>
+
               {isElder && (
                 <button
+                  type="button"
                   onClick={() => setShowCreate(!showCreate)}
-                  className="btn-gold min-h-10 px-4 text-sm font-bold"
+                  className="btn-gold min-h-[60px] rounded-lg px-4 text-xs font-bold shadow-[0_8px_22px_-15px_rgba(242,204,96,.7)]"
                   aria-expanded={showCreate}
                 >
                   {showCreate ? '✕ Close' : '+ Create Auction'}
@@ -1221,77 +1228,60 @@ export default function Auctions({ ctx }) {
               )}
             </div>
           </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/[.055] pt-3">
+            <div className="inline-flex items-center gap-2 text-[9px] text-text-dim">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+              <span><span className="font-semibold text-text-bright">{activeAuctions.length}</span> live lot{activeAuctions.length === 1 ? '' : 's'}</span>
+            </div>
+            <span className="hidden sm:inline text-white/10">•</span>
+            <div className="text-[9px] text-text-dim">
+              Minimum <span className="font-semibold text-text-bright">starting bid</span>
+            </div>
+            <span className="hidden sm:inline text-white/10">•</span>
+            <div className="text-[9px] text-text-dim">
+              <span className="font-semibold text-text-bright">1 bid + 2 changes</span> per player
+            </div>
+            {featuredAuction && (
+              <>
+                <span className="hidden sm:inline text-white/10">•</span>
+                <div className="text-[9px] text-gold-light">★ Featured lot active</div>
+              </>
+            )}
+            {pendingDistribution > 0 && isElder && (
+              <>
+                <span className="hidden sm:inline text-white/10">•</span>
+                <div className="text-[9px] text-yellow-400"><strong>{pendingDistribution}</strong> awaiting distribution</div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Auction rules */}
-      <div className="rounded-xl border border-white/[.06] bg-black/20 overflow-hidden">
-        <div className="px-3.5 py-3 sm:px-4 sm:py-3">
-          <div className="grid grid-cols-1 sm:flex sm:flex-wrap sm:items-center gap-2.5 sm:gap-x-5 sm:gap-y-2 text-[11px] text-text-dim">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↗</span>
-              <span className="min-w-0">Minimum bid <strong className="text-text-bright whitespace-nowrap">starting bid</strong></span>
-            </div>
-
-            <span className="hidden sm:inline text-white/10">|</span>
-
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-yellow-500/15 bg-yellow-500/[.04] text-yellow-400">◷</span>
-              <span className="min-w-0">Bidding locks in the final <strong className="text-text-bright whitespace-nowrap">30 seconds</strong></span>
-            </div>
-
-            <span className="hidden sm:inline text-white/10">|</span>
-
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↻</span>
-              <span className="min-w-0">Everyone gets <strong className="text-text-bright whitespace-nowrap">1 bid + 2 changes</strong></span>
-            </div>
-
-            <span className="hidden sm:inline text-white/10">|</span>
-
-            <div className="flex min-w-0 items-center gap-2.5 sm:max-w-[360px]">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">◉</span>
-              <span className="min-w-0 leading-4">
-                Times shown in <strong className="text-text-bright">{SERVER_TZ_LABEL}</strong>
-                <span className="mx-1 text-text-dim">+</span>
-                <strong className="text-text-bright">your local time</strong>
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowLegend(v => !v)}
-              aria-expanded={showLegend}
-              className="w-full sm:w-auto sm:ml-auto inline-flex items-center justify-center sm:justify-start gap-1.5 pt-2 sm:pt-0 text-[10px] font-bold uppercase tracking-[.12em] text-gold-light hover:text-gold-bright transition-colors border-t border-white/[.06] sm:border-0"
-            >
-              {showLegend ? 'Hide guide' : 'Auction guide'}
-              <span className={`transition-transform ${showLegend ? 'rotate-180' : ''}`}>⌄</span>
-            </button>
+      {/* Compact auction rules */}
+      <div className="rounded-xl border border-white/[.065] bg-[#0b0908]/70 px-3.5 py-2.5 sm:px-4">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[9px] text-text-dim">
+          <div className="inline-flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↗</span>
+            <span>Minimum = <strong className="text-text-bright">starting bid</strong></span>
+          </div>
+          <span className="hidden md:inline text-white/10">|</span>
+          <div className="inline-flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-md border border-yellow-500/15 bg-yellow-500/[.04] text-yellow-400">◷</span>
+            <span>Locks in final <strong className="text-text-bright">30 seconds</strong></span>
+          </div>
+          <span className="hidden md:inline text-white/10">|</span>
+          <div className="inline-flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↻</span>
+            <span><strong className="text-text-bright">1 bid + 2 changes</strong></span>
+          </div>
+          <span className="hidden md:inline text-white/10">|</span>
+          <div className="inline-flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">◉</span>
+            <span>Times: <strong className="text-text-bright">{SERVER_TZ_SHORT}</strong> + local</span>
           </div>
         </div>
-        {showLegend && (
-          <div className="border-t border-white/[.06] px-4 py-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-text-dim">
-            <div><span className="text-gold-light font-semibold">Winner</span> — the highest bidder when the auction closes.</div>
-            <div><span className="text-yellow-400 font-semibold">Awaiting hand-out</span> — an admin still needs to deliver the item in-game.</div>
-            <div><span className="text-green-400 font-semibold">Delivered</span> — the winning item has been handed to the winner.</div>
-            <div><span className="text-gold-light font-semibold">Time</span> — server time is authoritative; your local time is shown automatically from your browser/device timezone.</div>
-
-          </div>
-        )}
       </div>
-
-      {/* Distribution notice */}
-      {isElder && pendingDistribution > 0 && (
-        <div className="flex items-start gap-3 rounded-xl border border-yellow-500/20 bg-yellow-500/[.035] px-4 py-3">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-yellow-500/10 text-yellow-400">!</span>
-          <div className="min-w-0">
-            <div className="text-xs font-bold text-yellow-400">Distribution requires attention</div>
-            <div className="mt-0.5 text-[11px] text-text-dim">
-              {pendingDistribution} {pendingDistribution === 1 ? 'winning item is' : 'winning items are'} still waiting for a distributor.
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Create auction */}
       {showCreate && (
@@ -1448,6 +1438,7 @@ export default function Auctions({ ctx }) {
           auction={featuredAuction}
           now={now}
           currentUser={currentUser}
+          currentCoins={currentCoins}
           isElder={isElder}
           isMaster={isMaster}
           isPinned={!!featuredAuction.isFeatured}
@@ -1465,10 +1456,25 @@ export default function Auctions({ ctx }) {
       )}
 
       {otherActiveAuctions.length === 0 && !featuredAuction ? (
-        <div className="rounded-2xl border border-dashed border-white/[.09] bg-black/15 py-16 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-gold/15 bg-gold/[.04] text-gold-light">◇</div>
-          <div className="mt-4 text-sm font-semibold text-text-bright">No Live Auctions</div>
-          <div className="mt-1 text-xs text-text-dim">New clan auctions will appear here when they go live.</div>
+        <div className="relative overflow-hidden rounded-2xl border border-white/[.07] bg-[#0b0908]/80">
+          <div
+            className="absolute inset-0 pointer-events-none"
+            aria-hidden="true"
+            style={{ background: 'radial-gradient(circle at 50% 0%, rgba(242,204,96,.055), transparent 42%)' }}
+          />
+          <div className="relative flex min-h-[250px] flex-col items-center justify-center px-5 py-12 text-center">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gold/20 bg-gold/[.045] text-lg text-gold-light">
+              ◇
+            </div>
+            <div className="mt-3 text-sm font-semibold text-text-bright">No Live Auctions</div>
+            <div className="mt-1 max-w-sm text-[11px] leading-4 text-text-dim">
+              There are no active lots right now. New clan auctions will appear here when they go live.
+            </div>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/[.06] bg-black/20 px-3 py-1.5 text-[8px] font-semibold uppercase tracking-[.14em] text-text-dim">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+              Auction house ready
+            </div>
+          </div>
         </div>
       ) : otherActiveAuctions.length > 0 ? (
         <section>
@@ -1479,13 +1485,14 @@ export default function Auctions({ ctx }) {
             </div>
             <span className="rounded-full border border-white/[.07] bg-black/20 px-2.5 py-1 text-[10px] font-mono text-text-dim">{otherActiveAuctions.length} lots</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
             {otherActiveAuctions.map(auction => (
               <AuctionCard
                 key={auction.id}
                 auction={auction}
                 now={now}
                 currentUser={currentUser}
+                currentCoins={currentCoins}
                 isElder={isElder}
                 isMaster={isMaster}
                 isFeatured={!!auction.isFeatured}
@@ -1569,13 +1576,16 @@ function BlindStatusPill({ children, tone = 'gold' }) {
 }
 
 function BlindBidPanel({
-  auction, now, currentUser, bidAmount, onBidChange, onPlaceBid, onCancelBid,
+  auction, now, currentUser, currentCoins = 0, bidAmount, onBidChange, onPlaceBid, onCancelBid,
 }) {
   const biddingOpen = isBiddingOpen(auction, now)
   const own = getOwnBidState(auction, currentUser?.name)
   const startingBid = getStartingBid(auction)
   const canSubmit = biddingOpen && !own.cancelled && own.submissions < MAX_BID_SUBMISSIONS
   const isUrgent = auction.endsAt - now > 0 && auction.endsAt - now < URGENT_MS
+  const availableCoins = Math.max(0, Number(currentCoins) || 0)
+  const reservedCoins = own.hasBid ? Math.max(0, Number(own.amount) || 0) : 0
+  const totalCoins = availableCoins + reservedCoins
 
   return (
     <div className="rounded-xl border border-gold/20 bg-gold/[.025] p-3 sm:p-3.5">
@@ -1594,8 +1604,31 @@ function BlindBidPanel({
         />
       </div>
 
-      <div className="mt-2.5 flex items-center justify-between gap-3 border-b border-white/[.06] pb-2.5">
-        <span className="text-[10px] text-text-dim">Your bid is hidden from everyone until close.</span>
+      <div className="mt-2.5 grid grid-cols-2 gap-2">
+        <div className="rounded-lg border border-gold/15 bg-gold/[.035] px-2.5 py-2">
+          <div className="text-[7px] font-bold uppercase tracking-[.13em] text-gold-dim">Your Coins</div>
+          <div className="mt-0.5 font-mono text-[14px] font-bold tabular-nums text-gold-bright">
+            {availableCoins.toLocaleString()}
+          </div>
+          <div className="mt-0.5 text-[7px] text-text-dim">available balance</div>
+        </div>
+        <div className="rounded-lg border border-white/[.06] bg-black/15 px-2.5 py-2">
+          <div className="text-[7px] font-bold uppercase tracking-[.13em] text-text-dim">Reserved</div>
+          <div className="mt-0.5 font-mono text-[14px] font-bold tabular-nums text-text-bright">
+            {reservedCoins.toLocaleString()}
+          </div>
+          <div className="mt-0.5 text-[7px] text-text-dim">
+            {own.hasBid ? 'current blind bid' : 'no active bid'}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between gap-3 border-b border-white/[.06] pb-2.5">
+        <span className="text-[9px] text-text-dim">
+          {own.hasBid
+            ? <>Total <span className="font-mono font-semibold text-text-bright">{totalCoins.toLocaleString()}</span> coins including your reserved bid.</>
+            : 'Your bid is hidden from everyone until close.'}
+        </span>
         <span className="shrink-0 text-[9px] font-mono text-text-dim">
           {own.cancelled ? 'CANCELLED' : `${own.submissions}/${MAX_BID_SUBMISSIONS} submitted`}
         </span>
@@ -1706,7 +1739,7 @@ function BlindBidPanel({
 }
 
 function FeaturedAuctionCard({
-  auction, now, currentUser, isElder, isMaster,
+  auction, now, currentUser, currentCoins, isElder, isMaster,
   isPinned, onToggleFeatured, featuringInFlight,
   bidAmount, onBidChange, onPlaceBid, onCancelBid, onEndEarly, onDelete,
 }) {
@@ -1844,7 +1877,7 @@ function FeaturedAuctionCard({
 }
 
 function AuctionCard({
-  auction, now, currentUser, isElder, isMaster,
+  auction, now, currentUser, currentCoins, isElder, isMaster,
   isFeatured, onToggleFeatured, featuringInFlight,
   bidAmount, onBidChange, onPlaceBid, onCancelBid, onEndEarly, onDelete,
 }) {
@@ -1927,6 +1960,7 @@ function AuctionCard({
           auction={auction}
           now={now}
           currentUser={currentUser}
+          currentCoins={currentCoins}
           bidAmount={bidAmount}
           onBidChange={onBidChange}
           onPlaceBid={onPlaceBid}
