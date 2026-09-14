@@ -730,7 +730,7 @@ function Info({ label, value }) {
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
       <div className="text-[8px] font-bold uppercase tracking-[0.17em] text-text-dim">{label}</div>
-      <div className={`mt-1 text-sm font-semibold text-white/85 ${isLastPowerRank ? 'whitespace-nowrap' : 'truncate'}`}>
+      <div className={`mt-1 text-sm font-semibold text-white/85 ${isLastPowerRank ? 'whitespace-nowrap' : 'break-words'}`}>
         {value}
       </div>
     </div>
