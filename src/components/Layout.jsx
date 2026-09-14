@@ -232,26 +232,37 @@ function NotificationBell({ ctx, onNavigate }) {
 
     let channel = null
     try {
+      // Subscribe without a user_id filter. Some custom-auth setups can
+      // prevent filtered Realtime events from reaching the browser.
+      // We filter by memberId locally instead.
       channel = supabase
-        .channel(`notifications-${memberId}`)
+        .channel(`notifications-live-${memberId}-${Date.now()}`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
             table: 'notifications',
-            filter: `user_id=eq.${memberId}`,
           },
           async payload => {
-            let incoming = payload?.new
-            if (!incoming) return
+            const incomingRow = payload?.new
+            if (!incomingRow) return
+
+            // Only show notifications belonging to the currently logged-in member.
+            if (String(incomingRow.user_id) !== String(memberId)) return
+
+            let incoming = incomingRow
 
             if (incoming.type === 'auction_won' && incoming.auction_id) {
-              const { data: auction } = await supabase
+              const { data: auction, error: auctionError } = await supabase
                 .from('auctions')
                 .select('id, name, rarity, image_url, image_data')
                 .eq('id', incoming.auction_id)
                 .maybeSingle()
+
+              if (auctionError) {
+                console.warn('Realtime auction lookup failed:', auctionError)
+              }
 
               incoming = {
                 ...incoming,
@@ -265,7 +276,9 @@ function NotificationBell({ ctx, onNavigate }) {
             ].slice(0, 30))
           }
         )
-        .subscribe()
+        .subscribe(status => {
+          console.log('[Notifications Realtime]', status)
+        })
     } catch (err) {
       console.warn('Notification realtime setup failed:', err)
     }
