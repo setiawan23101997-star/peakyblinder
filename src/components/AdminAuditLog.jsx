@@ -42,6 +42,8 @@ function prettyDetails(details) {
       return ![
         'coins_before', 'coins_after', 'coin_change',
         'coin_before', 'coin_after', 'coin_delta',
+        'power_before', 'power_after', 'power_change',
+        'field_changes', 'changes',
       ].includes(String(key).toLowerCase())
     })
     .map(([key, value]) => {
@@ -78,6 +80,62 @@ function getCoinChange(details) {
   }
 
   return null
+}
+
+function getFieldChanges(details) {
+  const raw = details?.field_changes
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+
+  const preferredOrder = [
+    'coins',
+    'power',
+    'cls',
+    'profile_grade',
+    'character_level',
+    'awakening_stage',
+    'role',
+  ]
+
+  const keys = [
+    ...preferredOrder.filter(key => Object.prototype.hasOwnProperty.call(raw, key)),
+    ...Object.keys(raw).filter(key => !preferredOrder.includes(key)),
+  ]
+
+  return keys
+    .map(key => {
+      const item = raw[key]
+      if (!item || typeof item !== 'object') return null
+
+      return {
+        key,
+        label: item.label || key.replace(/_/g, ' '),
+        before: item.before,
+        after: item.after,
+        delta: Number.isFinite(Number(item.delta)) ? Number(item.delta) : null,
+      }
+    })
+    .filter(Boolean)
+}
+
+function formatAuditValue(value) {
+  if (value === null || value === undefined || value === '') return '—'
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value.toLocaleString()
+  }
+
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+
+  return String(value)
+}
+
+function fieldChangeTone(key, delta) {
+  if (key === 'coins' || key === 'power') {
+    if (delta > 0) return 'border-green-400/20 bg-green-400/[0.045] text-green-300'
+    if (delta < 0) return 'border-red-400/20 bg-red-400/[0.045] text-red-300'
+  }
+
+  return 'border-gold/15 bg-gold/[0.035] text-text-bright'
 }
 
 function actionTone(action) {
@@ -139,7 +197,7 @@ export default function AdminAuditLog({ ctx }) {
         .from('admin_audit_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(150)
+        .limit(500)
 
       if (dbError) throw dbError
 
@@ -251,7 +309,7 @@ export default function AdminAuditLog({ ctx }) {
 
     try {
       // `not(id, is, null)` targets every row whose primary key is not null.
-      // This is intentionally independent of the UI's `.limit(150)` display
+      // This is intentionally independent of the UI's `.limit(500)` display
       // query, so all records are removed rather than only visible records.
       const { error: dbError } = await supabase
         .from('admin_audit_logs')
@@ -500,17 +558,47 @@ export default function AdminAuditLog({ ctx }) {
 
                     <div className="min-w-0">
                       {targetName && (
-                        <div className="mb-1 text-[10px] font-semibold text-text-bright">
+                        <div className="mb-1.5 text-[10px] font-semibold text-text-bright">
                           Target: <span className="text-gold-light">{targetName}</span>
                         </div>
                       )}
 
-                      {coinChange && (
+                      {getFieldChanges(log.details).length > 0 ? (
+                        <div className="mb-1.5 space-y-1.5">
+                          {getFieldChanges(log.details).map(change => (
+                            <div
+                              key={change.key}
+                              className={`flex flex-wrap items-center gap-1.5 rounded-lg border px-2 py-1.5 ${fieldChangeTone(change.key, change.delta)}`}
+                            >
+                              <span className="min-w-[62px] text-[8px] font-black uppercase tracking-[0.1em] text-gold-light">
+                                {change.label}
+                              </span>
+
+                              <span className="font-mono text-[10px] font-semibold tabular-nums">
+                                {formatAuditValue(change.before)}
+                                <span className="mx-1.5 text-text-dim">→</span>
+                                {formatAuditValue(change.after)}
+                              </span>
+
+                              {change.delta !== null && (
+                                <span className={`rounded px-1.5 py-0.5 font-mono text-[8px] font-bold tabular-nums ${
+                                  change.delta > 0
+                                    ? 'bg-green-400/[0.08] text-green-300'
+                                    : change.delta < 0
+                                      ? 'bg-red-400/[0.08] text-red-300'
+                                      : 'bg-white/[0.04] text-text-dim'
+                                }`}>
+                                  {change.delta > 0 ? '+' : ''}{change.delta.toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : coinChange ? (
                         <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                           <span className="rounded-md border border-gold/20 bg-gold/[0.06] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-gold-light">
                             Coins
                           </span>
-
                           {coinChange.before !== null && coinChange.after !== null ? (
                             <span className="font-mono text-[10px] font-semibold tabular-nums text-text-bright">
                               {coinChange.before.toLocaleString()} → {coinChange.after.toLocaleString()}
@@ -520,7 +608,6 @@ export default function AdminAuditLog({ ctx }) {
                               {Math.abs(delta).toLocaleString()}
                             </span>
                           )}
-
                           <span className={`rounded-md px-1.5 py-0.5 font-mono text-[8px] font-bold tabular-nums ${
                             delta > 0
                               ? 'border border-green-400/20 bg-green-400/[0.06] text-green-300'
@@ -531,7 +618,7 @@ export default function AdminAuditLog({ ctx }) {
                             {delta > 0 ? '+' : ''}{delta.toLocaleString()}
                           </span>
                         </div>
-                      )}
+                      ) : null}
 
                       <div className="break-words text-[9px] leading-relaxed text-text-dim">
                         {details || 'No additional details recorded.'}
