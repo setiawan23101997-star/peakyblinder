@@ -823,7 +823,7 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
 
   return (
     <section className="relative min-w-0" aria-label="Live auctions">
-      <div className="mb-3 flex min-w-0 items-end justify-between gap-2 sm:mb-4 sm:gap-4">
+      <div className="mb-2.5 flex min-w-0 items-end justify-between gap-2 sm:mb-3 sm:gap-3">
         <div className="min-w-0">
           <div className="mb-1.5 flex items-center gap-2.5">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.7)]" aria-hidden="true" />
@@ -876,23 +876,23 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
 
   return (
     <button type="button" onClick={onOpenAll} aria-label={cardLabel}
-      className={`group relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/[0.085] bg-[#080706]/95 text-left shadow-[0_14px_38px_rgba(0,0,0,0.26)] transition-all duration-200 hover:-translate-y-0.5 hover:border-gold/20 hover:bg-[#0a0908] hover:shadow-[0_20px_48px_rgba(0,0,0,0.36)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${wide ? 'min-h-[166px]' : 'min-h-[260px]'}`}>
+      className={`group relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/[0.085] bg-[#080706]/95 text-left shadow-[0_14px_38px_rgba(0,0,0,0.26)] transition-all duration-200 hover:-translate-y-0.5 hover:border-gold/20 hover:bg-[#0a0908] hover:shadow-[0_20px_48px_rgba(0,0,0,0.36)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${wide ? '' : ''}`}>
       <span className="absolute inset-y-5 left-0 w-[3px] rounded-full"
         style={{ background: rarity.color, boxShadow: `0 0 18px ${rarity.color}55` }} aria-hidden="true" />
       <div className="pointer-events-none absolute right-0 top-0 h-56 w-56 opacity-45"
         style={{ background: `radial-gradient(circle at center, ${rarity.color}12, transparent 68%)` }} aria-hidden="true" />
 
       {wide ? (
-        <div className="relative flex min-w-0 min-h-[166px] flex-col gap-4 p-4 pl-6 sm:flex-row sm:items-center sm:gap-5 sm:p-5 sm:pl-7 lg:gap-6 lg:p-6 lg:pl-8">
-          <div className="flex min-w-0 items-center gap-3 sm:contents">
-            <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border bg-black/50 shadow-[0_8px_24px_rgba(0,0,0,0.42)] sm:h-[92px] sm:w-[92px] lg:h-[104px] lg:w-[104px]"
+        <div className="relative flex min-w-0 flex-col gap-1.5 p-3 pl-5 sm:flex-row sm:items-center sm:gap-4 sm:p-4 sm:pl-6 lg:gap-5 lg:p-4.5 lg:pl-7">
+          <div className="flex min-w-0 items-center gap-2.5 sm:contents">
+            <div className="relative h-[60px] w-[60px] shrink-0 overflow-hidden rounded-lg border bg-black/50 shadow-[0_8px_24px_rgba(0,0,0,0.42)] sm:h-[78px] sm:w-[78px] lg:h-[88px] lg:w-[88px]"
               style={{ borderColor: `${rarity.color}45` }}>
               {a.imageUrl ? (
                 <img src={a.imageUrl} alt="" width={104} height={104} loading="lazy"
                   className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
                   onError={(e) => { e.currentTarget.style.display = 'none' }} />
               ) : (
-                <span className="flex h-full w-full items-center justify-center font-spectral text-3xl font-bold sm:text-4xl"
+                <span className="flex h-full w-full items-center justify-center font-spectral text-2xl font-bold sm:text-4xl"
                   style={{ color: rarity.color }} aria-hidden="true">
                   {a.name.charAt(0).toUpperCase()}
                 </span>
@@ -914,10 +914,10 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
                   </span>
                 )}
               </div>
-              <div className="mt-1 truncate font-spectral text-[1.2rem] font-bold leading-tight sm:mt-2 sm:text-[1.65rem] lg:text-[1.9rem]" style={{ color: rarity.color }}>
+              <div className="mt-0.5 truncate font-spectral text-[1.05rem] font-bold leading-tight sm:mt-1.5 sm:text-[1.4rem] lg:text-[1.6rem]" style={{ color: rarity.color }}>
                 {a.name}
               </div>
-              <div className="mt-1 flex min-w-0 items-center gap-1.5 sm:mt-2 sm:gap-2.5">
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 sm:mt-1.5 sm:gap-2">
                 <span className="shrink-0 text-[8px] font-bold uppercase tracking-[0.12em] text-text-dim/70 sm:text-[9px] sm:tracking-[0.14em]">Leading</span>
                 <span className={`truncate text-[11px] font-semibold sm:text-[13px] ${a.topBidder ? 'text-text-bright/95' : 'text-text-dim/60'}`}>
                   {a.topBidder || 'No bids yet'}
@@ -931,19 +931,19 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
             </div>
           </div>
 
-          <div className="hidden h-[88px] w-px shrink-0 bg-white/[0.07] lg:block" />
+          <div className="hidden h-[68px] w-px shrink-0 bg-white/[0.07] lg:block" />
 
-          <div className="grid w-full min-w-0 shrink-0 grid-cols-2 gap-2.5 sm:w-[320px] sm:gap-3 lg:w-[390px]">
-            <div className="min-w-0 rounded-xl border border-gold/10 bg-gold/[0.025] px-3 py-2.5 sm:px-4 sm:py-3.5">
+          <div className="grid w-full min-w-0 shrink-0 grid-cols-2 gap-2 sm:w-[280px] sm:gap-2.5 lg:w-[320px] lg:gap-3">
+            <div className="min-w-0 rounded-lg border border-gold/10 bg-gold/[0.025] px-3 py-1.5 sm:px-3.5 sm:py-3">
               <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Current Bid</div>
-              <div className="mt-1.5 flex min-w-0 items-baseline gap-1 sm:mt-2 sm:gap-1.5">
+              <div className="mt-1 flex min-w-0 items-baseline gap-1 sm:mt-2 sm:gap-1.5">
                 <span className="truncate font-mono text-[1.15rem] font-bold leading-none tabular-nums text-gold-bright sm:text-[1.45rem]">{currentBid.toLocaleString()}</span>
                 <span className="shrink-0 text-[8px] font-semibold uppercase tracking-[0.06em] text-gold-light/55 sm:text-[9px] sm:tracking-[0.08em]">Coins</span>
               </div>
             </div>
-            <div className={`min-w-0 rounded-xl border px-3 py-2.5 text-right sm:px-4 sm:py-3.5 ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
+            <div className={`min-w-0 rounded-lg border px-3 py-1.5 text-right sm:px-3.5 sm:py-3 ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
               <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Ends In</div>
-              <div className={`mt-1.5 truncate font-mono text-[1.15rem] font-bold leading-none tabular-nums sm:mt-2 sm:text-[1.45rem] ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
+              <div className={`mt-1 truncate font-mono text-[1.05rem] font-bold leading-none tabular-nums sm:mt-1.5 sm:text-[1.25rem] lg:text-[1.35rem] ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
                 style={{ color: isEnding ? '#f87171' : rarity.color }}>
                 {timeLabel}
               </div>
@@ -951,7 +951,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
           </div>
         </div>
       ) : (
-        <div className="relative flex min-h-[260px] min-w-0 flex-col p-5 pl-6">
+        <div className="relative flex min-w-0 flex-col p-4 pl-5 sm:p-4.5 sm:pl-6">
           <div className="flex min-w-0 items-start gap-4">
             <div className="relative h-[78px] w-[78px] shrink-0 overflow-hidden rounded-xl border bg-black/50 shadow-[0_7px_20px_rgba(0,0,0,0.38)]"
               style={{ borderColor: `${rarity.color}45` }}>
@@ -978,18 +978,18 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
               </div>
             </div>
           </div>
-          <div className="my-4 border-t border-white/[0.07]" />
-          <div className="mt-auto grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-gold/10 bg-gold/[0.025] px-3.5 py-3">
+          <div className="my-2.5 border-t border-white/[0.07]" />
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="rounded-lg border border-gold/10 bg-gold/[0.025] px-3 py-2.5">
               <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Current Bid</div>
-              <div className="mt-1.5 flex items-baseline gap-1.5">
+              <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="font-mono text-[1.35rem] font-bold leading-none tabular-nums text-gold-bright">{currentBid.toLocaleString()}</span>
                 <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-gold-light/55">Coins</span>
               </div>
             </div>
-            <div className={`rounded-xl border px-3.5 py-3 text-right ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
+            <div className={`rounded-lg border px-3 py-2.5 text-right ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
               <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Ends In</div>
-              <div className={`mt-1.5 font-mono text-[1.35rem] font-bold leading-none tabular-nums ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
+              <div className={`mt-1 font-mono text-[1.25rem] font-bold leading-none tabular-nums ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
                 style={{ color: isEnding ? '#f87171' : rarity.color }}>
                 {timeLabel}
               </div>
