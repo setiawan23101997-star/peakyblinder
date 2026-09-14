@@ -222,7 +222,11 @@ function nextOccurrenceInZone(dayOfWeek, hhmm, fromTs, tz) {
 
 function formatInZone(ts, tz) {
   const d = new Date(ts)
-  const time = getDTF('en-GB', { timeZone: tz, ...TIME_OPTS }).format(d)
+
+  // Use en-US for 12-hour clock formatting so AM/PM casing is
+  // consistent everywhere. en-GB renders the period as lowercase
+  // ("pm"), while the dashboard uses uppercase ("PM") elsewhere.
+  const time = getDTF('en-US', { timeZone: tz, ...TIME_OPTS }).format(d)
   const day = getDTF('en-GB', { timeZone: tz, weekday: 'long' }).format(d)
   const date = getDTF('en-GB', { timeZone: tz, ...DATE_OPTS }).format(d)
   return { time, day, date }
