@@ -382,7 +382,7 @@ function EventCalendar({ setPage }) {
         </div>
       </section>
 
-      <div className="px-1 text-[8px] text-text-dim sm:text-[9px]">
+      <div className="px-1 pt-0.5 text-[10px] leading-relaxed text-text-dim/85 sm:text-[11px]">
         Event schedules use server time · Local time is calculated automatically from your browser timezone.
       </div>
     </main>
@@ -403,21 +403,6 @@ const CalendarHeader = React.memo(function CalendarHeader({
       <div className="relative px-4 py-4 sm:px-5 sm:py-4 lg:px-6">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
           <div className="min-w-0">
-            <div className="mb-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onBack}
-                className="inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim transition-colors hover:text-gold-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
-              >
-                <span className="text-[12px] leading-none" aria-hidden="true">←</span>
-                Command Center
-              </button>
-              <span className="text-white/10">/</span>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-text-dim">
-                Clan Operations
-              </span>
-            </div>
-
             <div className="flex min-w-0 items-center gap-2.5">
               <span className="h-2 w-2 shrink-0 rounded-full bg-gold-bright shadow-[0_0_10px_rgba(242,204,96,0.7)]" aria-hidden="true" />
               <h1 className="font-spectral text-[27px] font-bold leading-none tracking-[-0.02em] text-text-bright sm:text-[31px]">
@@ -515,9 +500,7 @@ const NextEventHero = React.memo(function NextEventHero({ event, now }) {
             Next Event
           </span>
         </div>
-        <span className="shrink-0 rounded-full border border-white/[0.06] bg-white/[0.018] px-2 py-1 text-[8px] font-bold uppercase tracking-[0.12em] text-text-dim">
-          Server Schedule
-        </span>
+
       </div>
 
       <div className="relative overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/82 shadow-[0_10px_30px_rgba(0,0,0,0.15)]">
