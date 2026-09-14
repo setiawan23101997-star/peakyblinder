@@ -865,14 +865,17 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
   const rarity = RARITY_COLORS[a.rarity] || RARITY_COLORS.epic
   const remaining = Math.max(0, (a.endsAt || 0) - now)
   const isEnding = remaining > 0 && remaining < URGENT_MS
-  const isLeading = Boolean(a.topBidder && currentUserName === a.topBidder)
   const timeLabel = formatAuctionTime(remaining)
-  const currentBid = a.currentBid || 0
+
+  // All active clan auctions use blind bidding. The dashboard must never
+  // expose another member's identity, current/highest bid, or bid count.
+  // `currentBid` is retained here only as the stored starting-bid display
+  // value used by the existing dashboard data shape.
+  const startingBid = Number(a.startBid ?? a.minBid ?? a.currentBid ?? 0)
 
   const cardLabel =
-    `${a.name}, ${a.rarity} rarity, current bid ${currentBid.toLocaleString()} coins, ` +
-    `${a.topBidder ? `top bidder ${a.topBidder}` : 'no bids yet'}, ends in ${timeLabel}` +
-    (isLeading ? ', you are currently leading' : '')
+    `${a.name}, ${a.rarity} rarity, blind auction, starting bid ${startingBid.toLocaleString()} coins, ` +
+    `other bids hidden, ends in ${timeLabel}`
 
   return (
     <button type="button" onClick={onOpenAll} aria-label={cardLabel}
@@ -907,6 +910,9 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
                   style={{ color: rarity.color, borderColor: `${rarity.color}35`, background: `${rarity.color}0c` }}>
                   {a.rarity}
                 </span>
+                <span className="inline-flex items-center gap-1 rounded-md border border-gold/20 bg-gold/[0.045] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-gold-light sm:px-2 sm:py-1 sm:text-[9px]">
+                  Blind
+                </span>
                 {isEnding && (
                   <span className="inline-flex items-center gap-1 rounded-md border border-red-400/20 bg-red-400/[0.06] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.07em] text-red-300 sm:gap-1.5 sm:px-2 sm:py-1 sm:text-[9px] sm:tracking-[0.08em]">
                     <span className="h-1.5 w-1.5 rounded-full bg-red-400 motion-safe:animate-pulse" aria-hidden="true" />
@@ -914,19 +920,21 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
                   </span>
                 )}
               </div>
+
               <div className="mt-0.5 truncate font-spectral text-[1.05rem] font-bold leading-tight sm:mt-1.5 sm:text-[1.4rem] lg:text-[1.6rem]" style={{ color: rarity.color }}>
                 {a.name}
               </div>
-              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 sm:mt-1.5 sm:gap-2">
-                <span className="shrink-0 text-[8px] font-bold uppercase tracking-[0.12em] text-text-dim/70 sm:text-[9px] sm:tracking-[0.14em]">Leading</span>
-                <span className={`truncate text-[11px] font-semibold sm:text-[13px] ${a.topBidder ? 'text-text-bright/95' : 'text-text-dim/60'}`}>
-                  {a.topBidder || 'No bids yet'}
+
+              <div className="mt-1 flex min-w-0 items-center gap-2">
+                <span className="shrink-0 text-[8px] font-bold uppercase tracking-[0.12em] text-text-dim/70 sm:text-[9px] sm:tracking-[0.14em]">
+                  Other Bids
                 </span>
-                {isLeading && (
-                  <span className="hidden shrink-0 rounded-full border border-green-400/20 bg-green-400/[0.06] px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.07em] text-green-300 xs:inline-flex">
-                    ✓ Leading
-                  </span>
-                )}
+                <span className="truncate text-[11px] font-semibold text-text-dim sm:text-[13px]">
+                  Hidden
+                </span>
+                <span className="hidden shrink-0 text-[8px] text-text-dim/50 sm:inline">
+                  names · amounts · count
+                </span>
               </div>
             </div>
           </div>
@@ -935,12 +943,15 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
 
           <div className="grid w-full min-w-0 shrink-0 grid-cols-2 gap-2 sm:w-[280px] sm:gap-2.5 lg:w-[320px] lg:gap-3">
             <div className="min-w-0 rounded-lg border border-gold/10 bg-gold/[0.025] px-3 py-1.5 sm:px-3.5 sm:py-3">
-              <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Current Bid</div>
+              <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Starting Bid</div>
               <div className="mt-1 flex min-w-0 items-baseline gap-1 sm:mt-2 sm:gap-1.5">
-                <span className="truncate font-mono text-[1.15rem] font-bold leading-none tabular-nums text-gold-bright sm:text-[1.45rem]">{currentBid.toLocaleString()}</span>
+                <span className="truncate font-mono text-[1.15rem] font-bold leading-none tabular-nums text-gold-bright sm:text-[1.45rem]">
+                  {startingBid.toLocaleString()}
+                </span>
                 <span className="shrink-0 text-[8px] font-semibold uppercase tracking-[0.06em] text-gold-light/55 sm:text-[9px] sm:tracking-[0.08em]">Coins</span>
               </div>
             </div>
+
             <div className={`min-w-0 rounded-lg border px-3 py-1.5 text-right sm:px-3.5 sm:py-3 ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
               <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Ends In</div>
               <div className={`mt-1 truncate font-mono text-[1.05rem] font-bold leading-none tabular-nums sm:mt-1.5 sm:text-[1.25rem] lg:text-[1.35rem] ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
@@ -966,27 +977,42 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
                 </span>
               )}
             </div>
+
             <div className="min-w-0 flex-1">
-              <span className="inline-flex rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em]"
-                style={{ color: rarity.color, borderColor: `${rarity.color}35`, background: `${rarity.color}0c` }}>
-                {a.rarity}
-              </span>
-              <div className="mt-2 truncate font-spectral text-[1.45rem] font-bold leading-tight" style={{ color: rarity.color }}>{a.name}</div>
-              <div className="mt-2 flex min-w-0 items-center gap-2">
-                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim/70">Leading Bidder</span>
-                <span className="truncate text-[12px] font-semibold text-text-bright/90">{a.topBidder || 'No bids yet'}</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em]"
+                  style={{ color: rarity.color, borderColor: `${rarity.color}35`, background: `${rarity.color}0c` }}>
+                  {a.rarity}
+                </span>
+                <span className="inline-flex rounded-md border border-gold/20 bg-gold/[0.045] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-gold-light">
+                  Blind
+                </span>
+              </div>
+
+              <div className="mt-1.5 truncate font-spectral text-[1.45rem] font-bold leading-tight" style={{ color: rarity.color }}>
+                {a.name}
+              </div>
+
+              <div className="mt-1.5 flex min-w-0 items-center gap-2">
+                <span className="shrink-0 text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim/70">Other Bids</span>
+                <span className="truncate text-[12px] font-semibold text-text-dim">Hidden</span>
               </div>
             </div>
           </div>
+
           <div className="my-2.5 border-t border-white/[0.07]" />
+
           <div className="grid grid-cols-2 gap-2.5">
             <div className="rounded-lg border border-gold/10 bg-gold/[0.025] px-3 py-2.5">
-              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Current Bid</div>
+              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Starting Bid</div>
               <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="font-mono text-[1.35rem] font-bold leading-none tabular-nums text-gold-bright">{currentBid.toLocaleString()}</span>
+                <span className="font-mono text-[1.35rem] font-bold leading-none tabular-nums text-gold-bright">
+                  {startingBid.toLocaleString()}
+                </span>
                 <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-gold-light/55">Coins</span>
               </div>
             </div>
+
             <div className={`rounded-lg border px-3 py-2.5 text-right ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
               <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Ends In</div>
               <div className={`mt-1 font-mono text-[1.25rem] font-bold leading-none tabular-nums ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
