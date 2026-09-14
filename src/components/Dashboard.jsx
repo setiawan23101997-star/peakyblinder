@@ -416,7 +416,7 @@ export default function Dashboard({ ctx, setPage }) {
   const goNoticeBoard = useCallback(() => setPage('notice-board'), [setPage])
 
   return (
-    <div className="w-full min-w-0 max-w-full overflow-x-clip space-y-6 sm:space-y-8 pb-10 sm:pb-12">
+    <div className="w-full min-w-0 max-w-full overflow-x-hidden space-y-5 sm:space-y-8 pb-8 sm:pb-12">
       <HeroSection
         currentUser={currentUser}
         activeRegion={activeRegion}
@@ -706,7 +706,7 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
 
   return (
     <section aria-label="Upcoming clan event" className="relative">
-      <div className="mb-3.5 flex min-w-0 items-center justify-between gap-3">
+      <div className="mb-3 flex min-w-0 items-center justify-between gap-2 sm:mb-3.5 sm:gap-3">
         <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
             <span
@@ -717,7 +717,7 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
               Next Event
             </span>
           </div>
-          <h2 className="font-spectral text-2xl font-bold leading-none text-text-bright sm:text-[1.7rem]">
+          <h2 className="font-spectral text-[1.45rem] font-bold leading-none text-text-bright sm:text-[1.7rem]">
             Upcoming Clan Event
           </h2>
         </div>
@@ -743,57 +743,59 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
           aria-hidden="true"
         />
 
-        <div className="flex min-w-0 items-center gap-3 px-4 py-4 sm:gap-5 sm:px-5 sm:py-4.5">
-          <div
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border text-lg transition-colors duration-200 group-hover:brightness-110"
-            style={{
-              color: type.color,
-              borderColor: `${type.color}35`,
-              background: `${type.color}0d`,
-            }}
-            aria-hidden="true"
-          >
-            {type.icon}
+        <div className="flex min-w-0 flex-col gap-3 px-3.5 py-3.5 sm:flex-row sm:items-center sm:gap-5 sm:px-5 sm:py-4.5">
+          <div className="flex min-w-0 items-start gap-3 sm:contents">
+            <div
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border text-base transition-colors duration-200 group-hover:brightness-110 sm:h-12 sm:w-12 sm:text-lg"
+              style={{
+                color: type.color,
+                borderColor: `${type.color}35`,
+                background: `${type.color}0d`,
+              }}
+              aria-hidden="true"
+            >
+              {type.icon}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className="shrink-0 text-[9px] font-bold uppercase tracking-[0.13em] sm:text-[10px] sm:tracking-[0.16em]"
+                  style={{ color: type.color }}
+                >
+                  {type.label}
+                </span>
+                <span className="truncate text-[9px] text-text-dim sm:text-[10px]">
+                  {DAY_NAMES[next.dow].slice(0, 3)} · {to12h(next.time)}
+                </span>
+              </div>
+
+              <div className="mt-0.5 truncate text-[15px] font-semibold text-text-bright transition-colors group-hover:text-gold-light sm:text-[14px]">
+                {next.name}
+              </div>
+
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-text-dim sm:text-[11px]">
+                {next.boss && (
+                  <span className="truncate">👾 {next.boss}</span>
+                )}
+                {localEq && (
+                  <>
+                    {next.boss && <span className="text-white/15">·</span>}
+                    <span className="truncate text-gold-light/80">
+                      {localEq.day.slice(0, 3)} {localEq.time} your time
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2">
-              <span
-                className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em]"
-                style={{ color: type.color }}
-              >
-                {type.label}
-              </span>
-              <span className="truncate text-[10px] text-text-dim">
-                {DAY_NAMES[next.dow].slice(0, 3)} · {to12h(next.time)} server
-              </span>
-            </div>
-
-            <div className="mt-0.5 truncate text-[16px] font-semibold text-text-bright transition-colors group-hover:text-gold-light sm:text-[14px]">
-              {next.name}
-            </div>
-
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-text-dim">
-              {next.boss && (
-                <span className="truncate">👾 {next.boss}</span>
-              )}
-              {localEq && (
-                <>
-                  {next.boss && <span className="text-white/15">·</span>}
-                  <span className="truncate text-gold-light/80">
-                    {localEq.day.slice(0, 3)} {localEq.time} your time
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="shrink-0 border-l border-white/[0.06] pl-3 text-right sm:pl-4">
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] pt-2.5 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 sm:text-right">
+            <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-dim sm:text-[11px] sm:tracking-[0.14em]">
               Starts in
             </div>
             <div
-              className={`mt-1 whitespace-nowrap font-mono text-[18px] font-bold leading-none tabular-nums sm:text-[17px] ${
+              className={`whitespace-nowrap font-mono text-[17px] font-bold leading-none tabular-nums sm:text-[17px] ${
                 urgent ? 'motion-safe:animate-pulse' : ''
               }`}
               style={{ color: urgent ? '#f87171' : type.color }}
@@ -821,7 +823,7 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
 
   return (
     <section className="relative min-w-0" aria-label="Live auctions">
-      <div className="mb-4 flex min-w-0 items-end justify-between gap-4">
+      <div className="mb-3 flex min-w-0 items-end justify-between gap-2 sm:mb-4 sm:gap-4">
         <div className="min-w-0">
           <div className="mb-1.5 flex items-center gap-2.5">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.7)]" aria-hidden="true" />
@@ -830,12 +832,12 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
               {totalCount} Active
             </span>
           </div>
-          <h2 className="font-spectral text-[1.9rem] font-bold leading-none text-text-bright sm:text-[2.15rem]">
+          <h2 className="font-spectral text-[1.65rem] font-bold leading-none text-text-bright sm:text-[2.15rem]">
             Live Auctions
           </h2>
         </div>
         <button type="button" onClick={onOpenAll}
-          className="shrink-0 rounded-lg px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60">
+          className="shrink-0 rounded-lg px-1.5 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em] text-text-dim sm:px-2.5 sm:py-2 sm:text-[10px] sm:tracking-[0.14em] transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60">
           View Market <span aria-hidden="true">→</span>
         </button>
       </div>
@@ -881,65 +883,67 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
         style={{ background: `radial-gradient(circle at center, ${rarity.color}12, transparent 68%)` }} aria-hidden="true" />
 
       {wide ? (
-        <div className="relative flex min-w-0 min-h-[166px] items-center gap-5 p-5 pl-7 sm:gap-6 sm:p-6 sm:pl-8">
-          <div className="relative h-[92px] w-[92px] shrink-0 overflow-hidden rounded-xl border bg-black/50 shadow-[0_8px_24px_rgba(0,0,0,0.42)] sm:h-[104px] sm:w-[104px]"
-            style={{ borderColor: `${rarity.color}45` }}>
-            {a.imageUrl ? (
-              <img src={a.imageUrl} alt="" width={104} height={104} loading="lazy"
-                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
-                onError={(e) => { e.currentTarget.style.display = 'none' }} />
-            ) : (
-              <span className="flex h-full w-full items-center justify-center font-spectral text-4xl font-bold"
-                style={{ color: rarity.color }} aria-hidden="true">
-                {a.name.charAt(0).toUpperCase()}
-              </span>
-            )}
-            <span className="absolute inset-0 rounded-xl ring-1 ring-inset"
-              style={{ boxShadow: `inset 0 0 28px ${rarity.color}18` }} aria-hidden="true" />
-          </div>
+        <div className="relative flex min-w-0 min-h-[166px] flex-col gap-4 p-4 pl-6 sm:flex-row sm:items-center sm:gap-5 sm:p-5 sm:pl-7 lg:gap-6 lg:p-6 lg:pl-8">
+          <div className="flex min-w-0 items-center gap-3 sm:contents">
+            <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border bg-black/50 shadow-[0_8px_24px_rgba(0,0,0,0.42)] sm:h-[92px] sm:w-[92px] lg:h-[104px] lg:w-[104px]"
+              style={{ borderColor: `${rarity.color}45` }}>
+              {a.imageUrl ? (
+                <img src={a.imageUrl} alt="" width={104} height={104} loading="lazy"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+                  onError={(e) => { e.currentTarget.style.display = 'none' }} />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center font-spectral text-3xl font-bold sm:text-4xl"
+                  style={{ color: rarity.color }} aria-hidden="true">
+                  {a.name.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span className="absolute inset-0 rounded-xl ring-1 ring-inset"
+                style={{ boxShadow: `inset 0 0 28px ${rarity.color}18` }} aria-hidden="true" />
+            </div>
 
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em]"
-                style={{ color: rarity.color, borderColor: `${rarity.color}35`, background: `${rarity.color}0c` }}>
-                {a.rarity}
-              </span>
-              {isEnding && (
-                <span className="inline-flex items-center gap-1.5 rounded-md border border-red-400/20 bg-red-400/[0.06] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-red-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-red-400 motion-safe:animate-pulse" aria-hidden="true" />
-                  Ending Soon
+            <div className="min-w-0 flex-1 sm:min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] sm:px-2 sm:py-1 sm:text-[10px] sm:tracking-[0.16em]"
+                  style={{ color: rarity.color, borderColor: `${rarity.color}35`, background: `${rarity.color}0c` }}>
+                  {a.rarity}
                 </span>
-              )}
-            </div>
-            <div className="mt-2 truncate font-spectral text-[1.65rem] font-bold leading-tight sm:text-[1.9rem]" style={{ color: rarity.color }}>
-              {a.name}
-            </div>
-            <div className="mt-2 flex min-w-0 items-center gap-2.5">
-              <span className="shrink-0 text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim/70">Leading Bidder</span>
-              <span className={`truncate text-[13px] font-semibold ${a.topBidder ? 'text-text-bright/95' : 'text-text-dim/60'}`}>
-                {a.topBidder || 'No bids yet'}
-              </span>
-              {isLeading && (
-                <span className="shrink-0 rounded-full border border-green-400/20 bg-green-400/[0.06] px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.07em] text-green-300">
-                  ✓ Leading
+                {isEnding && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-red-400/20 bg-red-400/[0.06] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.07em] text-red-300 sm:gap-1.5 sm:px-2 sm:py-1 sm:text-[9px] sm:tracking-[0.08em]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-400 motion-safe:animate-pulse" aria-hidden="true" />
+                    Ending Soon
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 truncate font-spectral text-[1.2rem] font-bold leading-tight sm:mt-2 sm:text-[1.65rem] lg:text-[1.9rem]" style={{ color: rarity.color }}>
+                {a.name}
+              </div>
+              <div className="mt-1 flex min-w-0 items-center gap-1.5 sm:mt-2 sm:gap-2.5">
+                <span className="shrink-0 text-[8px] font-bold uppercase tracking-[0.12em] text-text-dim/70 sm:text-[9px] sm:tracking-[0.14em]">Leading</span>
+                <span className={`truncate text-[11px] font-semibold sm:text-[13px] ${a.topBidder ? 'text-text-bright/95' : 'text-text-dim/60'}`}>
+                  {a.topBidder || 'No bids yet'}
                 </span>
-              )}
+                {isLeading && (
+                  <span className="hidden shrink-0 rounded-full border border-green-400/20 bg-green-400/[0.06] px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.07em] text-green-300 xs:inline-flex">
+                    ✓ Leading
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
           <div className="hidden h-[88px] w-px shrink-0 bg-white/[0.07] lg:block" />
 
-          <div className="grid w-full shrink-0 grid-cols-2 gap-3 sm:w-[390px]">
-            <div className="rounded-xl border border-gold/10 bg-gold/[0.025] px-4 py-3.5">
-              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Current Bid</div>
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <span className="font-mono text-[1.45rem] font-bold leading-none tabular-nums text-gold-bright">{currentBid.toLocaleString()}</span>
-                <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-gold-light/55">Coins</span>
+          <div className="grid w-full min-w-0 shrink-0 grid-cols-2 gap-2.5 sm:w-[320px] sm:gap-3 lg:w-[390px]">
+            <div className="min-w-0 rounded-xl border border-gold/10 bg-gold/[0.025] px-3 py-2.5 sm:px-4 sm:py-3.5">
+              <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Current Bid</div>
+              <div className="mt-1.5 flex min-w-0 items-baseline gap-1 sm:mt-2 sm:gap-1.5">
+                <span className="truncate font-mono text-[1.15rem] font-bold leading-none tabular-nums text-gold-bright sm:text-[1.45rem]">{currentBid.toLocaleString()}</span>
+                <span className="shrink-0 text-[8px] font-semibold uppercase tracking-[0.06em] text-gold-light/55 sm:text-[9px] sm:tracking-[0.08em]">Coins</span>
               </div>
             </div>
-            <div className={`rounded-xl border px-4 py-3.5 text-right ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
-              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Ends In</div>
-              <div className={`mt-2 font-mono text-[1.45rem] font-bold leading-none tabular-nums ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
+            <div className={`min-w-0 rounded-xl border px-3 py-2.5 text-right sm:px-4 sm:py-3.5 ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
+              <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Ends In</div>
+              <div className={`mt-1.5 truncate font-mono text-[1.15rem] font-bold leading-none tabular-nums sm:mt-2 sm:text-[1.45rem] ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
                 style={{ color: isEnding ? '#f87171' : rarity.color }}>
                 {timeLabel}
               </div>
@@ -1138,7 +1142,7 @@ const RecentWinRow = React.memo(function RecentWinRow({
                 </span>
               )}
             </div>
-            <div className="mt-0.5 truncate text-[16px] font-semibold text-text-bright">{a.name}</div>
+            <div className="mt-0.5 truncate text-[14px] font-semibold text-text-bright">{a.name}</div>
           </div>
         </div>
 
@@ -1173,14 +1177,14 @@ const RecentWinRow = React.memo(function RecentWinRow({
       </div>
 
       {/* Mobile: same hierarchy, stacked intentionally rather than squeezing table columns. */}
-      <div className="flex min-w-0 items-center gap-3 px-3 py-3 md:hidden">
-        <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-black/35">
+      <div className="flex min-w-0 items-center gap-2.5 px-2.5 py-3 md:hidden">
+        <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-black/35">
           {a.imageUrl ? (
             <img
               src={a.imageUrl}
               alt=""
-              width={48}
-              height={48}
+              width={44}
+              height={44}
               loading="lazy"
               className="h-full w-full object-cover"
               onError={(e) => { e.currentTarget.style.display = 'none' }}
