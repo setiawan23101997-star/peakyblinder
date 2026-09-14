@@ -272,7 +272,7 @@ const CharacterArtwork = React.memo(function CharacterArtwork({ member, variant 
   )
 })
 
-const PlayerCard = React.memo(function PlayerCard({ member, rank, isSelf, onView, onStaffEdit }) {
+const PlayerCard = React.memo(function PlayerCard({ member, rank, isSelf, onView }) {
   const meta = CLASS_META[member?.cls] || CLASS_META.Berserker
   const roleClass = ROLE_META[member?.role] || ROLE_META.Member
   const awakening = Number(member?.awakening_stage) || 0
@@ -344,15 +344,7 @@ const PlayerCard = React.memo(function PlayerCard({ member, rank, isSelf, onView
                 Power
               </button>
             )}
-            {onStaffEdit && (
-              <button
-                onClick={() => onStaffEdit(member)}
-                title="Staff controls"
-                className="rounded-md border border-white/10 px-3 py-2.5 text-text-dim transition hover:border-gold/25 hover:text-gold-light"
-              >
-                ⚙
-              </button>
-            )}
+
           </div>
         </div>
       </div>
@@ -369,7 +361,7 @@ function Stat({ label, value }) {
   )
 }
 
-function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUpdate, onPowerCooldownReset, onProfileUpdate, onStaffEdit, canResetPowerCooldown }) {
+function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUpdate, onPowerCooldownReset, onProfileUpdate, canResetPowerCooldown }) {
   const [powerValue, setPowerValue] = useState(formatPowerInput(member.power ?? 0))
   const [selectedClass, setSelectedClass] = useState(member.cls || 'Berserker')
   const [selectedGrade, setSelectedGrade] = useState(member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary'))
@@ -722,17 +714,10 @@ function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUp
               <Info label="Clan Role" value={member.role || 'Member'} />
               <Info label="Attendance" value={formatNumber(member.attendance)} />
               <Info label="Coins" value={formatNumber(member.coins)} />
-              <Info label="Last Power Rank" value={previous ? `Around ${formatNumber(previous.power)}` : 'Top of range'} />
+              <Info label="Last Power Rank" value={previous ? formatNumber(previous.power) : '—'} />
             </div>
 
-            {onStaffEdit && (
-              <button
-                onClick={() => { onClose(); onStaffEdit(member) }}
-                className="mt-5 w-full rounded-lg border border-white/10 bg-white/[0.015] px-3 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-text-dim transition hover:border-gold/25 hover:text-gold-light"
-              >
-                ⚙ Staff Controls
-              </button>
-            )}
+
           </div>
         </div>
       </div>
@@ -741,10 +726,13 @@ function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUp
 }
 
 function Info({ label, value }) {
+  const isLastPowerRank = label === 'Last Power Rank'
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
       <div className="text-[8px] font-bold uppercase tracking-[0.17em] text-text-dim">{label}</div>
-      <div className="mt-1 truncate text-sm font-semibold text-white/85">{value}</div>
+      <div className={`mt-1 text-sm font-semibold text-white/85 ${isLastPowerRank ? 'whitespace-nowrap' : 'truncate'}`}>
+        {value}
+      </div>
     </div>
   )
 }
@@ -785,6 +773,104 @@ function RankingPanel({ members, onClose }) {
   )
 }
 
+function StaffControlPanel({ members, currentUser, onSelectMember, onClose }) {
+  const [search, setSearch] = useState('')
+
+  const manageableMembers = members.filter(member => {
+    const query = search.trim().toLowerCase()
+    if (!query) return true
+
+    return `${member.name || ''} ${member.username || ''}`.toLowerCase().includes(query)
+  })
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-gold/20 bg-[#0a0b0d] shadow-[0_35px_100px_rgba(0,0,0,.7)]">
+        <div className="flex items-start justify-between gap-4 border-b border-white/[0.07] p-5 sm:p-6">
+          <div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-gold-light">Clan Administration</div>
+            <h2 className="font-spectral text-2xl font-bold text-white">Staff Control Panel</h2>
+            <p className="mt-1 text-[10px] leading-relaxed text-text-dim">
+              Manage other members here. Your own Coins are intentionally excluded from staff controls.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 rounded-md border border-white/10 px-3 py-2 text-xs text-text-dim hover:border-gold/25 hover:text-gold-light"
+            aria-label="Close staff control panel"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="max-h-[70vh] overflow-y-auto p-4 sm:p-5">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-text-dim">
+                Select a member to manage
+              </div>
+              <div className="mt-1 text-[10px] text-text-dim">
+                Search by character name or username.
+              </div>
+            </div>
+            <div className="relative w-full sm:w-72">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-dim">⌕</span>
+              <input
+                className="input w-full pl-8"
+                placeholder="Search player name..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          {manageableMembers.length === 0 ? (
+            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-8 text-center text-sm text-text-dim">
+              No matching members found.
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {manageableMembers.map(member => {
+                const roleClass = ROLE_META[member.role] || ROLE_META.Member
+                return (
+                  <button
+                    key={member.id}
+                    type="button"
+                    onClick={() => onSelectMember(member)}
+                    className="group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-left transition hover:border-gold/30 hover:bg-gold/[0.04]"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold text-white group-hover:text-gold-light">{member.name}</div>
+                      <div className="mt-0.5 truncate text-[10px] text-text-dim">
+                        {member.cls || '—'} · Lv. {member.character_level || member.level || 1} · {formatNumber(member.power)} Power
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className={`rounded-md border px-2 py-1 text-[8px] font-black uppercase tracking-[0.12em] ${roleClass}`}>
+                        {member.role || 'Member'}
+                      </span>
+                      {member.id === currentUser?.id && (
+                        <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-text-dim">
+                          You
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-text-dim transition group-hover:translate-x-0.5 group-hover:text-gold-light">›</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function StaffEditor({ member, ctx, onClose, onResetPassword }) {
   const { updateMember, deleteMember, addToast, currentUser } = ctx
   const [coinInput, setCoinInput] = useState(String(member.coins ?? 0))
@@ -797,15 +883,23 @@ function StaffEditor({ member, ctx, onClose, onResetPassword }) {
 
   const isAdmin = currentUser?.role === 'Admin'
   const isMaster = isAdmin || currentUser?.role === 'Master'
-  const canRemove = member.id !== currentUser?.id && (isAdmin || (isMaster && !['Admin', 'Master'].includes(member.role)) || (currentUser?.role === 'Elder' && member.role === 'Member'))
-  const canRole = member.id !== currentUser?.id && (isAdmin || (isMaster && !['Admin', 'Master'].includes(member.role)))
-  const canReset = member.id !== currentUser?.id && (
+  const isStaff = ['Admin', 'Master', 'Elder'].includes(currentUser?.role)
+  const isSelf = member.id === currentUser?.id
+  const canManage = isStaff
+  const canRemove = !isSelf && (isAdmin || (isMaster && !['Admin', 'Master'].includes(member.role)) || (currentUser?.role === 'Elder' && member.role === 'Member'))
+  const canRole = !isSelf && (isAdmin || (isMaster && !['Admin', 'Master'].includes(member.role)))
+  const canReset = !isSelf && (
     isAdmin ||
     (currentUser?.role === 'Master' && !['Admin', 'Master'].includes(member.role)) ||
     (currentUser?.role === 'Elder' && member.role === 'Member')
   )
 
   const save = async () => {
+    if (!canManage) {
+      addToast('Only Admin, Master, and Elder can use Staff Controls.', 'red', 'Not Allowed')
+      return
+    }
+
     const coins = Number.parseInt(coinInput, 10)
     const power = Number.parseInt(powerInput, 10)
     if (!Number.isFinite(coins) || coins < 0 || !Number.isFinite(power) || power < 0) {
@@ -896,7 +990,14 @@ function StaffEditor({ member, ctx, onClose, onResetPassword }) {
           </label>
           <label>
             <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-gold-light">🪙 Coins</span>
-            <input className="input w-full font-mono" type="number" min="0" value={coinInput} onChange={e => setCoinInput(e.target.value)} />
+            <input
+              className="input w-full font-mono"
+              type="number"
+              min="0"
+              value={coinInput}
+              onChange={e => setCoinInput(e.target.value)}
+              disabled={!canManage}
+            />
           </label>
           <label>
             <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-gold-light">⚡ Power</span>
@@ -904,7 +1005,7 @@ function StaffEditor({ member, ctx, onClose, onResetPassword }) {
           </label>
         </div>
         <div className="mt-4 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[10px] text-text-dim">
-          Admin, Master, and Elder can manage this member's Class, Card Grade, Level, and Awakening. Players cannot change Card Grade themselves and must request a staff member. Staff Power corrections remain separate from the player's 7-day self-update lock.
+          Admin, Master, and Elder can use Staff Controls on their own account and on other members. Class, Card Grade, Level, Awakening, Coins, and Power are available to staff. Role changes, password resets, and removal remain protected by the existing hierarchy.
         </div>
         {(canRole || canReset) && (
           <div className="mt-4 border-t border-white/[0.07] pt-4">
@@ -941,7 +1042,7 @@ function StaffEditor({ member, ctx, onClose, onResetPassword }) {
           ) : <span />}
           <div className="flex gap-2">
             <button onClick={onClose} className="rounded-md border border-white/10 px-4 py-2 text-xs text-text-dim hover:text-white">Cancel</button>
-            <button onClick={save} disabled={saving} className="btn-gold text-xs px-4 py-2">{saving ? 'Saving...' : 'Save Changes'}</button>
+            <button onClick={save} disabled={saving || !canManage} className="btn-gold text-xs px-4 py-2">{saving ? 'Saving...' : 'Save Changes'}</button>
           </div>
         </div>
       </div>
@@ -957,6 +1058,7 @@ export default function Members({ ctx }) {
   const [showAdd, setShowAdd] = useState(false)
   const [showRanking, setShowRanking] = useState(false)
   const [selected, setSelected] = useState(null)
+  const [showStaffPanel, setShowStaffPanel] = useState(false)
   const [staffEditing, setStaffEditing] = useState(null)
   const [resetTarget, setResetTarget] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -967,21 +1069,6 @@ export default function Members({ ctx }) {
   const isMaster = currentUser?.role === 'Master' || isAdmin
   const isElder = currentUser?.role === 'Elder' || isMaster
   const visibleMembers = useMemo(() => isAdmin ? members : members.filter(m => m.role !== 'Admin'), [members, isAdmin])
-
-  // Keep an open profile modal synchronized with the latest member row.
-  // App.jsx refreshes members every 5 seconds and staff resets can update the
-  // selected member while the modal is still open. Without this sync, the
-  // modal kept rendering the old cooldown timestamp even after the database
-  // reset succeeded.
-  useEffect(() => {
-    if (!selected) return
-    const fresh = members.find(m => Number(m.id) === Number(selected.id))
-    if (!fresh) {
-      setSelected(null)
-      return
-    }
-    setSelected(fresh)
-  }, [members, selected?.id])
 
   const ranked = useMemo(() => [...visibleMembers].sort((a, b) => Number(b.power || 0) - Number(a.power || 0)), [visibleMembers])
   const rankMap = useMemo(() => new Map(ranked.map((m, i) => [m.id, i + 1])), [ranked])
@@ -1003,14 +1090,6 @@ export default function Members({ ctx }) {
   const classes = useMemo(() => ['All', ...new Set(visibleMembers.map(m => m.cls).filter(Boolean))], [visibleMembers])
 
   const ownMember = members.find(m => m.id === currentUser?.id) || visibleMembers.find(m => m.username && m.username === currentUser?.username)
-  // Admin / Master / Elder may manage another member's character profile
-  // (Class, Card Grade, Level, Awakening). Existing hierarchy still controls
-  // sensitive actions such as role changes, password resets, and removal.
-  const staffEditAllowed = (member) => {
-    if (!currentUser || member.id === currentUser.id) return false
-    return ['Admin', 'Master', 'Elder'].includes(currentUser.role)
-  }
-
   const handleProfileUpdate = async (member, updates) => {
     if (!currentUser || member.id !== currentUser.id) {
       addToast('You can only customize your own character.', 'red', 'Not Allowed')
@@ -1143,7 +1222,19 @@ export default function Members({ ctx }) {
 
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setShowRanking(true)} className="rounded-md border border-gold/30 bg-gold/5 px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-gold-light hover:bg-gold/10">⚡ Power Ranking</button>
-          {isElder && <button onClick={() => setShowAdd(x => !x)} className="btn-gold px-4 py-2.5 text-[10px]">{showAdd ? '✕ Close' : '+ Add Member'}</button>}
+          {isElder && (
+            <>
+              <button
+                onClick={() => setShowStaffPanel(true)}
+                className="rounded-md border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-text-dim hover:border-gold/25 hover:bg-gold/[0.05] hover:text-gold-light"
+              >
+                ⚙ Staff Controls
+              </button>
+              <button onClick={() => setShowAdd(x => !x)} className="btn-gold px-4 py-2.5 text-[10px]">
+                {showAdd ? '✕ Close' : '+ Add Member'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1232,7 +1323,6 @@ export default function Members({ ctx }) {
               rank={rankMap.get(member.id)}
               isSelf={member.id === currentUser?.id}
               onView={setSelected}
-              onStaffEdit={staffEditAllowed(member) ? setStaffEditing : null}
             />
           ))}
         </div>
@@ -1249,12 +1339,23 @@ export default function Members({ ctx }) {
           onPowerUpdate={handlePowerUpdate}
           onPowerCooldownReset={() => handlePowerCooldownReset(selected)}
           onProfileUpdate={handleProfileUpdate}
-          onStaffEdit={staffEditAllowed(selected) ? setStaffEditing : null}
           canResetPowerCooldown={Boolean(currentUser && ['Admin', 'Master', 'Elder'].includes(currentUser.role))}
         />
       )}
 
       {showRanking && <RankingPanel members={ranked} onClose={() => setShowRanking(false)} />}
+
+      {showStaffPanel && (
+        <StaffControlPanel
+          members={members}
+          currentUser={currentUser}
+          onSelectMember={member => {
+            setShowStaffPanel(false)
+            setStaffEditing(member)
+          }}
+          onClose={() => setShowStaffPanel(false)}
+        />
+      )}
 
       {staffEditing && (
         <StaffEditor member={staffEditing} ctx={ctx} onClose={() => setStaffEditing(null)} onResetPassword={setResetTarget} />
