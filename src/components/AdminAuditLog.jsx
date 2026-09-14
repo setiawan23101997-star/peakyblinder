@@ -334,7 +334,7 @@ export default function AdminAuditLog({ ctx }) {
                 Admin Audit Log
               </h1>
               <p className="mt-1.5 text-[11px] leading-relaxed text-text-dim sm:text-sm">
-                Staff actions are recorded here. Admins and Masters can remove entries or clear the entire audit history.
+                Staff actions are recorded here.
               </p>
             </div>
 
