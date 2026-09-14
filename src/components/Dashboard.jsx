@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useId, useRef } from 'react'
+import { ClanNoticePreview } from './NoticeBoard'
 
 const WEEKLY_SCHEDULE = {
   1: [
@@ -412,9 +413,10 @@ export default function Dashboard({ ctx, setPage }) {
   const goMembers = useCallback(() => setPage('members'), [setPage])
   const goAttendance = useCallback(() => setPage('attendance'), [setPage])
   const goCalendar = useCallback(() => setPage('calendar'), [setPage])
+  const goNoticeBoard = useCallback(() => setPage('notice-board'), [setPage])
 
   return (
-    <div className="w-full min-w-0 max-w-full overflow-x-clip space-y-4 sm:space-y-7 pb-8 sm:pb-10">
+    <div className="w-full min-w-0 max-w-full overflow-x-clip space-y-6 sm:space-y-8 pb-10 sm:pb-12">
       <HeroSection
         currentUser={currentUser}
         activeRegion={activeRegion}
@@ -423,6 +425,7 @@ export default function Dashboard({ ctx, setPage }) {
         goAttendance={goAttendance}
         goAuctions={goAuctions}
         goMembers={goMembers}
+        goCalendar={goCalendar}
       />
 
       <ClanPulse
@@ -432,6 +435,8 @@ export default function Dashboard({ ctx, setPage }) {
         onOpenAuctions={goAuctions}
         onOpenCalendar={goCalendar}
       />
+
+      <ClanNoticePreview ctx={ctx} onOpenAll={goNoticeBoard} />
 
       <LiveAuctionsStrip
         auctions={activeAuctions}
@@ -447,6 +452,8 @@ export default function Dashboard({ ctx, setPage }) {
       />
 
       <UpcomingEventPreview onOpenCalendar={goCalendar} />
+
+
     </div>
   )
 }
@@ -455,7 +462,7 @@ export default function Dashboard({ ctx, setPage }) {
 
 const HeroSection = React.memo(function HeroSection({
   currentUser, activeRegion, isElder,
-  goAttendance, goAuctions, goMembers,
+  goAttendance, goAuctions, goMembers, goCalendar,
 }) {
   const now = useNow()
 
@@ -465,119 +472,55 @@ const HeroSection = React.memo(function HeroSection({
     () => String(getZoneParts(now, SERVER_TZ).ss).padStart(2, '0'),
     [now]
   )
-  const serverNowParts = useMemo(() => getZoneParts(now, SERVER_TZ), [now])
-  const todayDowServer = serverNowParts.dow
-  const todayEvents = SCHEDULE_BY_DAY[todayDowServer] || []
-
-  // Convert the first event's SERVER wall-clock time into the user's actual local timezone.
-  // The schedule is defined in SERVER_TZ, so we first turn today's server date + event time
-  // into a real UTC timestamp, then format that same instant in activeRegion.tz.
-  const firstEventLocalTime = useMemo(() => {
-    if (!todayEvents.length) return ''
-    const [hh, mm] = todayEvents[0].time.split(':').map(Number)
-    const eventTs = zoneWallTimeToUtc(
-      serverNowParts.y,
-      serverNowParts.m,
-      serverNowParts.d,
-      hh,
-      mm,
-      SERVER_TZ
-    )
-    return formatInAutoLocalZone(eventTs).time
-  }, [todayEvents, serverNowParts.y, serverNowParts.m, serverNowParts.d])
-
   const greeting = getGreeting(getZoneParts(now, AUTO_LOCAL_TZ).hh)
   const firstName = currentUser?.name?.split(' ')[0] || 'Warrior'
 
   return (
     <>
-      <section className="relative overflow-hidden rounded-2xl border border-gold/20 bg-[#0b0a09]/90 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+      <section className="relative overflow-hidden rounded-2xl border border-gold/25 bg-[#0b0a09]/90 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/70 to-transparent" aria-hidden="true" />
         <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gold/[0.05] blur-3xl" aria-hidden="true" />
-        <div className="relative p-4 sm:p-5 md:p-6 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] gap-4 sm:gap-6 items-center min-w-0">
+        <div className="relative p-5 sm:p-6 md:p-7 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] gap-4 sm:gap-6 items-center min-w-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_10px_rgba(242,204,96,0.8)]" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-gold-dim">Clan command center</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold-dim">Clan command center</span>
             </div>
-            <h1 className="font-spectral text-2xl sm:text-3xl md:text-4xl font-bold leading-tight break-words">
+            <h1 className="font-spectral text-3xl sm:text-4xl md:text-[2.7rem] font-bold leading-tight break-words">
               <span className="text-text-bright">{greeting}, </span>
               <span className="text-gold-bright">{firstName}</span>
             </h1>
-            {todayEvents.length > 0 ? (
-              <>
-                {/* Mobile: deliberately stack event information so it never collides or
-                    wraps into an unreadable sentence on narrow screens. */}
-                <div className="mt-2 sm:hidden text-[11px] leading-relaxed">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-text-bright/90 font-semibold">
-                      {todayEvents.length} {todayEvents.length === 1 ? 'Event' : 'Events'} Today
-                    </span>
-                  </div>
-
-                  <div className="mt-1.5 grid grid-cols-1 gap-1.5">
-                    <div className="flex items-center justify-between gap-3 rounded-lg border border-gold/10 bg-black/20 px-2.5 py-1.5">
-                      <span className="text-text-dim">First Event · Server</span>
-                      <span className="text-gold-light font-semibold font-mono whitespace-nowrap">
-                        {to12h(todayEvents[0].time)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3 rounded-lg border border-gold/10 bg-black/20 px-2.5 py-1.5">
-                      <span className="text-text-dim">First Event · Your Time</span>
-                      <span className="text-gold-light font-semibold font-mono whitespace-nowrap">
-                        {firstEventLocalTime}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Desktop/tablet: keep the compact inline summary. */}
-                <p className="mt-2 hidden max-w-3xl flex-wrap items-center gap-x-2 gap-y-1 text-text-dim text-sm leading-relaxed sm:flex md:text-[15px]">
-                  <span className="text-text-bright/85">{todayEvents.length}</span>{' '}
-                  {todayEvents.length === 1 ? 'Event' : 'Events'} Today
-                  <span className="mx-2 text-gold-dim/45">·</span>
-                  <span className="text-text-dim">First Event At</span>{' '}
-                  <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{to12h(todayEvents[0].time)}</span>{' '}
-                  <span className="text-text-dim">Server Time</span>
-                  <span className="mx-2 text-gold-dim/45">·</span>
-                  <span className="text-gold-light font-semibold font-mono whitespace-nowrap">{firstEventLocalTime}</span>{' '}
-                  <span className="text-text-dim">Your Time</span>
-                </p>
-              </>
-            ) : (
-              <p className="mt-2 text-text-dim text-[11px] leading-relaxed sm:text-sm md:text-[15px]">
-                Nothing Scheduled Today.
-              </p>
-            )}
+            <p className="mt-2 text-text-dim text-[11px] leading-relaxed sm:text-[15px]">
+              Your clan overview, market activity, and upcoming events at a glance.
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 min-w-0 w-full xl:w-auto xl:min-w-[330px]">
-            <div className="min-w-0 rounded-xl border border-gold/15 bg-black/25 px-2.5 py-2.5 sm:px-3.5 sm:py-3">
-              <div className="text-[8px] sm:text-[9px] text-text-dim font-bold uppercase tracking-[0.12em] sm:tracking-[0.16em] truncate">
+          <div className="grid grid-cols-2 gap-3 min-w-0 w-full xl:w-auto xl:min-w-[380px]">
+            <div className="min-w-0 rounded-xl border border-gold/15 bg-black/25 px-3 py-3 sm:px-4 sm:py-3.5">
+              <div className="text-[10px] sm:text-[11px] text-text-dim font-bold uppercase tracking-[0.12em] sm:tracking-[0.16em] truncate">
                 Server · {SERVER_TZ_LABEL}
               </div>
               <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-1">
-                <span className="text-lg sm:text-xl md:text-2xl">
+                <span className="text-xl sm:text-2xl md:text-[1.7rem]">
                   {serverClock.time}
                 </span>
-                <span className="text-[10px] sm:text-xs text-gold-light/60 ml-0.5">
+                <span className="text-[10px] sm:text-sm text-gold-light/60 ml-0.5">
                   :{serverSec}
                 </span>
               </div>
-              <div className="text-[9px] sm:text-[10px] text-text-dim mt-1 whitespace-nowrap">
+              <div className="text-[10px] sm:text-[11px] text-text-dim mt-1.5 whitespace-nowrap">
                 {serverClock.day.slice(0, 3)} · {serverClock.date}
               </div>
             </div>
 
             <div className="rounded-xl border border-gold/15 bg-black/25 px-3.5 py-3 min-w-0">
-              <div className="text-[8px] sm:text-[10px] text-gold-dim font-semibold uppercase tracking-[0.12em] sm:tracking-wider flex items-center gap-1.5 truncate">
+              <div className="text-[10px] sm:text-[11px] text-gold-dim font-semibold uppercase tracking-[0.12em] sm:tracking-wider flex items-center gap-1.5 truncate">
                 <span>Your Time · {getLocalZoneLabel()}</span>
               </div>
               <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-1">
-                <span className="text-lg sm:text-xl md:text-2xl">{localClock.time}</span>
+                <span className="text-xl sm:text-2xl md:text-[1.7rem]">{localClock.time}</span>
               </div>
-              <div className="text-[9px] sm:text-[10px] text-text-dim mt-1 whitespace-nowrap flex items-center gap-1.5">
+              <div className="text-[10px] sm:text-[11px] text-text-dim mt-1.5 whitespace-nowrap flex items-center gap-1.5">
                 <span className="text-gold-light">●</span>
                 <span className="truncate">{AUTO_LOCAL_TZ}</span>
               </div>
@@ -586,10 +529,11 @@ const HeroSection = React.memo(function HeroSection({
         </div>
       </section>
 
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-0">
+      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 min-w-0">
         <ActionTile icon="◷" label="Attendance" hint={isElder ? 'Record & Award Coins' : 'View Attendance History'} onClick={goAttendance} />
-        <ActionTile icon="◇" label="Auctions" hint="Bid On Clan Items" onClick={goAuctions} />
+        <ActionTile icon="◇" label="Live Auctions" hint="Bid On Clan Items" onClick={goAuctions} />
         <ActionTile icon="♙" label={isElder ? 'Manage Members' : 'View Members'} hint={isElder ? 'Add, Edit & Remove' : 'See Clan Roster'} onClick={goMembers} />
+        <ActionTile icon="▣" label="Event Calendar" hint="Check Upcoming Events" onClick={goCalendar} />
       </section>
     </>
   )
@@ -642,35 +586,35 @@ const ClanPulse = React.memo(function ClanPulse({
       />
 
       <div className="flex min-w-0 flex-col lg:flex-row lg:items-stretch">
-        <div className="flex shrink-0 items-center gap-2.5 border-b border-white/[0.055] px-3.5 py-2.5 lg:w-[126px] lg:border-b-0 lg:border-r lg:px-4">
+        <div className="flex shrink-0 items-center gap-2.5 border-b border-white/[0.055] px-4 py-3 lg:w-[150px] lg:border-b-0 lg:border-r lg:px-4">
           <span
             className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-bright shadow-[0_0_9px_rgba(242,204,96,0.7)]"
             aria-hidden="true"
           />
           <div className="min-w-0">
-            <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-gold-light">
+            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-gold-light">
               Clan Pulse
             </div>
-            <div className="mt-0.5 text-[8px] text-text-dim">
+            <div className="mt-0.5 text-[10px] text-text-dim">
               Live overview
             </div>
           </div>
         </div>
 
-        <div className="grid min-w-0 flex-1 grid-cols-2 divide-x divide-y divide-white/[0.055] sm:grid-cols-4 sm:divide-y-0">
+        <div className="grid min-w-0 flex-1 grid-cols-2 divide-x divide-y divide-white/[0.055] sm:grid-cols-3 sm:divide-y-0">
           <button
             type="button"
             onClick={onOpenAuctions}
             className="group flex min-w-0 items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-white/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[12px] text-gold-light">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[14px] text-gold-light">
               ◇
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim">
+              <span className="block truncate text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim">
                 Live Auctions
               </span>
-              <span className="mt-0.5 block font-mono text-[15px] font-bold leading-none tabular-nums text-gold-bright group-hover:text-gold-light">
+              <span className="mt-0.5 block font-mono text-[18px] font-bold leading-none tabular-nums text-gold-bright group-hover:text-gold-light">
                 {activeAuctionCount}
               </span>
             </span>
@@ -681,14 +625,14 @@ const ClanPulse = React.memo(function ClanPulse({
             onClick={onOpenMembers}
             className="group flex min-w-0 items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-white/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[12px] text-gold-light">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[14px] text-gold-light">
               ♟
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim">
+              <span className="block truncate text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim">
                 Members
               </span>
-              <span className="mt-0.5 block font-mono text-[15px] font-bold leading-none tabular-nums text-text-bright group-hover:text-gold-light">
+              <span className="mt-0.5 block font-mono text-[18px] font-bold leading-none tabular-nums text-text-bright group-hover:text-gold-light">
                 {memberCount}
               </span>
             </span>
@@ -697,44 +641,25 @@ const ClanPulse = React.memo(function ClanPulse({
           <button
             type="button"
             onClick={onOpenCalendar}
-            aria-label={`Open Clan Calendar — ${todayEvents.length} ${todayEvents.length === 1 ? 'event' : 'events'} today`}
-            className="group flex min-w-0 items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-gold/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
-          >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[11px] text-gold-light transition-all group-hover:border-gold/35 group-hover:bg-gold/[0.07] group-hover:text-gold-bright">
-              ◷
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim group-hover:text-gold-dim">
-                Events Today
-              </span>
-              <span className="mt-0.5 block font-mono text-[15px] font-bold leading-none tabular-nums text-text-bright group-hover:text-gold-light">
-                {todayEvents.length}
-              </span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenCalendar}
             aria-label={`Open Clan Calendar — ${nextEvent?.name || 'Next Event'}`}
-            className="group flex min-w-0 flex-1 items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-gold/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
+            className="group flex min-w-0 flex-1 items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-gold/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[11px] text-gold-light transition-all group-hover:border-gold/35 group-hover:bg-gold/[0.07] group-hover:text-gold-bright">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[11px] text-gold-light transition-all group-hover:border-gold/35 group-hover:bg-gold/[0.07] group-hover:text-gold-bright">
               →
             </span>
 
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[8px] font-bold uppercase tracking-[0.14em] text-gold-dim">
+              <span className="block truncate text-[10px] font-bold uppercase tracking-[0.14em] text-gold-dim">
                 Next Event
               </span>
 
               {nextEvent && nextEventTimes ? (
                 <>
-                  <span className="mt-0.5 block truncate text-[10px] font-semibold leading-tight text-text-bright group-hover:text-gold-light">
+                  <span className="mt-0.5 block truncate text-[14px] font-semibold leading-tight text-text-bright group-hover:text-gold-light">
                     {nextEvent.name}
                   </span>
 
-                  <span className="mt-1 block truncate font-mono text-[8px] leading-none text-gold-light/85">
+                  <span className="mt-1 block truncate font-mono text-[10px] leading-none text-gold-light/85">
                     {nextEventTimes.localTime} · {nextEventTimes.localDay}
                   </span>
                 </>
@@ -781,18 +706,18 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
 
   return (
     <section aria-label="Upcoming clan event" className="relative">
-      <div className="mb-2.5 flex min-w-0 items-center justify-between gap-3">
+      <div className="mb-3.5 flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-bright shadow-[0_0_8px_rgba(242,204,96,0.65)]"
               aria-hidden="true"
             />
-            <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-text-dim">
+            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-text-dim">
               Next Event
             </span>
           </div>
-          <h2 className="font-spectral text-xl font-bold leading-none text-text-bright sm:text-2xl">
+          <h2 className="font-spectral text-2xl font-bold leading-none text-text-bright sm:text-[1.7rem]">
             Upcoming Clan Event
           </h2>
         </div>
@@ -800,7 +725,7 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
         <button
           type="button"
           onClick={onOpenCalendar}
-          className="shrink-0 rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+          className="shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
         >
           View Calendar <span aria-hidden="true">→</span>
         </button>
@@ -818,9 +743,9 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
           aria-hidden="true"
         />
 
-        <div className="flex min-w-0 items-center gap-3 px-3.5 py-3 sm:gap-4 sm:px-4 sm:py-3.5">
+        <div className="flex min-w-0 items-center gap-3 px-4 py-4 sm:gap-5 sm:px-5 sm:py-4.5">
           <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-lg transition-colors duration-200 group-hover:brightness-110"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border text-lg transition-colors duration-200 group-hover:brightness-110"
             style={{
               color: type.color,
               borderColor: `${type.color}35`,
@@ -834,21 +759,21 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
               <span
-                className="shrink-0 text-[8px] font-bold uppercase tracking-[0.16em]"
+                className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em]"
                 style={{ color: type.color }}
               >
                 {type.label}
               </span>
-              <span className="truncate text-[8px] text-text-dim">
+              <span className="truncate text-[10px] text-text-dim">
                 {DAY_NAMES[next.dow].slice(0, 3)} · {to12h(next.time)} server
               </span>
             </div>
 
-            <div className="mt-0.5 truncate text-[13px] font-semibold text-text-bright transition-colors group-hover:text-gold-light sm:text-[14px]">
+            <div className="mt-0.5 truncate text-[16px] font-semibold text-text-bright transition-colors group-hover:text-gold-light sm:text-[14px]">
               {next.name}
             </div>
 
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[9px] text-text-dim">
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-text-dim">
               {next.boss && (
                 <span className="truncate">👾 {next.boss}</span>
               )}
@@ -864,11 +789,11 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
           </div>
 
           <div className="shrink-0 border-l border-white/[0.06] pl-3 text-right sm:pl-4">
-            <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim">
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim">
               Starts in
             </div>
             <div
-              className={`mt-1 whitespace-nowrap font-mono text-[15px] font-bold leading-none tabular-nums sm:text-[17px] ${
+              className={`mt-1 whitespace-nowrap font-mono text-[18px] font-bold leading-none tabular-nums sm:text-[17px] ${
                 urgent ? 'motion-safe:animate-pulse' : ''
               }`}
               style={{ color: urgent ? '#f87171' : type.color }}
@@ -890,59 +815,42 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
   const now = useNow()
   if (totalCount === 0) return null
 
-  // The dashboard is a command center, not the full marketplace.
-  // Show the three most urgent auctions and send the rest to Market.
   const visibleAuctions = auctions.slice(0, 3)
   const remainingCount = Math.max(0, totalCount - visibleAuctions.length)
+  const single = visibleAuctions.length === 1
 
   return (
-    <section className="relative" aria-label="Live auctions">
-      <div className="mb-2.5 flex min-w-0 items-center justify-between gap-3 sm:mb-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400 shadow-[0_0_9px_rgba(248,113,113,0.7)]"
-            aria-hidden="true"
-          />
-          <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-text-dim">
-            Market
-          </span>
-          <span className="rounded-full border border-gold/20 bg-gold/[0.055] px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-gold-light">
-            {totalCount} active
-          </span>
-          <h2 className="hidden font-spectral text-xl font-bold leading-none text-text-bright sm:block">
+    <section className="relative min-w-0" aria-label="Live auctions">
+      <div className="mb-4 flex min-w-0 items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="mb-1.5 flex items-center gap-2.5">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.7)]" aria-hidden="true" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-text-dim">Market</span>
+            <span className="rounded-full border border-red-400/20 bg-red-400/[0.06] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-red-300">
+              {totalCount} Active
+            </span>
+          </div>
+          <h2 className="font-spectral text-[1.9rem] font-bold leading-none text-text-bright sm:text-[2.15rem]">
             Live Auctions
           </h2>
         </div>
-
-        <button
-          type="button"
-          onClick={onOpenAll}
-          className="shrink-0 rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-[0.13em] text-text-dim transition-colors hover:bg-white/[0.03] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
-        >
+        <button type="button" onClick={onOpenAll}
+          className="shrink-0 rounded-lg px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60">
           View Market <span aria-hidden="true">→</span>
         </button>
       </div>
 
-      <div className="grid min-w-0 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+      <div className={single ? 'grid min-w-0' : 'grid min-w-0 gap-3 lg:grid-cols-2 2xl:grid-cols-3'}>
         {visibleAuctions.map(a => (
-          <LiveAuctionCard
-            key={a.id}
-            auction={a}
-            now={now}
-            currentUserName={currentUser?.name}
-            onOpenAll={onOpenAll}
-          />
+          <LiveAuctionCard key={a.id} auction={a} now={now}
+            currentUserName={currentUser?.name} onOpenAll={onOpenAll} wide={single} />
         ))}
       </div>
 
       {remainingCount > 0 && (
-        <button
-          type="button"
-          onClick={onOpenAll}
-          className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border border-white/[0.055] bg-white/[0.012] py-2 text-[9px] font-bold uppercase tracking-[0.13em] text-text-dim transition-all hover:border-gold/15 hover:bg-gold/[0.025] hover:text-gold-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
-        >
-          <span>+{remainingCount} more {remainingCount === 1 ? 'auction' : 'auctions'}</span>
-          <span aria-hidden="true">→</span>
+        <button type="button" onClick={onOpenAll}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.018] py-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim transition-all hover:border-gold/20 hover:bg-gold/[0.025] hover:text-gold-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60">
+          +{remainingCount} More {remainingCount === 1 ? 'Auction' : 'Auctions'} <span aria-hidden="true">→</span>
         </button>
       )}
     </section>
@@ -950,12 +858,12 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
 })
 
 const LiveAuctionCard = React.memo(function LiveAuctionCard({
-  auction: a, now, currentUserName, onOpenAll,
+  auction: a, now, currentUserName, onOpenAll, wide = false,
 }) {
   const rarity = RARITY_COLORS[a.rarity] || RARITY_COLORS.epic
   const remaining = Math.max(0, (a.endsAt || 0) - now)
   const isEnding = remaining > 0 && remaining < URGENT_MS
-  const isLeading = a.topBidder && currentUserName === a.topBidder
+  const isLeading = Boolean(a.topBidder && currentUserName === a.topBidder)
   const timeLabel = formatAuctionTime(remaining)
   const currentBid = a.currentBid || 0
 
@@ -965,124 +873,129 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
     (isLeading ? ', you are currently leading' : '')
 
   return (
-    <button
-      type="button"
-      onClick={onOpenAll}
-      aria-label={cardLabel}
-      className="group relative flex min-h-[166px] w-full min-w-0 overflow-hidden rounded-xl border border-white/[0.075] bg-[#070706]/95 text-left shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-[#090908] hover:shadow-[0_16px_36px_rgba(0,0,0,0.34)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
-    >
-      <span
-        className="absolute inset-y-4 left-0 w-[2px] rounded-full"
-        style={{ background: rarity.color, boxShadow: `0 0 12px ${rarity.color}45` }}
-        aria-hidden="true"
-      />
+    <button type="button" onClick={onOpenAll} aria-label={cardLabel}
+      className={`group relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/[0.085] bg-[#080706]/95 text-left shadow-[0_14px_38px_rgba(0,0,0,0.26)] transition-all duration-200 hover:-translate-y-0.5 hover:border-gold/20 hover:bg-[#0a0908] hover:shadow-[0_20px_48px_rgba(0,0,0,0.36)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${wide ? 'min-h-[166px]' : 'min-h-[260px]'}`}>
+      <span className="absolute inset-y-5 left-0 w-[3px] rounded-full"
+        style={{ background: rarity.color, boxShadow: `0 0 18px ${rarity.color}55` }} aria-hidden="true" />
+      <div className="pointer-events-none absolute right-0 top-0 h-56 w-56 opacity-45"
+        style={{ background: `radial-gradient(circle at center, ${rarity.color}12, transparent 68%)` }} aria-hidden="true" />
 
-      <div className="flex min-w-0 flex-1 flex-col px-4 py-3.5 pl-5">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-white/[0.09] bg-black/45 shadow-[0_4px_14px_rgba(0,0,0,0.25)]">
+      {wide ? (
+        <div className="relative flex min-w-0 min-h-[166px] items-center gap-5 p-5 pl-7 sm:gap-6 sm:p-6 sm:pl-8">
+          <div className="relative h-[92px] w-[92px] shrink-0 overflow-hidden rounded-xl border bg-black/50 shadow-[0_8px_24px_rgba(0,0,0,0.42)] sm:h-[104px] sm:w-[104px]"
+            style={{ borderColor: `${rarity.color}45` }}>
             {a.imageUrl ? (
-              <img
-                src={a.imageUrl}
-                alt=""
-                width={56}
-                height={56}
-                loading="lazy"
-                className="h-full w-full object-cover"
-                onError={(e) => { e.currentTarget.style.display = 'none' }}
-              />
+              <img src={a.imageUrl} alt="" width={104} height={104} loading="lazy"
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+                onError={(e) => { e.currentTarget.style.display = 'none' }} />
             ) : (
-              <span
-                className="flex h-full w-full items-center justify-center font-spectral text-xl font-bold"
-                style={{ color: rarity.color }}
-                aria-hidden="true"
-              >
+              <span className="flex h-full w-full items-center justify-center font-spectral text-4xl font-bold"
+                style={{ color: rarity.color }} aria-hidden="true">
                 {a.name.charAt(0).toUpperCase()}
               </span>
             )}
+            <span className="absolute inset-0 rounded-xl ring-1 ring-inset"
+              style={{ boxShadow: `inset 0 0 28px ${rarity.color}18` }} aria-hidden="true" />
           </div>
 
-          <div className="min-w-0 flex-1 pt-0.5">
-            <div className="flex min-w-0 items-center gap-2">
-              <span
-                className="shrink-0 text-[8px] font-bold uppercase tracking-[0.16em]"
-                style={{ color: rarity.color }}
-              >
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em]"
+                style={{ color: rarity.color, borderColor: `${rarity.color}35`, background: `${rarity.color}0c` }}>
                 {a.rarity}
               </span>
-
               {isEnding && (
-                <span className="inline-flex items-center gap-1 text-[7px] font-bold uppercase tracking-[0.08em] text-red-300">
-                  <span className="h-1 w-1 rounded-full bg-red-400" aria-hidden="true" />
-                  Ending
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-red-400/20 bg-red-400/[0.06] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-red-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-400 motion-safe:animate-pulse" aria-hidden="true" />
+                  Ending Soon
                 </span>
               )}
             </div>
-
-            <div
-              className="mt-1 truncate text-[18px] font-semibold leading-tight transition-opacity group-hover:opacity-90 sm:text-[19px]"
-              style={{ color: rarity.color }}
-            >
+            <div className="mt-2 truncate font-spectral text-[1.65rem] font-bold leading-tight sm:text-[1.9rem]" style={{ color: rarity.color }}>
               {a.name}
             </div>
-
-            <div className="mt-2 flex min-w-0 items-center gap-2">
-              <span className="shrink-0 text-[7px] font-bold uppercase tracking-[0.13em] text-text-dim/65">
-                Bidder
-              </span>
-              <span
-                className={`min-w-0 truncate text-[10px] font-semibold leading-none ${
-                  a.topBidder ? 'text-text-bright/90' : 'text-text-dim/60'
-                }`}
-              >
+            <div className="mt-2 flex min-w-0 items-center gap-2.5">
+              <span className="shrink-0 text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim/70">Leading Bidder</span>
+              <span className={`truncate text-[13px] font-semibold ${a.topBidder ? 'text-text-bright/95' : 'text-text-dim/60'}`}>
                 {a.topBidder || 'No bids yet'}
               </span>
-
               {isLeading && (
-                <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-green-400/20 bg-green-400/[0.06] px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-[0.06em] text-green-300">
-                  <span aria-hidden="true">✓</span>
-                  Leading
+                <span className="shrink-0 rounded-full border border-green-400/20 bg-green-400/[0.06] px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.07em] text-green-300">
+                  ✓ Leading
                 </span>
               )}
             </div>
           </div>
-        </div>
 
-        <div className="mt-3 border-t border-white/[0.07]" />
+          <div className="hidden h-[88px] w-px shrink-0 bg-white/[0.07] lg:block" />
 
-        <div className="mt-2.5 flex min-w-0 items-end justify-between gap-4">
-          <div className="min-w-0">
-            <div className="text-[7px] font-bold uppercase tracking-[0.14em] text-text-dim/75">
-              Current Bid
+          <div className="grid w-full shrink-0 grid-cols-2 gap-3 sm:w-[390px]">
+            <div className="rounded-xl border border-gold/10 bg-gold/[0.025] px-4 py-3.5">
+              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Current Bid</div>
+              <div className="mt-2 flex items-baseline gap-1.5">
+                <span className="font-mono text-[1.45rem] font-bold leading-none tabular-nums text-gold-bright">{currentBid.toLocaleString()}</span>
+                <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-gold-light/55">Coins</span>
+              </div>
             </div>
-            <div className="mt-1 flex items-baseline gap-1.5">
-              <span className="font-mono text-[17px] font-bold leading-none tabular-nums text-gold-bright">
-                {currentBid.toLocaleString()}
-              </span>
-              <span className="text-[8px] font-semibold uppercase tracking-[0.07em] text-gold-light/45">
-                coins
-              </span>
-            </div>
-          </div>
-
-          <div className="shrink-0 text-right">
-            <div className="text-[7px] font-bold uppercase tracking-[0.14em] text-text-dim/75">
-              Ends In
-            </div>
-            <div
-              className={`mt-1 font-mono text-[15px] font-bold leading-none tabular-nums ${
-                isEnding ? 'motion-safe:animate-pulse' : ''
-              }`}
-              style={{ color: isEnding ? '#f87171' : rarity.color }}
-            >
-              {timeLabel}
+            <div className={`rounded-xl border px-4 py-3.5 text-right ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
+              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Ends In</div>
+              <div className={`mt-2 font-mono text-[1.45rem] font-bold leading-none tabular-nums ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
+                style={{ color: isEnding ? '#f87171' : rarity.color }}>
+                {timeLabel}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="relative flex min-h-[260px] min-w-0 flex-col p-5 pl-6">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="relative h-[78px] w-[78px] shrink-0 overflow-hidden rounded-xl border bg-black/50 shadow-[0_7px_20px_rgba(0,0,0,0.38)]"
+              style={{ borderColor: `${rarity.color}45` }}>
+              {a.imageUrl ? (
+                <img src={a.imageUrl} alt="" width={78} height={78} loading="lazy"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+                  onError={(e) => { e.currentTarget.style.display = 'none' }} />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center font-spectral text-3xl font-bold"
+                  style={{ color: rarity.color }} aria-hidden="true">
+                  {a.name.charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="inline-flex rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em]"
+                style={{ color: rarity.color, borderColor: `${rarity.color}35`, background: `${rarity.color}0c` }}>
+                {a.rarity}
+              </span>
+              <div className="mt-2 truncate font-spectral text-[1.45rem] font-bold leading-tight" style={{ color: rarity.color }}>{a.name}</div>
+              <div className="mt-2 flex min-w-0 items-center gap-2">
+                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim/70">Leading Bidder</span>
+                <span className="truncate text-[12px] font-semibold text-text-bright/90">{a.topBidder || 'No bids yet'}</span>
+              </div>
+            </div>
+          </div>
+          <div className="my-4 border-t border-white/[0.07]" />
+          <div className="mt-auto grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-gold/10 bg-gold/[0.025] px-3.5 py-3">
+              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Current Bid</div>
+              <div className="mt-1.5 flex items-baseline gap-1.5">
+                <span className="font-mono text-[1.35rem] font-bold leading-none tabular-nums text-gold-bright">{currentBid.toLocaleString()}</span>
+                <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-gold-light/55">Coins</span>
+              </div>
+            </div>
+            <div className={`rounded-xl border px-3.5 py-3 text-right ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
+              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Ends In</div>
+              <div className={`mt-1.5 font-mono text-[1.35rem] font-bold leading-none tabular-nums ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
+                style={{ color: isEnding ? '#f87171' : rarity.color }}>
+                {timeLabel}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </button>
   )
 })
-
 
 const RecentWinsStrip = React.memo(function RecentWinsStrip({
   endedData, onOpenAll, currentUserName,
@@ -1120,7 +1033,7 @@ const RecentWinsStrip = React.memo(function RecentWinsStrip({
               Last 7 Days
             </span>
           </div>
-          <h2 className="font-spectral text-xl font-bold leading-none text-text-bright sm:text-2xl">
+          <h2 className="font-spectral text-2xl font-bold leading-none text-text-bright sm:text-[1.7rem]">
             Recently Won
           </h2>
         </div>
@@ -1128,14 +1041,14 @@ const RecentWinsStrip = React.memo(function RecentWinsStrip({
         <button
           type="button"
           onClick={onOpenAll}
-          className="shrink-0 rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+          className="shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
         >
           View History <span aria-hidden="true">→</span>
         </button>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/80 shadow-[0_12px_34px_rgba(0,0,0,0.18)]">
-        <div className="hidden grid-cols-[minmax(250px,1.45fr)_minmax(150px,0.9fr)_130px_92px] items-center gap-4 border-b border-white/[0.06] bg-white/[0.018] px-4 py-2.5 text-[8px] font-bold uppercase tracking-[0.16em] text-text-dim md:grid">
+        <div className="hidden grid-cols-[minmax(250px,1.45fr)_minmax(150px,0.9fr)_130px_92px] items-center gap-4 border-b border-white/[0.06] bg-white/[0.018] px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-text-dim md:grid">
           <span>Item</span>
           <span>Winner</span>
           <span>Final Bid</span>
@@ -1216,7 +1129,7 @@ const RecentWinRow = React.memo(function RecentWinRow({
 
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 text-[8px] font-bold uppercase tracking-[0.16em]" style={{ color: rarity.color }}>
+              <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: rarity.color }}>
                 {a.rarity}
               </span>
               {justEnded && (
@@ -1225,7 +1138,7 @@ const RecentWinRow = React.memo(function RecentWinRow({
                 </span>
               )}
             </div>
-            <div className="mt-0.5 truncate text-[13px] font-semibold text-text-bright">{a.name}</div>
+            <div className="mt-0.5 truncate text-[16px] font-semibold text-text-bright">{a.name}</div>
           </div>
         </div>
 
@@ -1294,8 +1207,8 @@ const RecentWinRow = React.memo(function RecentWinRow({
               </span>
             )}
           </div>
-          <div className="mt-0.5 truncate text-[13px] font-semibold text-text-bright">{a.name}</div>
-          <div className="mt-0.5 truncate text-[9px] text-text-dim">
+          <div className="mt-0.5 truncate text-[16px] font-semibold text-text-bright">{a.name}</div>
+          <div className="mt-0.5 truncate text-[11px] text-text-dim">
             Won by <span className={isMe ? 'font-semibold text-green-300' : 'text-text-bright'}>{winnerName}</span>
             {hasMultipleWins ? ` · ${totalWins} wins` : ''}
           </div>
@@ -1421,7 +1334,7 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
           <div className="font-spectral text-base sm:text-lg md:text-xl font-bold text-text-bright leading-tight break-words">
             {next.name}
           </div>
-          <div className="flex items-center gap-x-2 gap-y-1 mt-1 text-[10px] sm:text-xs text-text-dim flex-wrap min-w-0">
+          <div className="flex items-center gap-x-2 gap-y-1 mt-1 text-[10px] sm:text-sm text-text-dim flex-wrap min-w-0">
             {next.boss && <span className="truncate max-w-full">👾 {next.boss}</span>}
             <span className="font-mono tabular-nums whitespace-nowrap">
               {DAY_NAMES[next.dow].slice(0, 3)} · {to12h(next.time)} · server
@@ -1508,7 +1421,7 @@ const WeeklyEventTabs = React.memo(function WeeklyEventTabs({
               tabIndex={isActive ? 0 : -1}
               onClick={() => onSelect(dow)}
               onKeyDown={e => handleKeyDown(e, dow)}
-              className={`relative min-w-0 flex flex-col items-center gap-0.5 px-0.5 sm:px-3 py-2.5 sm:py-3 text-[11px] sm:text-sm font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 focus-visible:-outline-offset-2 ${
+              className={`relative min-w-0 flex flex-col items-center gap-0.5 px-0.5 sm:px-3 py-2.5 sm:py-3 text-[11px] sm:text-base font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 focus-visible:-outline-offset-2 ${
                 isActive ? 'text-gold-bright' : 'text-text-dim hover:text-text-bright'
               }`}
             >
@@ -1576,11 +1489,11 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
             {t.icon}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] sm:text-sm font-semibold text-text-bright leading-snug break-words">
+            <div className="text-[13px] sm:text-base font-semibold text-text-bright leading-snug break-words">
               {ev.name}
             </div>
             {(ev.boss || ev.subtitle) && (
-              <div className="text-[11px] sm:text-xs text-text-dim mt-0.5 leading-snug">
+              <div className="text-[11px] sm:text-sm text-text-dim mt-0.5 leading-snug">
                 {ev.boss ? `👾 ${ev.boss}` : ev.subtitle}
               </div>
             )}
@@ -1598,7 +1511,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
           </div>
           <div className="col-span-2 sm:col-span-1 sm:text-right flex-shrink-0 pt-2 sm:pt-0 border-t border-white/[0.06] sm:border-0 min-w-0">
             <div className="text-[9px] sm:text-[10px] text-text-dim leading-none">Starts In</div>
-            <div className="font-mono text-[11px] sm:text-xs text-gold-light tabular-nums mt-0.5 leading-none whitespace-nowrap">
+            <div className="font-mono text-[11px] sm:text-sm text-gold-light tabular-nums mt-0.5 leading-none whitespace-nowrap">
               {countdown}
             </div>
           </div>
@@ -1628,7 +1541,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="break-words text-[13px] font-semibold leading-tight text-text-bright sm:text-sm">{ev.name}</div>
+          <div className="break-words text-[15px] font-semibold leading-tight text-text-bright sm:text-base">{ev.name}</div>
           {(ev.boss || ev.subtitle) && (
             <div className="text-xs text-text-dim truncate mt-0.5">
               {ev.boss ? `👾 ${ev.boss}` : ev.subtitle}
@@ -1667,7 +1580,7 @@ const StatTile = React.memo(function StatTile({
     <Tag
       type={clickable ? 'button' : undefined}
       onClick={onClick}
-      className={`group relative min-w-0 overflow-hidden rounded-xl border bg-[#0a0908]/80 px-2.5 py-2.5 sm:px-3.5 sm:py-3 md:px-4 md:py-3.5 text-left transition-all duration-200 ${
+      className={`group relative min-w-0 overflow-hidden rounded-xl border bg-[#0a0908]/80 px-3 py-3 sm:px-4 sm:py-3.5 md:px-4 md:py-3.5 text-left transition-all duration-200 ${
         clickable
           ? 'cursor-pointer hover:-translate-y-0.5 hover:bg-[#100e0b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60'
           : ''
@@ -1685,7 +1598,7 @@ const StatTile = React.memo(function StatTile({
 
       <div className="flex items-center gap-3 min-w-0">
         <span
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border text-sm font-semibold sm:h-9 sm:w-9 md:h-10 md:w-10 md:text-base"
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border text-sm font-semibold sm:h-9 sm:w-9 md:h-10 md:w-10 md:text-base"
           style={{
             color: accent,
             borderColor: `${accent}32`,
@@ -1723,12 +1636,12 @@ const ActionTile = React.memo(function ActionTile({ icon, label, hint, onClick }
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.07] bg-[#0b0a09]/70 px-3 py-3 sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3.5 hover:-translate-y-0.5 hover:border-gold/30 hover:bg-gold/[0.035] hover:shadow-[0_12px_30px_rgba(0,0,0,0.18)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 transition-all text-left"
+      className="group flex min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.07] bg-[#0b0a09]/70 px-4 py-3.5 sm:gap-3.5 sm:rounded-2xl sm:px-5 sm:py-4 hover:-translate-y-0.5 hover:border-gold/30 hover:bg-gold/[0.035] hover:shadow-[0_12px_30px_rgba(0,0,0,0.18)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 transition-all text-left"
     >
-      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.05] text-sm text-gold-light opacity-90 sm:h-9 sm:w-9 sm:rounded-xl sm:text-base group-hover:opacity-100" aria-hidden="true">{icon}</span>
+      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.05] text-sm text-gold-light opacity-90 sm:h-10 sm:w-10 sm:rounded-xl sm:text-lg group-hover:opacity-100" aria-hidden="true">{icon}</span>
       <div className="min-w-0">
-        <div className="break-words text-[13px] font-semibold leading-tight text-text-bright sm:text-sm">{label}</div>
-        <div className="mt-0.5 break-words text-[10px] leading-tight text-text-dim sm:text-xs">{hint}</div>
+        <div className="break-words text-[15px] font-semibold leading-tight text-text-bright sm:text-base">{label}</div>
+        <div className="mt-0.5 break-words text-[12px] leading-tight text-text-dim sm:text-sm">{hint}</div>
       </div>
     </button>
   )
