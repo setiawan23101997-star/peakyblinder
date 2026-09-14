@@ -965,30 +965,30 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
       type="button"
       onClick={onOpenAll}
       aria-label={cardLabel}
-      className="group relative flex min-h-[128px] w-full min-w-0 overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/88 text-left shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-[#0c0b09] hover:shadow-[0_14px_32px_rgba(0,0,0,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+      className="group relative flex min-h-[166px] w-full min-w-0 overflow-hidden rounded-xl border border-white/[0.075] bg-[#070706]/95 text-left shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-[#090908] hover:shadow-[0_16px_36px_rgba(0,0,0,0.34)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
     >
       <span
-        className="absolute inset-y-3 left-0 w-[2px] rounded-full"
-        style={{ background: rarity.color, boxShadow: `0 0 11px ${rarity.color}40` }}
+        className="absolute inset-y-4 left-0 w-[2px] rounded-full"
+        style={{ background: rarity.color, boxShadow: `0 0 12px ${rarity.color}45` }}
         aria-hidden="true"
       />
 
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 px-3.5 py-3 pl-4 sm:px-4 sm:py-3.5 sm:pl-4">
+      <div className="flex min-w-0 flex-1 flex-col px-4 py-3.5 pl-5">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-white/[0.09] bg-black/35 shadow-inner">
+          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-white/[0.09] bg-black/45 shadow-[0_4px_14px_rgba(0,0,0,0.25)]">
             {a.imageUrl ? (
               <img
                 src={a.imageUrl}
                 alt=""
-                width={48}
-                height={48}
+                width={56}
+                height={56}
                 loading="lazy"
                 className="h-full w-full object-cover"
                 onError={(e) => { e.currentTarget.style.display = 'none' }}
               />
             ) : (
               <span
-                className="flex h-full w-full items-center justify-center font-spectral text-lg font-bold"
+                className="flex h-full w-full items-center justify-center font-spectral text-xl font-bold"
                 style={{ color: rarity.color }}
                 aria-hidden="true"
               >
@@ -997,10 +997,10 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
             )}
           </div>
 
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 pt-0.5">
             <div className="flex min-w-0 items-center gap-2">
               <span
-                className="shrink-0 text-[8px] font-bold uppercase tracking-[0.15em]"
+                className="shrink-0 text-[8px] font-bold uppercase tracking-[0.16em]"
                 style={{ color: rarity.color }}
               >
                 {a.rarity}
@@ -1014,32 +1014,44 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
               )}
             </div>
 
-            <div className="mt-1 truncate text-[15px] font-semibold leading-tight text-text-bright group-hover:text-gold-light sm:text-[16px]">
+            <div
+              className="mt-1 truncate text-[18px] font-semibold leading-tight transition-opacity group-hover:opacity-90 sm:text-[19px]"
+              style={{ color: rarity.color }}
+            >
               {a.name}
             </div>
 
-            <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
-              <span className="shrink-0 text-[7px] font-bold uppercase tracking-[0.12em] text-text-dim/70">
+            <div className="mt-2 flex min-w-0 items-center gap-2">
+              <span className="shrink-0 text-[7px] font-bold uppercase tracking-[0.13em] text-text-dim/65">
                 Bidder
               </span>
               <span
                 className={`min-w-0 truncate text-[10px] font-semibold leading-none ${
-                  a.topBidder ? 'text-text-bright/90' : 'text-text-dim/65'
+                  a.topBidder ? 'text-text-bright/90' : 'text-text-dim/60'
                 }`}
               >
                 {a.topBidder || 'No bids yet'}
               </span>
+
+              {isLeading && (
+                <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-green-400/20 bg-green-400/[0.06] px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-[0.06em] text-green-300">
+                  <span aria-hidden="true">✓</span>
+                  Leading
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="flex min-w-0 items-end justify-between gap-4 border-t border-white/[0.055] pt-2.5">
+        <div className="mt-3 border-t border-white/[0.07]" />
+
+        <div className="mt-2.5 flex min-w-0 items-end justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-[7px] font-bold uppercase tracking-[0.13em] text-text-dim">
+            <div className="text-[7px] font-bold uppercase tracking-[0.14em] text-text-dim/75">
               Current Bid
             </div>
             <div className="mt-1 flex items-baseline gap-1.5">
-              <span className="font-mono text-[16px] font-bold leading-none tabular-nums text-gold-bright">
+              <span className="font-mono text-[17px] font-bold leading-none tabular-nums text-gold-bright">
                 {currentBid.toLocaleString()}
               </span>
               <span className="text-[8px] font-semibold uppercase tracking-[0.07em] text-gold-light/45">
@@ -1049,24 +1061,17 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
           </div>
 
           <div className="shrink-0 text-right">
-            <div className="text-[7px] font-bold uppercase tracking-[0.13em] text-text-dim">
+            <div className="text-[7px] font-bold uppercase tracking-[0.14em] text-text-dim/75">
               Ends In
             </div>
             <div
-              className={`mt-1 font-mono text-[14px] font-bold leading-none tabular-nums ${
+              className={`mt-1 font-mono text-[15px] font-bold leading-none tabular-nums ${
                 isEnding ? 'motion-safe:animate-pulse' : ''
               }`}
               style={{ color: isEnding ? '#f87171' : rarity.color }}
             >
               {timeLabel}
             </div>
-
-            {isLeading && (
-              <div className="mt-1 inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-[0.07em] text-green-300">
-                <span aria-hidden="true">✓</span>
-                Leading
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1074,7 +1079,6 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
   )
 })
 
-/* ── Recently Won ──────────────────────────────────────────────────── */
 
 const RecentWinsStrip = React.memo(function RecentWinsStrip({
   endedData, onOpenAll, currentUserName,
