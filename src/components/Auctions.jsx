@@ -72,22 +72,32 @@ function serverParts(ts) {
   }
 }
 
+function to12Hour(hh) {
+  const h = Number(hh)
+  const suffix = h >= 12 ? 'PM' : 'AM'
+  const hour = h % 12 || 12
+  return { hour: pad2(hour), suffix }
+}
+
 function formatServerClock(ts) {
   const p = serverParts(ts)
   if (!p) return '—'
-  return `${pad2(p.d)} ${MONTH_SHORT_ARR[p.m]} ${p.y}, ${pad2(p.hh)}:${pad2(p.mm)}:${pad2(p.ss)}`
+  const t = to12Hour(p.hh)
+  return `${pad2(p.d)} ${MONTH_SHORT_ARR[p.m]} ${p.y}, ${t.hour}:${pad2(p.mm)}:${pad2(p.ss)} ${t.suffix}`
 }
 
 function formatClock(ts) {
   const p = serverParts(ts)
   if (!p) return '—'
-  return `${pad2(p.hh)}:${pad2(p.mm)}`
+  const t = to12Hour(p.hh)
+  return `${t.hour}:${pad2(p.mm)} ${t.suffix}`
 }
 
 function formatDateTime(ts) {
   const p = serverParts(ts)
   if (!p) return '—'
-  return `${pad2(p.d)} ${MONTH_SHORT_ARR[p.m]}, ${pad2(p.hh)}:${pad2(p.mm)}`
+  const t = to12Hour(p.hh)
+  return `${pad2(p.d)} ${MONTH_SHORT_ARR[p.m]}, ${t.hour}:${pad2(p.mm)} ${t.suffix}`
 }
 
 // Every player sees a second, automatic local-time view based on the
@@ -114,7 +124,8 @@ function localParts(ts) {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false,
+      hour12: true,
+      hourCycle: 'h12',
     }).formatToParts(new Date(ms))
 
     const get = type => parts.find(p => p.type === type)?.value || ''
@@ -124,6 +135,7 @@ function localParts(ts) {
       d: get('day'),
       hh: get('hour'),
       mm: get('minute'),
+      dayPeriod: get('dayPeriod'),
     }
   } catch {
     return null
@@ -145,13 +157,13 @@ function localTimeZoneOffset(ts = Date.now()) {
 function formatLocalClock(ts) {
   const p = localParts(ts)
   if (!p) return '—'
-  return `${p.hh}:${p.mm}`
+  return `${p.hh}:${p.mm} ${p.dayPeriod}`
 }
 
 function formatLocalDateTime(ts) {
   const p = localParts(ts)
   if (!p) return '—'
-  return `${p.d} ${p.m}, ${p.y}, ${p.hh}:${p.mm}`
+  return `${p.d} ${p.m}, ${p.y}, ${p.hh}:${p.mm} ${p.dayPeriod}`
 }
 
 function formatLocalTimeLabel(ts = Date.now()) {
@@ -2138,8 +2150,8 @@ function EndedAuctionRow({
   return (
     <li className={isMe ? 'bg-green-500/[.018]' : ''}>
       <div className="px-3 py-3 sm:px-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="flex min-w-0 flex-1 items-start gap-2.5 sm:items-center sm:gap-3">
+        <div className="grid gap-3 lg:grid-cols-[minmax(360px,1fr)_135px_125px_165px_auto] lg:items-start lg:gap-4">
+          <div className="flex min-w-0 items-center gap-3">
             {a.imageUrl ? (
               <ItemImage src={a.imageUrl} alt={a.name} size={48} />
             ) : (
@@ -2159,33 +2171,43 @@ function EndedAuctionRow({
                   </span>
                 )}
               </div>
-              <div className="mt-0.5 truncate text-[9px] text-text-dim">
-                {endedAt > 0 ? `${agoLabel || 'Closed'} · ${SERVER_TZ_SHORT}` : 'Closed'}
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-text-dim">
+                {endedAt > 0 ? (
+                  <>
+                    <span>{agoLabel || 'Closed'}</span>
+                    <span className="text-text-dim/45">·</span>
+                    <span>Server {formatClock(endedAt)} {SERVER_TZ_SHORT}</span>
+                    <span className="text-text-dim/45">·</span>
+                    <span>Local {formatLocalClock(endedAt)}</span>
+                  </>
+                ) : (
+                  'Closed'
+                )}
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-3 sm:gap-x-5 lg:flex lg:items-center lg:gap-7">
-            <div className="min-w-0">
+          <div className="contents">
+            <div className="min-w-0 self-start">
               <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Winner</div>
-              <div className={`mt-0.5 max-w-[150px] truncate text-[11px] font-semibold ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
+              <div className={`mt-1 max-w-[150px] truncate text-[12px] font-semibold leading-5 ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
                 {winner || <span className="italic font-normal text-text-dim">No bids</span>}
               </div>
             </div>
 
-            <div>
+            <div className="self-start">
               <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Winning Bid</div>
-              <div className="mt-0.5 font-mono text-sm font-bold tabular-nums text-gold-bright">
-                {finalAmount.toLocaleString()} <span className="text-[8px] font-semibold text-text-dim">coins</span>
+              <div className="mt-1 font-mono text-[14px] font-bold leading-5 tabular-nums text-gold-bright">
+                {finalAmount.toLocaleString()} <span className="text-[9px] font-semibold text-text-dim">coins</span>
               </div>
             </div>
 
-            {winner && (
-              <div className="min-w-0">
+            {winner ? (
+              <div className="min-w-0 self-start">
                 <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Distribution</div>
                 {isElder ? (
                   <select
-                    className="input mt-0.5 h-7 max-w-[160px] px-2 py-0 text-[9px]"
+                    className="input mt-1 h-8 max-w-[155px] px-2 text-[10px]"
                     value={assignedName}
                     onChange={e => onAssignDistributor(e.target.value)}
                     aria-label={`Distributor for ${a.name}`}
@@ -2194,13 +2216,17 @@ function EndedAuctionRow({
                     {distributors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                   </select>
                 ) : (
-                  <div className="mt-0.5"><DistributorStatusBadge name={assignedName} /></div>
+                  <div className="mt-1 h-8 flex items-center">
+                    <DistributorStatusBadge name={assignedName} />
+                  </div>
                 )}
               </div>
+            ) : (
+              <div className="self-start" aria-hidden="true" />
             )}
           </div>
 
-          <div className="flex shrink-0 items-center justify-end gap-1.5 border-t border-white/[.05] pt-2.5 lg:border-0 lg:pt-0">
+          <div className="flex shrink-0 items-center justify-center gap-2 self-start pt-[21px]">
             {finalBids.length > 0 && (
               <button
                 type="button"
@@ -2232,20 +2258,20 @@ function EndedAuctionRow({
                 return (
                   <div
                     key={`${b.bidder}-${b.time}-${idx}`}
-                    className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2 ${
+                    className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-3 ${
                       isWinner ? 'bg-green-500/[.03]' : ''
                     }`}
                   >
-                    <div className={`min-w-0 truncate text-[10px] font-semibold ${isWinner ? 'text-green-300' : 'text-text-dim'}`}>
+                    <div className={`min-w-0 truncate text-[13px] font-semibold ${isWinner ? 'text-green-300' : 'text-text-bright'}`}>
                       {b.bidder}
                     </div>
-                    <div className={`text-right font-mono text-[10px] font-bold tabular-nums ${isWinner ? 'text-green-300' : 'text-text-dim'}`}>
+                    <div className={`text-right font-mono text-[13px] font-bold tabular-nums ${isWinner ? 'text-green-300' : 'text-text-bright'}`}>
                       {b.amount.toLocaleString()} <span className="text-[8px] font-semibold text-text-dim">coins</span>
                     </div>
-                    <div className={`font-mono text-[8px] ${isWinner ? 'text-green-400' : 'text-text-dim'}`}>
+                    <div className={`font-mono text-[10px] ${isWinner ? 'text-green-400' : 'text-text-dim'}`}>
                       Final bid · {formatClock(b.time)} {SERVER_TZ_SHORT} · Local {formatLocalClock(b.time)}
                     </div>
-                    <div className="text-right text-[8px] font-bold uppercase tracking-wider text-green-400">
+                    <div className="text-right text-[9px] font-bold uppercase tracking-[.12em] text-green-400">
                       {isWinner ? 'Winner' : ''}
                     </div>
                   </div>
@@ -2253,7 +2279,7 @@ function EndedAuctionRow({
               })}
             </div>
             {endedAt > 0 && (
-              <div className="border-t border-white/[.05] px-3 py-1.5 text-[8px] text-text-dim">
+              <div className="border-t border-white/[.05] px-4 py-2 text-[10px] text-text-dim">
                 Closed {formatDateTime(endedAt)} {SERVER_TZ_SHORT} · Local {formatLocalDateTime(endedAt)}
               </div>
             )}
