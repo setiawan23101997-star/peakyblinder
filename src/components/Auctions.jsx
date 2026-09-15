@@ -353,6 +353,7 @@ export default function Auctions({ ctx }) {
   const [uploading, setUploading] = useState(false)
   const [bidAmounts, setBidAmounts] = useState({})
   const [expandedBids, setExpandedBids] = useState({})
+  const [selectedEndedAuctions, setSelectedEndedAuctions] = useState([])
   const [featuringInFlight, setFeaturingInFlight] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const formId = useId()
@@ -995,6 +996,58 @@ export default function Auctions({ ctx }) {
     addToast(`"${auction.name}" removed.`, 'red', 'Auction Deleted')
   }
 
+  const toggleEndedSelection = (auctionId) => {
+    setSelectedEndedAuctions(prev =>
+      prev.includes(auctionId)
+        ? prev.filter(id => id !== auctionId)
+        : [...prev, auctionId]
+    )
+  }
+
+  const toggleSelectAllEnded = () => {
+    setSelectedEndedAuctions(prev =>
+      prev.length === endedAuctions.length
+        ? []
+        : endedAuctions.map(a => a.id)
+    )
+  }
+
+  const deleteSelectedEndedAuctions = async () => {
+    if (!isElder || selectedEndedAuctions.length === 0) return
+
+    const selected = endedAuctions.filter(a => selectedEndedAuctions.includes(a.id))
+    if (!selected.length) return
+
+    const names = selected.slice(0, 5).map(a => `• ${a.name}`).join('\n')
+    const more = selected.length > 5 ? `\n• +${selected.length - 5} more` : ''
+    const confirmed = window.confirm(
+      `Delete ${selected.length} archived auction${selected.length === 1 ? '' : 's'} permanently?\n\n${names}${more}\n\nThis cannot be undone.`
+    )
+    if (!confirmed) return
+
+    try {
+      const ids = selected.map(a => a.id)
+      const { error } = await supabase
+        .from('auctions')
+        .delete()
+        .in('id', ids)
+        .eq('status', 'ended')
+
+      if (error) throw error
+
+      setAuctions(prev => prev.filter(a => !ids.includes(a.id)))
+      setSelectedEndedAuctions([])
+      addToast(
+        `${selected.length} archived auction${selected.length === 1 ? '' : 's'} deleted.`,
+        'red',
+        'Auctions Deleted'
+      )
+    } catch (err) {
+      console.error('Bulk delete auctions failed:', err)
+      addToast(`Couldn't delete selected auctions: ${err.message}`, 'red', 'Delete Failed')
+    }
+  }
+
   const toggleFeatured = async (auctionId) => {
     console.log('══════════════════════════════════════════════════════════════')
     console.log('[toggleFeatured] ▶ CALLED', { auctionId, type: typeof auctionId })
@@ -1540,7 +1593,29 @@ export default function Auctions({ ctx }) {
                 <span className="rounded-full border border-white/[.07] bg-black/20 px-2 py-0.5 text-[10px] font-mono text-text-dim">{endedAuctions.length}</span>
               </div>
             </div>
-            <div className="text-[10px] text-text-dim">Review winners, final bids, and distribution status.</div>
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:block text-[10px] text-text-dim">Review winners, final bids, and distribution status.</div>
+              {isElder && (
+                <>
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllEnded}
+                    className="rounded-md border border-white/[.08] bg-black/20 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-text-dim hover:border-gold/25 hover:text-gold-light"
+                  >
+                    {selectedEndedAuctions.length === endedAuctions.length ? 'Clear Selection' : 'Select All'}
+                  </button>
+                  {selectedEndedAuctions.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={deleteSelectedEndedAuctions}
+                      className="rounded-md border border-red-500/20 bg-red-500/[.04] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-red-400 hover:border-red-400/35 hover:bg-red-500/[.08]"
+                    >
+                      Delete {selectedEndedAuctions.length}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
           <div className="overflow-hidden rounded-2xl border border-white/[.07] bg-[#0b0908]/90">
             <ul className="divide-y divide-white/[.05]">
@@ -1556,6 +1631,8 @@ export default function Auctions({ ctx }) {
                   onToggle={() => toggleBidsExpanded(a.id)}
                   onAssignDistributor={name => assignDistributor(a.id, name)}
                   onDelete={() => deleteAuction(a.id)}
+                  isSelected={selectedEndedAuctions.includes(a.id)}
+                  onToggleSelect={() => toggleEndedSelection(a.id)}
                 />
               ))}
             </ul>
@@ -2142,6 +2219,7 @@ function AuctionCard({
 function EndedAuctionRow({
   auction: a, now, currentUser, isElder, distributors,
   isExpanded, onToggle, onAssignDistributor, onDelete,
+  isSelected = false, onToggleSelect,
 }) {
   const finalBids = getFinalBidEntries(a)
   const winnerEntry = finalBids[0] || null
@@ -2158,6 +2236,17 @@ function EndedAuctionRow({
       <div className="px-3 py-3 sm:px-4">
         <div className="grid gap-3 lg:grid-cols-[minmax(360px,1fr)_135px_125px_165px_auto] lg:items-start lg:gap-4">
           <div className="flex min-w-0 items-center gap-3">
+            {isElder && (
+              <label className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-white/[.08] bg-black/20 hover:border-gold/30">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={onToggleSelect}
+                  className="h-4 w-4 accent-yellow-500"
+                  aria-label={`Select auction: ${a.name}`}
+                />
+              </label>
+            )}
             {a.imageUrl ? (
               <ItemImage src={a.imageUrl} alt={a.name} size={48} />
             ) : (
