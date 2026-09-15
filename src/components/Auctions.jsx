@@ -1712,7 +1712,7 @@ function BlindBidPanel({
     <div className="rounded-xl border border-gold/20 bg-gold/[.025] p-3 sm:p-3.5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-[.16em] text-gold-light">Blind Bid</span>
+          <span className="text-[11px] font-bold uppercase tracking-[.16em] text-gold-light">Blind Bid</span>
           <BlindStatusPill tone="gold">Private</BlindStatusPill>
         </div>
         <span
@@ -1727,18 +1727,18 @@ function BlindBidPanel({
 
       <div className="mt-2.5 grid grid-cols-2 gap-2">
         <div className="rounded-lg border border-gold/15 bg-gold/[.035] px-2.5 py-2">
-          <div className="text-[7px] font-bold uppercase tracking-[.13em] text-gold-dim">Your Coins</div>
+          <div className="text-[9px] font-bold uppercase tracking-[.13em] text-gold-dim">Your Coins</div>
           <div className="mt-0.5 font-mono text-[14px] font-bold tabular-nums text-gold-bright">
             {availableCoins.toLocaleString()}
           </div>
-          <div className="mt-0.5 text-[7px] text-text-dim">available balance</div>
+          <div className="mt-0.5 text-[8px] text-text-dim">available balance</div>
         </div>
         <div className="rounded-lg border border-white/[.06] bg-black/15 px-2.5 py-2">
-          <div className="text-[7px] font-bold uppercase tracking-[.13em] text-text-dim">Reserved</div>
+          <div className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Reserved</div>
           <div className="mt-0.5 font-mono text-[14px] font-bold tabular-nums text-text-bright">
             {reservedCoins.toLocaleString()}
           </div>
-          <div className="mt-0.5 text-[7px] text-text-dim">
+          <div className="mt-0.5 text-[8px] text-text-dim">
             {own.hasBid ? 'current blind bid' : 'no active bid'}
           </div>
         </div>
@@ -1750,7 +1750,7 @@ function BlindBidPanel({
             ? <>Total <span className="font-mono font-semibold text-text-bright">{totalCoins.toLocaleString()}</span> coins including your reserved bid.</>
             : 'Your bid is hidden from everyone until close.'}
         </span>
-        <span className="shrink-0 text-[9px] font-mono text-text-dim">
+        <span className="shrink-0 text-[10px] font-mono text-text-dim">
           {own.cancelled ? 'CANCELLED' : `${own.submissions}/${MAX_BID_SUBMISSIONS} submitted`}
         </span>
       </div>
@@ -1769,15 +1769,15 @@ function BlindBidPanel({
         <>
           <div className="mt-2.5 flex items-end justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Your Current Bid</div>
+              <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Your Current Bid</div>
               <div className={`mt-0.5 font-mono text-xl font-bold tabular-nums ${own.hasBid ? 'text-green-300' : 'text-text-dim'}`}>
                 {own.hasBid ? own.amount.toLocaleString() : '—'}
-                {own.hasBid && <span className="ml-1 text-[9px] font-normal text-text-dim">coins</span>}
+                {own.hasBid && <span className="ml-1 text-[10px] font-normal text-text-dim">coins</span>}
               </div>
             </div>
 
             <div className="text-right">
-              <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Changes Left</div>
+              <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Changes Left</div>
               <div className="mt-0.5 font-mono text-lg font-bold tabular-nums text-gold-light">{own.changesLeft}</div>
             </div>
           </div>
@@ -1813,13 +1813,13 @@ function BlindBidPanel({
                   </button>
                 </div>
 
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-[9px] text-text-dim">
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-text-dim">
                   <span>
                     {own.hasBid
                       ? `${own.changesLeft} change${own.changesLeft === 1 ? '' : 's'} remaining`
                       : 'Your first bid is hidden from other members'}
                   </span>
-                  <span className="shrink-0 text-gold-dim">Min {startingBid.toLocaleString()}</span>
+                  <span className="shrink-0 text-gold-light/80">Min {startingBid.toLocaleString()}</span>
                 </div>
 
                 {own.hasBid && (
@@ -1827,7 +1827,7 @@ function BlindBidPanel({
                     type="button"
                     onClick={onCancelBid}
                     disabled={!biddingOpen || typeof onCancelBid !== 'function'}
-                    className="mt-2 w-full rounded-lg border border-red-500/25 bg-red-500/[.025] px-3 py-2 text-[9px] font-bold uppercase tracking-[.1em] text-red-400 transition-colors hover:border-red-500/45 hover:bg-red-500/[.07] hover:text-red-300 focus:outline-none focus:ring-2 focus:ring-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="mt-2 w-full rounded-lg border border-red-500/25 bg-red-500/[.025] px-3 py-2.5 text-[10px] font-bold uppercase tracking-[.1em] text-red-400 transition-colors hover:border-red-500/45 hover:bg-red-500/[.07] hover:text-red-300 focus:outline-none focus:ring-2 focus:ring-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Cancel / Remove Bid
                   </button>
@@ -1895,13 +1895,13 @@ function FeaturedAuctionCard({
       <div className="relative flex items-center justify-between gap-2 border-b border-white/[.06] bg-black/20 px-3 py-1.5 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
           <FeaturedPill rarityMeta={rm} />
-          <span className="hidden truncate text-[8px] font-bold uppercase tracking-[.15em] text-text-dim sm:inline">
+          <span className="hidden truncate text-[9px] font-bold uppercase tracking-[.15em] text-text-dim sm:inline">
             Featured Blind Lot
           </span>
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
-          <span className="hidden text-[9px] font-bold uppercase tracking-[.16em] text-text-dim sm:inline">
+          <span className="hidden text-[10px] font-bold uppercase tracking-[.16em] text-text-dim sm:inline">
             Time
           </span>
           <span
@@ -2188,7 +2188,7 @@ function AuctionCard({
         </button>
       )}
 
-      <div className="p-3 sm:p-3.5">
+      <div className="p-3.5 sm:p-4">
         <div className="flex gap-3">
           {auction.imageUrl ? (
             <div className="relative h-[68px] w-[68px] shrink-0 overflow-hidden rounded-lg border bg-black/35" style={{ borderColor: rgba(rm.rgb,.28) }}>
@@ -2209,19 +2209,19 @@ function AuctionCard({
             {auction.description && <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-text-dim">{auction.description}</p>}
           </div>
 
-          <div className="hidden sm:block shrink-0 text-right">
-            <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Time</div>
-            <div className={`mt-0.5 font-mono text-sm font-bold tabular-nums ${isUrgent ? 'text-red-400 motion-safe:animate-pulse' : 'text-gold-light'}`}>
+          <div className="hidden shrink-0 text-right sm:block">
+            <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Time</div>
+            <div className={`mt-0.5 font-mono text-[15px] font-bold tabular-nums ${isUrgent ? 'text-red-400 motion-safe:animate-pulse' : 'text-gold-light'}`}>
               {formatCountdown(auction.endsAt, now)}
             </div>
           </div>
         </div>
 
-        <div className="mt-2 flex items-center justify-between gap-2 border-y border-white/[.05] py-2 sm:mt-2.5">
+        <div className="mt-2.5 flex items-center justify-between gap-3 border-y border-white/[.05] py-2.5 sm:mt-3">
           <div className="min-w-0">
-            <span className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Starting Bid </span>
+            <span className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Starting Bid </span>
             <span className="font-mono text-sm font-bold tabular-nums" style={{ color: rm.color }}>{getStartingBid(auction).toLocaleString()}</span>
-            <span className="ml-1 text-[8px] text-text-dim">coins</span>
+            <span className="ml-1 text-[9px] text-text-dim">coins</span>
           </div>
 
           <div className="text-right">
@@ -2237,13 +2237,19 @@ function AuctionCard({
                 {getBidderCount(auction) === 0 ? 'No Players Bidding' : getBidderCount(auction) === 1 ? 'Player Bidding' : 'Players Bidding'}
               </span>
             </span>
-            <div className="mt-0.5 text-[8px] text-text-dim">Other bids hidden</div>
+            <div className="mt-1 text-[9px] text-text-dim">Other bids hidden</div>
           </div>
         </div>
 
-        <div className="mt-2.5 sm:hidden flex items-center justify-between gap-2 text-[8px] text-text-dim">
-          <span>Time Remaining</span>
-          <span className={`font-mono font-bold ${isUrgent ? 'text-red-400' : 'text-gold-light'}`}>{formatCountdown(auction.endsAt, now)}</span>
+        <div className="mt-2.5 rounded-lg border border-gold/[.12] bg-gold/[.025] px-3 py-2 sm:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[9px] font-bold uppercase tracking-[.12em] text-text-dim">Time Remaining</span>
+            <span className={`font-mono text-[13px] font-bold tabular-nums ${
+              isUrgent ? 'text-red-400 motion-safe:animate-pulse' : 'text-gold-light'
+            }`}>
+              {formatCountdown(auction.endsAt, now)}
+            </span>
+          </div>
         </div>
 
         <BlindBidPanel
@@ -2257,7 +2263,7 @@ function AuctionCard({
           onCancelBid={onCancelBid}
         />
 
-        <div className="mt-2 flex items-center justify-between gap-2 text-[8px] text-text-dim">
+        <div className="mt-2.5 flex items-center justify-between gap-3 text-[9px] text-text-dim">
           <span>Ends {formatDateTime(auction.endsAt)} {SERVER_TZ_SHORT}</span>
           <span>Local {formatLocalDateTime(auction.endsAt)}</span>
         </div>
