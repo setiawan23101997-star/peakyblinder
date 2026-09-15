@@ -2217,7 +2217,7 @@ function AuctionCard({
           </div>
         </div>
 
-        <div className="mt-2.5 flex items-center justify-between gap-3 border-y border-white/[.05] py-2.5 sm:mt-3">
+        <div className="mt-2.5 flex items-center justify-between gap-3 border-y border-white/[.05] py-2 sm:mt-3 sm:py-2.5">
           <div className="min-w-0">
             <span className="text-[9px] font-bold uppercase tracking-[.13em] text-text-dim">Starting Bid </span>
             <span className="font-mono text-sm font-bold tabular-nums" style={{ color: rm.color }}>{getStartingBid(auction).toLocaleString()}</span>
@@ -2241,11 +2241,27 @@ function AuctionCard({
           </div>
         </div>
 
-        <div className="mt-2.5 rounded-lg border border-gold/[.12] bg-gold/[.025] px-3 py-2 sm:hidden">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[9px] font-bold uppercase tracking-[.12em] text-text-dim">Time Remaining</span>
-            <span className={`font-mono text-[13px] font-bold tabular-nums ${
-              isUrgent ? 'text-red-400 motion-safe:animate-pulse' : 'text-gold-light'
+        {/* Mobile countdown: intentionally compact so it reads as a status, not a second content card. */}
+        <div className={`mt-2.5 flex items-center justify-between gap-3 border-y px-1 py-2 sm:hidden ${
+          isUrgent ? 'border-red-500/20' : 'border-gold/[.10]'
+        }`}>
+          <div className="min-w-0">
+            <div className={`text-[8px] font-bold uppercase tracking-[.16em] ${
+              isUrgent ? 'text-red-400' : 'text-text-dim'
+            }`}>
+              Ends In
+            </div>
+            <div className="mt-0.5 text-[8px] text-text-dim/70">
+              {isUrgent ? 'Final 30 seconds' : 'Auction is live'}
+            </div>
+          </div>
+          <div className={`shrink-0 rounded-md px-2.5 py-1 ${
+            isUrgent
+              ? 'bg-red-500/[.08] text-red-400'
+              : 'bg-gold/[.06] text-gold-light'
+          }`}>
+            <span className={`font-mono text-[15px] font-bold leading-none tabular-nums ${
+              isUrgent ? 'motion-safe:animate-pulse' : ''
             }`}>
               {formatCountdown(auction.endsAt, now)}
             </span>
