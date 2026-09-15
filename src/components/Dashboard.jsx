@@ -948,7 +948,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
                   <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
                   <span className="ml-1">Players Bidding</span>
                 </span>
-                <span className="ml-2 text-[9px] text-text-dim">Blind bids hidden</span>
+                
               </div>
             </div>
           </div>
@@ -1012,7 +1012,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
                   <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
                   <span className="ml-1">Players Bidding</span>
                 </span>
-                <span className="ml-2 text-[9px] text-text-dim">Blind bids hidden</span>
+                
               </div>
             </div>
           </div>
