@@ -1977,9 +1977,17 @@ function FeaturedAuctionCard({
               </div>
 
               <div className="mt-1.5">
-                <span className="inline-flex items-center rounded-full border border-gold/25 bg-gold/[.055] px-2.5 py-1 text-[9px] font-bold tracking-wide text-gold-light">
-                  <span className="font-mono text-[10px] text-gold-bright">{getBidderCount(auction)}</span>
-                  <span className="ml-1">Players Bidding</span>
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-bold tracking-wide ${
+                  getBidderCount(auction) === 0
+                    ? 'border-white/[.12] bg-white/[.025] text-text-dim'
+                    : 'border-gold/25 bg-gold/[.055] text-gold-light'
+                }`}>
+                  {getBidderCount(auction) > 0 && (
+                <span className="font-mono text-[10px] text-gold-bright">{getBidderCount(auction)}</span>
+              )}
+              <span className={getBidderCount(auction) > 0 ? 'ml-1' : ''}>
+                {getBidderCount(auction) === 0 ? 'No Players Bidding' : getBidderCount(auction) === 1 ? 'Player Bidding' : 'Players Bidding'}
+              </span>
                 </span>
                 <span className="ml-2 text-[9px] text-text-dim">Blind bids hidden</span>
               </div>
@@ -2217,9 +2225,17 @@ function AuctionCard({
           </div>
 
           <div className="text-right">
-            <span className="inline-flex items-center rounded-full border border-gold/25 bg-gold/[.055] px-2.5 py-1 text-[9px] font-bold tracking-wide text-gold-light">
-              <span className="font-mono text-[10px] text-gold-bright">{getBidderCount(auction)}</span>
-              <span className="ml-1">Players Bidding</span>
+            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-bold tracking-wide ${
+                  getBidderCount(auction) === 0
+                    ? 'border-white/[.12] bg-white/[.025] text-text-dim'
+                    : 'border-gold/25 bg-gold/[.055] text-gold-light'
+                }`}>
+              {getBidderCount(auction) > 0 && (
+                <span className="font-mono text-[10px] text-gold-bright">{getBidderCount(auction)}</span>
+              )}
+              <span className={getBidderCount(auction) > 0 ? 'ml-1' : ''}>
+                {getBidderCount(auction) === 0 ? 'No Players Bidding' : getBidderCount(auction) === 1 ? 'Player Bidding' : 'Players Bidding'}
+              </span>
             </span>
             <div className="mt-0.5 text-[8px] text-text-dim">Other bids hidden</div>
           </div>
