@@ -1974,7 +1974,7 @@ function FeaturedAuctionCard({
             </div>
 
             {/* Bottom action row — same horizontal plane as the reference banner */}
-            <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_76px_72px] items-center gap-2 border-t border-white/[.06] pt-2 sm:flex">
+            <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_110px_88px] items-center gap-2 border-t border-white/[.06] pt-2 sm:flex">
               <div className="shrink-0">
                 <div className="text-[7px] font-bold uppercase tracking-[.13em] text-gold-dim">Your Coins</div>
                 <div className="font-mono text-[13px] font-bold tabular-nums text-gold-bright">
@@ -2009,7 +2009,7 @@ function FeaturedAuctionCard({
                     </label>
                     <input
                       id={`featured-blind-bid-${auction.id}`}
-                      className="input h-8 w-full min-w-0 py-1 text-sm font-mono sm:w-[105px]"
+                      className="input h-10 w-full min-w-0 py-1.5 px-3 text-base font-mono sm:h-8 sm:w-[105px] sm:px-2 sm:py-1 sm:text-sm"
                       type="number"
                       inputMode="numeric"
                       min={startingBid}
@@ -2025,7 +2025,7 @@ function FeaturedAuctionCard({
                     <button
                       type="button"
                       onClick={onPlaceBid}
-                      className="btn-gold h-8 min-w-0 px-2 text-[9px] font-bold sm:min-w-[66px] sm:px-3"
+                      className="btn-gold h-10 min-w-0 px-2 text-[11px] font-bold sm:h-8 sm:min-w-[66px] sm:px-3 sm:text-[9px]"
                     >
                       {own.hasBid ? 'Change' : 'Bid'}
                     </button>
