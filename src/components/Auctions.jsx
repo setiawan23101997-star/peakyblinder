@@ -1271,17 +1271,17 @@ export default function Auctions({ ctx }) {
             </div>
 
             <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-stretch lg:justify-end">
-              <div className="min-w-0 rounded-lg border border-white/[.07] bg-black/25 px-3 py-2 sm:min-w-[92px]">
+              <div className="min-w-0 rounded-lg border border-white/[.07] bg-black/25 px-3 py-2.5 sm:min-w-[92px]">
                 <div className="text-[8px] font-bold uppercase tracking-[.16em] text-text-dim">Live</div>
                 <div className="mt-0.5 font-mono text-lg font-bold leading-none tabular-nums text-gold-bright">{activeAuctions.length}</div>
               </div>
 
-              <div className="min-w-0 rounded-lg border border-white/[.07] bg-black/25 px-3 py-2 sm:min-w-[92px]">
+              <div className="min-w-0 rounded-lg border border-white/[.07] bg-black/25 px-3 py-2.5 sm:min-w-[92px]">
                 <div className="text-[8px] font-bold uppercase tracking-[.16em] text-text-dim">Completed</div>
                 <div className="mt-0.5 font-mono text-lg font-bold leading-none tabular-nums text-text-bright">{endedAuctions.length}</div>
               </div>
 
-              <div className="col-span-2 min-w-0 rounded-lg border border-gold/20 bg-gold/[.045] px-3 py-2 sm:col-span-1 sm:min-w-[148px]">
+              <div className="min-w-0 rounded-lg border border-gold/20 bg-gold/[.045] px-3 py-2.5 sm:min-w-[148px]">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[8px] font-bold uppercase tracking-[.16em] text-gold-dim">Your Coins</div>
                   <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_7px_rgba(242,204,96,.55)]" />
@@ -1292,7 +1292,7 @@ export default function Auctions({ ctx }) {
                 <div className="mt-1 text-[8px] text-text-dim">Available to bid</div>
               </div>
 
-              <div className="min-w-0 rounded-lg border border-white/[.07] bg-black/25 px-3 py-2 sm:min-w-[148px]">
+              <div className="min-w-0 rounded-lg border border-white/[.07] bg-black/25 px-3 py-2.5 sm:min-w-[148px]">
                 <div className="text-[8px] font-bold uppercase tracking-[.16em] text-text-dim">Server Time</div>
                 <div className="mt-0.5 font-mono text-sm font-bold leading-none tabular-nums text-text-bright">
                   {formatClock(now)} <span className="text-[8px] font-semibold text-text-dim">{SERVER_TZ_SHORT}</span>
@@ -1319,43 +1319,40 @@ export default function Auctions({ ctx }) {
           </div>
 
           <div className="mt-4 border-t border-white/[.055] pt-3">
-          <div className="flex min-h-7 flex-wrap items-center gap-y-2 text-[11px] leading-5 text-text-dim">
+          <div className="hidden sm:flex min-h-7 flex-wrap items-center gap-y-2 text-[11px] leading-5 text-text-dim">
             <div className="inline-flex h-7 items-center gap-2 pr-5">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-400" />
               <span><span className="font-semibold text-text-bright">{activeAuctions.length}</span> live lot{activeAuctions.length === 1 ? '' : 's'}</span>
             </div>
-
-            <span className="hidden h-4 items-center border-l border-white/[.10] sm:flex" aria-hidden="true" />
-
+            <span className="h-4 border-l border-white/[.10]" aria-hidden="true" />
             <div className="inline-flex h-7 items-center px-5">
-              <span>Minimum <span className="font-semibold text-text-bright">starting bid</span></span>
+              Minimum <span className="ml-1 font-semibold text-text-bright">starting bid</span>
             </div>
-
             {featuredAuction && (
               <>
-                <span className="hidden h-4 items-center border-l border-white/[.10] sm:flex" aria-hidden="true" />
-                <div className="inline-flex h-7 items-center px-5 text-gold-light">
-                  <span>★ <strong>Featured lot active</strong></span>
-                </div>
+                <span className="h-4 border-l border-white/[.10]" aria-hidden="true" />
+                <div className="inline-flex h-7 items-center px-5 text-gold-light">★ <strong>Featured lot active</strong></div>
               </>
             )}
-
             {pendingDistribution > 0 && isElder && (
               <>
-                <span className="hidden h-4 items-center border-l border-white/[.10] sm:flex" aria-hidden="true" />
-                <div className="inline-flex h-7 items-center px-5 text-yellow-400">
-                  <span><strong>{pendingDistribution}</strong> awaiting distribution</span>
-                </div>
+                <span className="h-4 border-l border-white/[.10]" aria-hidden="true" />
+                <div className="inline-flex h-7 items-center px-5 text-yellow-400"><strong>{pendingDistribution}</strong>&nbsp; awaiting distribution</div>
               </>
             )}
           </div>
-        </div>
+          {(featuredAuction || (pendingDistribution > 0 && isElder)) && (
+            <div className="flex sm:hidden flex-wrap items-center gap-2">
+              {featuredAuction && <span className="inline-flex items-center rounded-full border border-gold/20 bg-gold/[.045] px-2.5 py-1 text-[10px] font-semibold text-gold-light">★ Featured lot active</span>}
+              {pendingDistribution > 0 && isElder && <span className="inline-flex items-center rounded-full border border-yellow-500/20 bg-yellow-500/[.035] px-2.5 py-1 text-[10px] font-semibold text-yellow-400">{pendingDistribution} awaiting distribution</span>}
+            </div>
+          )}
         </div>
       </header>
 
       {/* Essential auction rules — deliberately limited to the information players need before bidding */}
-      <div className="rounded-xl border border-white/[.065] bg-[#0b0908]/70 px-3.5 py-2.5 sm:px-4">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5 text-[11px] leading-5 text-text-dim">
+      <div className="rounded-xl border border-white/[.065] bg-[#0b0908]/70 px-3 py-2.5 sm:px-4">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2.5 sm:gap-x-6 sm:gap-y-2.5 text-[11px] leading-5 text-text-dim">
           <div className="inline-flex items-center gap-2">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-[11px] text-gold-light">↻</span>
             <span><strong className="text-text-bright">1 bid + 2 changes</strong> per player</span>
@@ -1557,7 +1554,7 @@ export default function Auctions({ ctx }) {
             aria-hidden="true"
             style={{ background: 'radial-gradient(circle at 50% 0%, rgba(242,204,96,.055), transparent 42%)' }}
           />
-          <div className="relative flex min-h-[250px] flex-col items-center justify-center px-5 py-12 text-center">
+          <div className="relative flex min-h-[190px] flex-col items-center justify-center px-5 py-8 text-center sm:min-h-[250px] sm:py-12">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gold/20 bg-gold/[.045] text-lg text-gold-light">
               ◇
             </div>
