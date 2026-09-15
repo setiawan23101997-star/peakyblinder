@@ -986,6 +986,20 @@ export default function Auctions({ ctx }) {
       }
     }
 
+    // Remove notifications tied to this auction first. The DB FK currently
+    // uses ON DELETE SET NULL, which would otherwise leave old win notices
+    // behind after the auction is deleted.
+    const { error: notificationError } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('auction_id', auctionId)
+
+    if (notificationError) {
+      console.error('Delete auction notifications failed:', notificationError)
+      addToast(`Couldn't clean auction notifications: ${notificationError.message}`, 'red', 'Delete Failed')
+      return
+    }
+
     const { error } = await supabase.from('auctions').delete().eq('id', auctionId)
     if (error) {
       console.error('Delete auction failed:', error)
@@ -1027,6 +1041,16 @@ export default function Auctions({ ctx }) {
 
     try {
       const ids = selected.map(a => a.id)
+
+      // Clean up notifications first so deleting archive history cannot leave
+      // orphaned auction-win notifications in the notification bell.
+      const { error: notificationError } = await supabase
+        .from('notifications')
+        .delete()
+        .in('auction_id', ids)
+
+      if (notificationError) throw notificationError
+
       const { error } = await supabase
         .from('auctions')
         .delete()
