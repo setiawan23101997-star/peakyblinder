@@ -240,6 +240,10 @@ function getAuctionWinner(auction) {
   return getFinalBidEntries(auction)[0] || null
 }
 
+function getBidderCount(auction) {
+  return getFinalBidEntries(auction).length
+}
+
 function displayNameForLibraryImage(img) {
   if (!img) return ''
   if (img.displayName) return img.displayName
@@ -1971,6 +1975,14 @@ function FeaturedAuctionCard({
                   Your first bid is hidden from other members.
                 </span>
               </div>
+
+              <div className="mt-1.5">
+                <span className="inline-flex items-center rounded-full border border-gold/25 bg-gold/[.055] px-2.5 py-1 text-[9px] font-bold tracking-wide text-gold-light">
+                  <span className="font-mono text-[10px] text-gold-bright">{getBidderCount(auction)}</span>
+                  <span className="ml-1">Players Bidding</span>
+                </span>
+                <span className="ml-2 text-[9px] text-text-dim">Blind bids hidden</span>
+              </div>
             </div>
 
             {/* Bottom action area:
@@ -2205,8 +2217,11 @@ function AuctionCard({
           </div>
 
           <div className="text-right">
-            <span className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Other Bids </span>
-            <span className="text-[10px] font-semibold text-text-bright">Hidden</span>
+            <span className="inline-flex items-center rounded-full border border-gold/25 bg-gold/[.055] px-2.5 py-1 text-[9px] font-bold tracking-wide text-gold-light">
+              <span className="font-mono text-[10px] text-gold-bright">{getBidderCount(auction)}</span>
+              <span className="ml-1">Players Bidding</span>
+            </span>
+            <div className="mt-0.5 text-[8px] text-text-dim">Other bids hidden</div>
           </div>
         </div>
 
