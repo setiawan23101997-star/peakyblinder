@@ -2241,9 +2241,15 @@ function AuctionCard({
           </div>
         </div>
 
-        <div className="mt-2.5 sm:hidden flex items-center justify-between gap-2 text-[8px] text-text-dim">
-          <span>Time Remaining</span>
-          <span className={`font-mono font-bold ${isUrgent ? 'text-red-400' : 'text-gold-light'}`}>{formatCountdown(auction.endsAt, now)}</span>
+        <div className="mt-2.5 sm:hidden rounded-lg border border-gold/[.12] bg-gold/[.025] px-3 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[9px] font-bold uppercase tracking-[.12em] text-text-dim">Time Remaining</span>
+            <span className={`font-mono text-[12px] font-bold tabular-nums ${
+              isUrgent ? 'text-red-400 motion-safe:animate-pulse' : 'text-gold-light'
+            }`}>
+              {formatCountdown(auction.endsAt, now)}
+            </span>
+          </div>
         </div>
 
         <BlindBidPanel
