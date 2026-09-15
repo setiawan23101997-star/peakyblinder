@@ -1185,11 +1185,11 @@ export default function Auctions({ ctx }) {
                 <h1 className="font-spectral text-[28px] font-bold leading-none tracking-tight text-text-bright sm:text-[32px]">
                   Auctions
                 </h1>
-                <span className="text-[10px] leading-4 text-text-dim sm:whitespace-nowrap">Blind bidding · final 30s locked</span>
+                <span className="text-[10px] leading-4 text-text-dim sm:whitespace-nowrap">Private blind bidding</span>
               </div>
 
               <p className="mt-1.5 max-w-xl text-[11px] leading-4 text-text-dim sm:text-xs">
-                Compete for rare clan items. Your bids stay private until the auction closes.
+                Bid on rare clan items with private bids.
               </p>
             </div>
 
@@ -1241,57 +1241,63 @@ export default function Auctions({ ctx }) {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-white/[.055] pt-3 sm:flex sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
-            <div className="inline-flex items-center gap-2 text-[9px] text-text-dim">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+          <div className="mt-4 border-t border-white/[.055] pt-3">
+          <div className="flex min-h-7 flex-wrap items-center gap-y-2 text-[11px] leading-5 text-text-dim">
+            <div className="inline-flex h-7 items-center gap-2 pr-5">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-400" />
               <span><span className="font-semibold text-text-bright">{activeAuctions.length}</span> live lot{activeAuctions.length === 1 ? '' : 's'}</span>
             </div>
-            <span className="hidden sm:inline text-white/10">•</span>
-            <div className="text-[9px] leading-4 text-text-dim">
-              Minimum <span className="font-semibold text-text-bright">starting bid</span>
+
+            <span className="hidden h-4 items-center border-l border-white/[.10] sm:flex" aria-hidden="true" />
+
+            <div className="inline-flex h-7 items-center px-5">
+              <span>Minimum <span className="font-semibold text-text-bright">starting bid</span></span>
             </div>
-            <span className="hidden sm:inline text-white/10">•</span>
-            <div className="text-[9px] text-text-dim">
-              <span className="font-semibold text-text-bright">1 bid + 2 changes</span> per player
-            </div>
+
             {featuredAuction && (
               <>
-                <span className="hidden sm:inline text-white/10">•</span>
-                <div className="text-[9px] text-gold-light">★ Featured lot active</div>
+                <span className="hidden h-4 items-center border-l border-white/[.10] sm:flex" aria-hidden="true" />
+                <div className="inline-flex h-7 items-center px-5 text-gold-light">
+                  <span>★ <strong>Featured lot active</strong></span>
+                </div>
               </>
             )}
+
             {pendingDistribution > 0 && isElder && (
               <>
-                <span className="hidden sm:inline text-white/10">•</span>
-                <div className="text-[9px] text-yellow-400"><strong>{pendingDistribution}</strong> awaiting distribution</div>
+                <span className="hidden h-4 items-center border-l border-white/[.10] sm:flex" aria-hidden="true" />
+                <div className="inline-flex h-7 items-center px-5 text-yellow-400">
+                  <span><strong>{pendingDistribution}</strong> awaiting distribution</span>
+                </div>
               </>
             )}
           </div>
         </div>
+        </div>
       </header>
 
-      {/* Compact auction rules */}
+      {/* Essential auction rules — deliberately limited to the information players need before bidding */}
       <div className="rounded-xl border border-white/[.065] bg-[#0b0908]/70 px-3.5 py-2.5 sm:px-4">
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[9px] text-text-dim sm:flex sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-2">
-          <div className="inline-flex min-w-0 items-center gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↗</span>
-            <span>Minimum = <strong className="text-text-bright">starting bid</strong></span>
-          </div>
-          <span className="hidden md:inline text-white/10">|</span>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5 text-[11px] leading-5 text-text-dim">
           <div className="inline-flex items-center gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded-md border border-yellow-500/15 bg-yellow-500/[.04] text-yellow-400">◷</span>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-[11px] text-gold-light">↻</span>
+            <span><strong className="text-text-bright">1 bid + 2 changes</strong> per player</span>
+          </div>
+
+          <span className="hidden md:inline text-white/10">|</span>
+
+          <div className="inline-flex items-center gap-2">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-yellow-500/15 bg-yellow-500/[.04] text-[11px] text-yellow-400">◷</span>
             <span>Locks in final <strong className="text-text-bright">30 seconds</strong></span>
           </div>
+
           <span className="hidden md:inline text-white/10">|</span>
+
           <div className="inline-flex items-center gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">↻</span>
-            <span><strong className="text-text-bright">1 bid + 2 changes</strong></span>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-[11px] text-gold-light">◉</span>
+            <span><strong className="text-text-bright">Local time</strong> shown on auctions</span>
           </div>
-          <span className="hidden md:inline text-white/10">|</span>
-          <div className="inline-flex items-center gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded-md border border-gold/15 bg-gold/[.04] text-gold-light">◉</span>
-            <span>Times: <strong className="text-text-bright">{SERVER_TZ_SHORT}</strong> + local</span>
-          </div>
+
         </div>
       </div>
 
@@ -1636,7 +1642,7 @@ function BlindBidPanel({
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-3 border-b border-white/[.06] pb-2.5">
-        <span className="text-[9px] text-text-dim">
+        <span className="text-[10px] leading-5 text-text-dim">
           {own.hasBid
             ? <>Total <span className="font-mono font-semibold text-text-bright">{totalCoins.toLocaleString()}</span> coins including your reserved bid.</>
             : 'Your bid is hidden from everyone until close.'}
@@ -1733,7 +1739,7 @@ function BlindBidPanel({
                 <span className="text-sm">🔒</span>
                 <div className="min-w-0">
                   <div className="text-[10px] font-bold text-red-400">Bidding Locked</div>
-                  <div className="text-[9px] text-text-dim">Final 30 seconds — bids, changes and cancellations are closed.</div>
+                  <div className="text-[10px] leading-5 text-text-dim">Final 30 seconds — bids, changes and cancellations are closed.</div>
                 </div>
               </div>
             )
@@ -2202,7 +2208,7 @@ function EndedAuctionRow({
               </div>
             </div>
 
-            {winner ? (
+            {winner && (
               <div className="min-w-0 self-start">
                 <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Distribution</div>
                 {isElder ? (
@@ -2216,17 +2222,13 @@ function EndedAuctionRow({
                     {distributors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                   </select>
                 ) : (
-                  <div className="mt-1 h-8 flex items-center">
-                    <DistributorStatusBadge name={assignedName} />
-                  </div>
+                  <div className="mt-0.5"><DistributorStatusBadge name={assignedName} /></div>
                 )}
               </div>
-            ) : (
-              <div className="self-start" aria-hidden="true" />
             )}
           </div>
 
-          <div className="flex shrink-0 items-center justify-center gap-2 self-start pt-[21px]">
+          <div className="flex shrink-0 items-center justify-start gap-1 border-t border-white/[.05] pt-2.5 lg:mt-5 lg:border-0 lg:pt-0 lg:justify-end">
             {finalBids.length > 0 && (
               <button
                 type="button"
