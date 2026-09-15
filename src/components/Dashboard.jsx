@@ -281,6 +281,22 @@ function getGreeting(hour) {
   return 'Good Evening'
 }
 
+function getLiveAuctionBidderCount(a) {
+  const bids = Array.isArray(a?.bids) ? a.bids : []
+  const latestByBidder = new Map()
+
+  for (let i = 0; i < bids.length; i++) {
+    const bid = bids[i]
+    const bidder = String(bid?.bidder || bid?.bidderName || '').trim()
+    if (!bidder) continue
+    latestByBidder.set(bidder, { ...bid, _index: i })
+  }
+
+  return [...latestByBidder.values()].filter(
+    bid => !bid?.cancelled && Number(bid?.amount ?? bid?.bid ?? 0) > 0
+  ).length
+}
+
 function readWinner(a, now = Date.now()) {
   const name = a.winner || a.winnerName || a.topBidder || a.soldTo || null
   const price = a.finalBid ?? a.currentBid ?? a.winningBid ?? 0
@@ -873,9 +889,11 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
   // value used by the existing dashboard data shape.
   const startingBid = Number(a.startBid ?? a.minBid ?? a.currentBid ?? 0)
 
+  const bidderCount = getLiveAuctionBidderCount(a)
+
   const cardLabel =
     `${a.name}, ${a.rarity} rarity, blind auction, starting bid ${startingBid.toLocaleString()} coins, ` +
-    `other bids hidden, ends in ${timeLabel}`
+    `${bidderCount} players bidding, bid details hidden, ends in ${timeLabel}`
 
   return (
     <button type="button" onClick={onOpenAll} aria-label={cardLabel}
@@ -925,16 +943,12 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
                 {a.name}
               </div>
 
-              <div className="mt-1 flex min-w-0 items-center gap-2">
-                <span className="shrink-0 text-[8px] font-bold uppercase tracking-[0.12em] text-text-dim/70 sm:text-[9px] sm:tracking-[0.14em]">
-                  Other Bids
+              <div className="mt-1.5">
+                <span className="inline-flex items-center rounded-full border border-gold/25 bg-gold/[.055] px-2.5 py-1 text-[9px] font-bold tracking-wide text-gold-light">
+                  <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
+                  <span className="ml-1">Players Bidding</span>
                 </span>
-                <span className="truncate text-[11px] font-semibold text-text-dim sm:text-[13px]">
-                  Hidden
-                </span>
-                <span className="hidden shrink-0 text-[8px] text-text-dim/50 sm:inline">
-                  names · amounts · count
-                </span>
+                <span className="ml-2 text-[9px] text-text-dim">Blind bids hidden</span>
               </div>
             </div>
           </div>
@@ -993,9 +1007,12 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
                 {a.name}
               </div>
 
-              <div className="mt-1.5 flex min-w-0 items-center gap-2">
-                <span className="shrink-0 text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim/70">Other Bids</span>
-                <span className="truncate text-[12px] font-semibold text-text-dim">Hidden</span>
+              <div className="mt-1.5">
+                <span className="inline-flex items-center rounded-full border border-gold/25 bg-gold/[.055] px-2.5 py-1 text-[9px] font-bold tracking-wide text-gold-light">
+                  <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
+                  <span className="ml-1">Players Bidding</span>
+                </span>
+                <span className="ml-2 text-[9px] text-text-dim">Blind bids hidden</span>
               </div>
             </div>
           </div>
