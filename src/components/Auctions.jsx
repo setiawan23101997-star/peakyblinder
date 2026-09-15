@@ -1917,9 +1917,9 @@ function FeaturedAuctionCard({
           information stays on the left, image is anchored on the far right,
           and the action controls sit on the same lower line as the auction facts. */}
       <div className="relative px-3 py-2.5 sm:px-4 sm:py-3">
-        <div className="flex min-h-[126px] items-stretch gap-3 sm:min-h-[136px] sm:gap-4">
+        <div className="relative flex min-h-[126px] items-stretch gap-2 sm:min-h-[136px] sm:gap-4">
           {/* Left content */}
-          <div className="order-1 flex min-w-0 flex-1 flex-col justify-between pr-1">
+          <div className="order-1 flex min-w-0 flex-1 flex-col justify-between pr-[94px] sm:pr-1">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1.5">
                 <RarityBadge rarity={auction.rarity} />
@@ -1940,7 +1940,7 @@ function FeaturedAuctionCard({
               )}
 
               {/* Larger, readable auction facts */}
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] font-medium text-text-dim sm:text-[13px]">
+              <div className="mt-2 hidden flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] font-medium text-text-dim sm:flex sm:text-[13px]">
                 <span>
                   Starts <strong className="font-mono text-[13px] font-semibold text-text-bright sm:text-[14px]">{startingBid.toLocaleString()}</strong> coins
                 </span>
@@ -1955,8 +1955,14 @@ function FeaturedAuctionCard({
                 </span>
               </div>
 
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] font-medium text-text-dim sm:hidden">
+                <span>Starts <strong className="font-mono font-semibold text-text-bright">{startingBid.toLocaleString()}</strong> coins</span>
+                <span className="text-text-dim/45">•</span>
+                <span>Ends <strong className="font-mono font-semibold text-text-bright">{formatLocalDateTime(auction.endsAt)}</strong></span>
+              </div>
+
               {/* Blind explanation sits directly under the timing, as helper text. */}
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] leading-4">
+              <div className="mt-1.5 flex flex-col gap-0.5 text-[10px] leading-4 sm:flex-row sm:flex-wrap sm:gap-x-3">
                 <span className="font-medium text-text-dim">
                   Your bid is hidden from everyone until close.
                 </span>
@@ -1968,7 +1974,7 @@ function FeaturedAuctionCard({
             </div>
 
             {/* Bottom action row — same horizontal plane as the reference banner */}
-            <div className="mt-2 flex min-w-0 items-center gap-2 border-t border-white/[.06] pt-2">
+            <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_76px_72px] items-center gap-2 border-t border-white/[.06] pt-2 sm:flex">
               <div className="shrink-0">
                 <div className="text-[7px] font-bold uppercase tracking-[.13em] text-gold-dim">Your Coins</div>
                 <div className="font-mono text-[13px] font-bold tabular-nums text-gold-bright">
@@ -1997,13 +2003,13 @@ function FeaturedAuctionCard({
                     BID CANCELLED
                   </div>
                 ) : canSubmit ? (
-                  <div className="ml-auto flex min-w-0 items-center gap-1.5">
+                  <div className="ml-0 flex min-w-0 items-center gap-1.5 sm:ml-auto">
                     <label htmlFor={`featured-blind-bid-${auction.id}`} className="sr-only">
                       Blind bid amount for {auction.name}
                     </label>
                     <input
                       id={`featured-blind-bid-${auction.id}`}
-                      className="input h-8 w-[92px] min-w-0 py-1 text-sm font-mono sm:w-[105px]"
+                      className="input h-8 w-full min-w-0 py-1 text-sm font-mono sm:w-[105px]"
                       type="number"
                       inputMode="numeric"
                       min={startingBid}
@@ -2019,7 +2025,7 @@ function FeaturedAuctionCard({
                     <button
                       type="button"
                       onClick={onPlaceBid}
-                      className="btn-gold h-8 min-w-[66px] px-3 text-[9px] font-bold"
+                      className="btn-gold h-8 min-w-0 px-2 text-[9px] font-bold sm:min-w-[66px] sm:px-3"
                     >
                       {own.hasBid ? 'Change' : 'Bid'}
                     </button>
@@ -2056,7 +2062,7 @@ function FeaturedAuctionCard({
           {/* Right-side item image — anchored exactly to the banner edge */}
           {auction.imageUrl ? (
             <div
-              className="order-2 flex h-[108px] w-[108px] shrink-0 self-center overflow-hidden rounded-lg border bg-black/40 sm:h-[120px] sm:w-[120px]"
+              className="order-2 absolute right-0 top-0 flex h-[84px] w-[84px] shrink-0 overflow-hidden rounded-lg border bg-black/40 sm:relative sm:right-auto sm:top-auto sm:h-[120px] sm:w-[120px]"
               style={{
                 borderColor: rgba(rm.rgb,.42),
                 boxShadow: `0 10px 25px -18px ${rgba(rm.rgb,.48)}`,
@@ -2072,7 +2078,7 @@ function FeaturedAuctionCard({
             </div>
           ) : (
             <div
-              className="order-2 flex h-[108px] w-[108px] shrink-0 self-center items-center justify-center rounded-lg border bg-black/30 font-spectral text-2xl font-bold sm:h-[120px] sm:w-[120px]"
+              className="order-2 absolute right-0 top-0 flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-lg border bg-black/30 font-spectral text-2xl font-bold sm:relative sm:right-auto sm:top-auto sm:h-[120px] sm:w-[120px]"
               style={{
                 borderColor: rgba(rm.rgb,.42),
                 color: rm.color,
@@ -2255,9 +2261,9 @@ function EndedAuctionRow({
 
   return (
     <li className={isMe ? 'bg-green-500/[.018]' : ''}>
-      <div className="px-3 py-3 sm:px-4">
-        <div className="grid gap-3 lg:grid-cols-[minmax(360px,1fr)_135px_125px_165px_auto] lg:items-start lg:gap-4">
-          <div className="flex min-w-0 items-center gap-3">
+      <div className="px-3 py-3.5 sm:px-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(360px,1fr)_135px_125px_165px_auto] lg:items-start lg:gap-4">
+          <div className="col-span-2 flex min-w-0 items-center gap-3 lg:col-span-1">
             {isElder && (
               <label className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-white/[.08] bg-black/20 hover:border-gold/30">
                 <input
@@ -2305,14 +2311,14 @@ function EndedAuctionRow({
           </div>
 
           <div className="contents">
-            <div className="min-w-0 self-start">
+            <div className="min-w-0 self-start sm:col-span-1 lg:col-span-1">
               <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Winner</div>
               <div className={`mt-1 max-w-[150px] truncate text-[12px] font-semibold leading-5 ${isMe ? 'text-green-400' : 'text-text-bright'}`}>
                 {winner || <span className="italic font-normal text-text-dim">No bids</span>}
               </div>
             </div>
 
-            <div className="self-start">
+            <div className="self-start sm:col-span-1 lg:col-span-1">
               <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Winning Bid</div>
               <div className="mt-1 font-mono text-[14px] font-bold leading-5 tabular-nums text-gold-bright">
                 {finalAmount.toLocaleString()} <span className="text-[9px] font-semibold text-text-dim">coins</span>
@@ -2320,7 +2326,7 @@ function EndedAuctionRow({
             </div>
 
             {winner && (
-              <div className="min-w-0 self-start">
+              <div className="min-w-0 self-start sm:col-span-2 lg:col-span-1">
                 <div className="text-[8px] font-bold uppercase tracking-[.13em] text-text-dim">Distribution</div>
                 {isElder ? (
                   <select
@@ -2339,7 +2345,7 @@ function EndedAuctionRow({
             )}
           </div>
 
-          <div className="flex shrink-0 items-center justify-start gap-1 border-t border-white/[.05] pt-2.5 lg:mt-5 lg:border-0 lg:pt-0 lg:justify-end">
+          <div className="col-span-2 flex shrink-0 items-center justify-start gap-2 border-t border-white/[.05] pt-2.5 sm:justify-end lg:col-span-1 lg:mt-5 lg:border-0 lg:pt-0">
             {finalBids.length > 0 && (
               <button
                 type="button"
