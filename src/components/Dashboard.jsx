@@ -894,7 +894,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
 
   const cardLabel =
     `${a.name}, ${a.rarity} rarity, blind auction, starting bid ${startingBid.toLocaleString()} coins, ` +
-    `${bidderCount} ${bidderCount === 1 ? 'player' : 'players'} bidding, bid details hidden, ends in ${timeLabel}`
+    `${bidderCount === 0 ? 'no players' : `${bidderCount} ${bidderCount === 1 ? 'player' : 'players'}`} bidding, bid details hidden, ends in ${timeLabel}`
 
   return (
     <button type="button" onClick={onOpenAll} aria-label={cardLabel}
@@ -945,9 +945,17 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
               </div>
 
               <div className="mt-1.5">
-                <span className="inline-flex items-center rounded-full border border-gold/25 bg-gold/[.055] px-2.5 py-1 text-[9px] font-bold tracking-wide text-gold-light">
-                  <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
-                  <span className="ml-1">{bidderCount === 1 ? 'Player Bidding' : 'Players Bidding'}</span>
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-bold tracking-wide ${
+                  bidderCount === 0
+                    ? 'border-white/[.12] bg-white/[.025] text-text-dim'
+                    : 'border-gold/25 bg-gold/[.055] text-gold-light'
+                }`}>
+                  {bidderCount > 0 && (
+                    <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
+                  )}
+                  <span className={bidderCount > 0 ? 'ml-1' : ''}>
+                    {bidderCount === 0 ? 'No Players Bidding' : bidderCount === 1 ? 'Player Bidding' : 'Players Bidding'}
+                  </span>
                 </span>
                 
               </div>
@@ -1009,9 +1017,17 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
               </div>
 
               <div className="mt-1.5">
-                <span className="inline-flex items-center rounded-full border border-gold/25 bg-gold/[.055] px-2.5 py-1 text-[9px] font-bold tracking-wide text-gold-light">
-                  <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
-                  <span className="ml-1">{bidderCount === 1 ? 'Player Bidding' : 'Players Bidding'}</span>
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-bold tracking-wide ${
+                  bidderCount === 0
+                    ? 'border-white/[.12] bg-white/[.025] text-text-dim'
+                    : 'border-gold/25 bg-gold/[.055] text-gold-light'
+                }`}>
+                  {bidderCount > 0 && (
+                    <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
+                  )}
+                  <span className={bidderCount > 0 ? 'ml-1' : ''}>
+                    {bidderCount === 0 ? 'No Players Bidding' : bidderCount === 1 ? 'Player Bidding' : 'Players Bidding'}
+                  </span>
                 </span>
                 
               </div>
