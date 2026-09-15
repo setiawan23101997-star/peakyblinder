@@ -883,8 +883,9 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
   const isEnding = remaining > 0 && remaining < URGENT_MS
   const timeLabel = formatAuctionTime(remaining)
 
-  // All active clan auctions use blind bidding. The dashboard must never
-  // expose another member's identity, current/highest bid, or bid count.
+  // All active clan auctions use blind bidding. The dashboard never exposes
+  // another member's identity or current/highest bid. It only shows the
+  // number of active bidders, preserving blind-bid privacy.
   // `currentBid` is retained here only as the stored starting-bid display
   // value used by the existing dashboard data shape.
   const startingBid = Number(a.startBid ?? a.minBid ?? a.currentBid ?? 0)
@@ -893,7 +894,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
 
   const cardLabel =
     `${a.name}, ${a.rarity} rarity, blind auction, starting bid ${startingBid.toLocaleString()} coins, ` +
-    `${bidderCount} players bidding, bid details hidden, ends in ${timeLabel}`
+    `${bidderCount} ${bidderCount === 1 ? 'player' : 'players'} bidding, bid details hidden, ends in ${timeLabel}`
 
   return (
     <button type="button" onClick={onOpenAll} aria-label={cardLabel}
@@ -946,7 +947,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
               <div className="mt-1.5">
                 <span className="inline-flex items-center rounded-full border border-gold/25 bg-gold/[.055] px-2.5 py-1 text-[9px] font-bold tracking-wide text-gold-light">
                   <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
-                  <span className="ml-1">Players Bidding</span>
+                  <span className="ml-1">{bidderCount === 1 ? 'Player Bidding' : 'Players Bidding'}</span>
                 </span>
                 
               </div>
@@ -1010,7 +1011,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
               <div className="mt-1.5">
                 <span className="inline-flex items-center rounded-full border border-gold/25 bg-gold/[.055] px-2.5 py-1 text-[9px] font-bold tracking-wide text-gold-light">
                   <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
-                  <span className="ml-1">Players Bidding</span>
+                  <span className="ml-1">{bidderCount === 1 ? 'Player Bidding' : 'Players Bidding'}</span>
                 </span>
                 
               </div>
