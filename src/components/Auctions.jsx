@@ -1746,131 +1746,263 @@ function FeaturedAuctionCard({
   const rm = getRarityMeta(auction.rarity)
   const remaining = auction.endsAt - now
   const isUrgent = remaining > 0 && remaining < URGENT_MS
+  const biddingOpen = isBiddingOpen(auction, now)
+  const own = getOwnBidState(auction, currentUser?.name)
+  const startingBid = getStartingBid(auction)
+  const availableCoins = Math.max(0, Number(currentCoins) || 0)
+  const reservedCoins = own.hasBid ? Math.max(0, Number(own.amount) || 0) : 0
+  const canSubmit = biddingOpen && !own.cancelled && own.submissions < MAX_BID_SUBMISSIONS
 
   return (
     <section
-      className="relative overflow-hidden rounded-2xl border bg-[#0b0908]/95"
+      className="relative overflow-hidden rounded-xl border bg-[#0b0908]/95"
       style={{
-        borderColor: rgba(rm.rgb, 0.30),
-        boxShadow: `0 18px 45px -32px ${rgba(rm.rgb, 0.38)}, inset 0 1px 0 rgba(255,255,255,.03)`,
+        borderColor: rgba(rm.rgb, 0.28),
+        boxShadow: `0 14px 35px -28px ${rgba(rm.rgb, 0.38)}, inset 0 1px 0 rgba(255,255,255,.03)`,
       }}
       aria-label={`Featured blind auction: ${auction.name}`}
     >
-      <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{
-        background: `radial-gradient(circle at 0% 0%, ${rgba(rm.rgb,.08)}, transparent 32%)`,
-      }} />
+      <div
+        className="pointer-events-none absolute inset-0"
+        aria-hidden="true"
+        style={{
+          background: `radial-gradient(circle at 10% 50%, ${rgba(rm.rgb,.09)}, transparent 42%)`,
+        }}
+      />
 
-      <div className="relative">
-        <div className="flex items-center justify-between gap-2 border-b border-white/[.06] bg-black/20 px-3 py-2.5 sm:gap-3 sm:px-5">
-          <div className="flex min-w-0 items-center gap-2">
-            <FeaturedPill rarityMeta={rm} />
-            <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-[.15em] text-text-dim">Featured Blind Lot</span>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="hidden sm:inline text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Time</span>
-            <span
-              className={`rounded-md border px-2 py-1 font-mono text-xs font-bold tabular-nums ${
-                isUrgent
-                  ? 'border-red-500/30 bg-red-500/[.07] text-red-400 motion-safe:animate-pulse'
-                  : 'border-gold/20 bg-gold/[.04]'
-              }`}
-              style={!isUrgent ? { color: rm.color } : undefined}
-            >
-              {formatCountdown(auction.endsAt, now)}
-            </span>
-          </div>
+      {/* Header exactly kept as a thin banner row */}
+      <div className="relative flex items-center justify-between gap-2 border-b border-white/[.06] bg-black/20 px-3 py-1.5 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <FeaturedPill rarityMeta={rm} />
+          <span className="hidden truncate text-[8px] font-bold uppercase tracking-[.15em] text-text-dim sm:inline">
+            Featured Blind Lot
+          </span>
         </div>
 
-        <div className="p-3 sm:p-5">
-          <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-[112px_minmax(0,1fr)_300px] lg:gap-5">
-            <div className="flex justify-center lg:justify-start">
-              {auction.imageUrl ? (
-                <div
-                  className="relative h-24 w-24 overflow-hidden rounded-xl border bg-black/40 sm:h-28 sm:w-28"
-                  style={{ borderColor: rgba(rm.rgb,.36), boxShadow: `0 14px 30px -20px ${rgba(rm.rgb,.45)}` }}
-                >
-                  <img src={auction.imageUrl} alt={auction.name} loading="lazy" className="h-full w-full object-cover" onError={e => { e.currentTarget.style.display='none' }} />
-                </div>
-              ) : (
-                <div className="flex h-24 w-24 items-center justify-center rounded-xl border bg-black/30 font-spectral text-3xl font-bold sm:h-28 sm:w-28 sm:text-4xl" style={{ borderColor: rgba(rm.rgb,.36), color: rm.color, backgroundColor: rgba(rm.rgb,.06) }}>
-                  {auction.name.charAt(0).toUpperCase()}
-                </div>
-              )}
-            </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="hidden text-[9px] font-bold uppercase tracking-[.16em] text-text-dim sm:inline">
+            Time
+          </span>
+          <span
+            className={`rounded-lg border px-3 py-1.5 font-mono text-[14px] font-bold leading-none tabular-nums ${
+              isUrgent
+                ? 'border-red-500/30 bg-red-500/[.07] text-red-400 motion-safe:animate-pulse'
+                : 'border-gold/20 bg-gold/[.04]'
+            }`}
+            style={!isUrgent ? { color: rm.color } : undefined}
+          >
+            {formatCountdown(auction.endsAt, now)}
+          </span>
+        </div>
+      </div>
 
-            <div className="min-w-0 flex flex-col justify-center">
+      {/* Reference-style horizontal hero:
+          information stays on the left, image is anchored on the far right,
+          and the action controls sit on the same lower line as the auction facts. */}
+      <div className="relative px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex min-h-[126px] items-stretch gap-3 sm:min-h-[136px] sm:gap-4">
+          {/* Left content */}
+          <div className="order-1 flex min-w-0 flex-1 flex-col justify-between pr-1">
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1.5">
                 <RarityBadge rarity={auction.rarity} />
                 <BlindStatusPill>Blind</BlindStatusPill>
               </div>
 
-              <h2 className="mt-1.5 font-spectral text-2xl font-bold leading-tight text-text-bright break-words">
+              <h2
+                className="mt-0.5 font-spectral text-[22px] font-bold leading-tight break-words sm:text-[25px]"
+                style={{ color: rm.color }}
+              >
                 {auction.name}
               </h2>
 
               {auction.description && (
-                <p className="mt-1 text-[11px] leading-4 text-text-dim line-clamp-2">{auction.description}</p>
+                <p className="mt-0.5 line-clamp-1 text-[10px] leading-4 text-text-dim sm:text-[11px]">
+                  {auction.description}
+                </p>
               )}
 
-              <div className="mt-2.5 grid max-w-md grid-cols-2 gap-2 sm:mt-3">
-                <div className="rounded-lg border border-white/[.06] bg-black/20 px-3 py-2">
-                  <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Starting Bid</div>
-                  <div className="mt-0.5 font-mono text-lg font-bold tabular-nums" style={{ color: rm.color }}>
-                    {getStartingBid(auction).toLocaleString()} <span className="text-[8px] font-normal text-text-dim">coins</span>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-white/[.06] bg-black/20 px-3 py-2">
-                  <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim">Other Bids</div>
-                  <div className="mt-0.5 text-sm font-semibold text-text-bright">Hidden</div>
-                  <div className="text-[8px] text-text-dim">names · amounts · count</div>
-                </div>
+              {/* Larger, readable auction facts */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] font-medium text-text-dim sm:text-[13px]">
+                <span>
+                  Starts <strong className="font-mono text-[13px] font-semibold text-text-bright sm:text-[14px]">{startingBid.toLocaleString()}</strong> coins
+                </span>
+                <span className="text-text-dim/45">•</span>
+                <span>
+                  Ends <strong className="font-mono text-[13px] font-semibold text-text-bright sm:text-[14px]">{formatDateTime(auction.endsAt)}</strong>
+                  <span className="ml-1 text-[10px] text-text-dim">UTC+08:00</span>
+                </span>
+                <span className="text-text-dim/45">•</span>
+                <span>
+                  Local <strong className="font-mono text-[13px] font-semibold text-text-bright sm:text-[14px]">{formatLocalDateTime(auction.endsAt)}</strong>
+                </span>
               </div>
 
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[8px] text-text-dim">
-                <span>Ends <span className="font-mono text-text-bright">{formatDateTime(auction.endsAt)}</span> {SERVER_TZ_SHORT}</span>
-                <span className="text-white/15">·</span>
-                <span>Local <span className="font-mono text-text-bright">{formatLocalDateTime(auction.endsAt)}</span></span>
+              {/* Blind explanation sits directly under the timing, as helper text. */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] leading-4">
+                <span className="font-medium text-text-dim">
+                  Your bid is hidden from everyone until close.
+                </span>
+                <span className="hidden text-text-dim/35 sm:inline">•</span>
+                <span className="text-text-dim/70">
+                  Your first bid is hidden from other members.
+                </span>
               </div>
             </div>
 
-            <BlindBidPanel
-              auction={auction}
-              now={now}
-              currentUser={currentUser}
-              bidAmount={bidAmount}
-              onBidChange={onBidChange}
-              onPlaceBid={onPlaceBid}
-              onCancelBid={onCancelBid}
-            />
-          </div>
+            {/* Bottom action row — same horizontal plane as the reference banner */}
+            <div className="mt-2 flex min-w-0 items-center gap-2 border-t border-white/[.06] pt-2">
+              <div className="shrink-0">
+                <div className="text-[7px] font-bold uppercase tracking-[.13em] text-gold-dim">Your Coins</div>
+                <div className="font-mono text-[13px] font-bold tabular-nums text-gold-bright">
+                  {availableCoins.toLocaleString()}
+                </div>
+              </div>
 
-          {isElder && (
-            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/[.05] pt-3">
-              <span className="mr-1 text-[8px] font-bold uppercase tracking-[.15em] text-text-dim">Admin</span>
-              {isMaster && (
-                <button type="button" onClick={onEndEarly} className="rounded-lg border border-yellow-500/15 bg-yellow-500/[.025] px-2.5 py-1.5 text-[9px] font-semibold text-yellow-400 hover:bg-yellow-500/[.07]">
-                  End Early
+              <div className="hidden shrink-0 border-l border-white/[.07] pl-2 sm:block">
+                <div className="text-[7px] font-bold uppercase tracking-[.13em] text-text-dim">Reserved</div>
+                <div className="font-mono text-[13px] font-bold tabular-nums text-text-bright">
+                  {reservedCoins.toLocaleString()}
+                </div>
+              </div>
+
+              <div className="hidden shrink-0 border-l border-white/[.07] pl-2 sm:block">
+                <div className="text-[7px] font-bold uppercase tracking-[.13em] text-text-dim">Current Bid</div>
+                <div className={`font-mono text-[13px] font-bold tabular-nums ${own.hasBid ? 'text-green-300' : 'text-text-dim'}`}>
+                  {own.hasBid ? own.amount.toLocaleString() : '—'}
+                  {own.hasBid && <span className="ml-1 text-[7px] font-normal text-text-dim">coins</span>}
+                </div>
+              </div>
+
+              {currentUser && auction.status === 'active' && (
+                own.cancelled ? (
+                  <div className="ml-auto rounded-md border border-red-500/20 bg-red-500/[.035] px-2.5 py-1.5 text-[8px] font-bold text-red-400">
+                    BID CANCELLED
+                  </div>
+                ) : canSubmit ? (
+                  <div className="ml-auto flex min-w-0 items-center gap-1.5">
+                    <label htmlFor={`featured-blind-bid-${auction.id}`} className="sr-only">
+                      Blind bid amount for {auction.name}
+                    </label>
+                    <input
+                      id={`featured-blind-bid-${auction.id}`}
+                      className="input h-8 w-[92px] min-w-0 py-1 text-sm font-mono sm:w-[105px]"
+                      type="number"
+                      inputMode="numeric"
+                      min={startingBid}
+                      step="1"
+                      placeholder={String(own.hasBid ? own.amount : startingBid)}
+                      value={bidAmount}
+                      onChange={e => onBidChange(e.target.value)}
+                      onFocus={e => {
+                        if (!e.target.value) onBidChange(String(own.hasBid ? own.amount : startingBid))
+                      }}
+                      aria-label="Your blind bid amount"
+                    />
+                    <button
+                      type="button"
+                      onClick={onPlaceBid}
+                      className="btn-gold h-8 min-w-[66px] px-3 text-[9px] font-bold"
+                    >
+                      {own.hasBid ? 'Change' : 'Bid'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className={`ml-auto flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 ${
+                    isUrgent
+                      ? 'border-red-500/25 bg-red-500/[.045]'
+                      : 'border-red-500/15 bg-red-500/[.025]'
+                  }`}>
+                    <span className="text-xs">🔒</span>
+                    <div className="text-[8px] font-bold text-red-400">Bidding Locked</div>
+                  </div>
+                )
+              )}
+
+              {own.hasBid && !own.cancelled && biddingOpen && (
+                <button
+                  type="button"
+                  onClick={onCancelBid}
+                  className="shrink-0 rounded-md border border-red-500/15 bg-transparent px-2.5 py-1.5 text-[8px] font-semibold uppercase tracking-[.06em] text-red-400/80 hover:border-red-500/35 hover:bg-red-500/[.04] hover:text-red-300"
+                >
+                  Cancel
                 </button>
               )}
-              <button
-                type="button"
-                onClick={onToggleFeatured}
-                disabled={featuringInFlight}
-                className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-semibold ${
-                  isPinned
-                    ? 'border-gold/35 bg-gold/[.08] text-gold-bright'
-                    : 'border-white/[.08] bg-black/20 text-text-dim hover:text-gold-light'
-                }`}
-              >
-                {featuringInFlight ? '…' : isPinned ? '★ Unfeature' : '☆ Feature'}
-              </button>
-              <button type="button" onClick={onDelete} className="ml-auto rounded-lg px-2.5 py-1.5 text-[9px] font-semibold text-red-400/75 hover:bg-red-500/[.06] hover:text-red-300">
-                Delete
-              </button>
+
+              <div className="hidden shrink-0 text-right lg:block">
+                <div className="text-[7px] uppercase tracking-[.13em] text-text-dim">Changes</div>
+                <div className="font-mono text-[11px] font-bold text-gold-light">{own.changesLeft}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right-side item image — anchored exactly to the banner edge */}
+          {auction.imageUrl ? (
+            <div
+              className="order-2 flex h-[108px] w-[108px] shrink-0 self-center overflow-hidden rounded-lg border bg-black/40 sm:h-[120px] sm:w-[120px]"
+              style={{
+                borderColor: rgba(rm.rgb,.42),
+                boxShadow: `0 10px 25px -18px ${rgba(rm.rgb,.48)}`,
+              }}
+            >
+              <img
+                src={auction.imageUrl}
+                alt={auction.name}
+                loading="lazy"
+                className="h-full w-full object-cover"
+                onError={e => { e.currentTarget.style.display='none' }}
+              />
+            </div>
+          ) : (
+            <div
+              className="order-2 flex h-[108px] w-[108px] shrink-0 self-center items-center justify-center rounded-lg border bg-black/30 font-spectral text-2xl font-bold sm:h-[120px] sm:w-[120px]"
+              style={{
+                borderColor: rgba(rm.rgb,.42),
+                color: rm.color,
+                backgroundColor: rgba(rm.rgb,.06),
+              }}
+            >
+              {auction.name.charAt(0).toUpperCase()}
             </div>
           )}
         </div>
+
+        {isElder && (
+          <div className="mt-2 flex items-center gap-2 border-t border-white/[.04] pt-1.5">
+            <span className="text-[7px] font-bold uppercase tracking-[.15em] text-text-dim">Admin</span>
+
+            {isMaster && (
+              <button
+                type="button"
+                onClick={onEndEarly}
+                className="rounded-md border border-yellow-500/15 bg-yellow-500/[.025] px-2 py-1 text-[8px] font-semibold text-yellow-400 hover:bg-yellow-500/[.07]"
+              >
+                End Early
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onToggleFeatured}
+              disabled={featuringInFlight}
+              className={`rounded-md border px-2 py-1 text-[8px] font-semibold ${
+                isPinned
+                  ? 'border-gold/35 bg-gold/[.08] text-gold-bright'
+                  : 'border-white/[.08] bg-black/20 text-text-dim hover:text-gold-light'
+              }`}
+            >
+              {featuringInFlight ? '…' : isPinned ? '★ Unfeature' : '☆ Feature'}
+            </button>
+
+            <button
+              type="button"
+              onClick={onDelete}
+              className="ml-auto rounded-md px-2 py-1 text-[8px] font-semibold text-red-400/75 hover:bg-red-500/[.06] hover:text-red-300"
+            >
+              Delete
+            </button>
+          </div>
+        )}
       </div>
     </section>
   )
