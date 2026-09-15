@@ -1973,43 +1973,47 @@ function FeaturedAuctionCard({
               </div>
             </div>
 
-            {/* Bottom action row — same horizontal plane as the reference banner */}
-            <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_110px_88px] items-center gap-2 border-t border-white/[.06] pt-2 sm:flex">
-              <div className="shrink-0">
-                <div className="text-[7px] font-bold uppercase tracking-[.13em] text-gold-dim">Your Coins</div>
-                <div className="font-mono text-[13px] font-bold tabular-nums text-gold-bright">
-                  {availableCoins.toLocaleString()}
+            {/* Bottom action area:
+                mobile uses two deliberate rows so the balance, bid field and
+                actions never compete for the same narrow horizontal space. */}
+            <div className="mt-2 border-t border-white/[.06] pt-2 sm:flex sm:items-center sm:gap-2">
+              <div className="flex min-w-0 items-center justify-between sm:shrink-0">
+                <div>
+                  <div className="text-[7px] font-bold uppercase tracking-[.13em] text-gold-dim">Your Coins</div>
+                  <div className="font-mono text-[15px] font-bold tabular-nums text-gold-bright">
+                    {availableCoins.toLocaleString()}
+                  </div>
                 </div>
-              </div>
 
-              <div className="hidden shrink-0 border-l border-white/[.07] pl-2 sm:block">
-                <div className="text-[7px] font-bold uppercase tracking-[.13em] text-text-dim">Reserved</div>
-                <div className="font-mono text-[13px] font-bold tabular-nums text-text-bright">
-                  {reservedCoins.toLocaleString()}
+                <div className="hidden shrink-0 border-l border-white/[.07] pl-3 sm:block">
+                  <div className="text-[7px] font-bold uppercase tracking-[.13em] text-text-dim">Reserved</div>
+                  <div className="font-mono text-[13px] font-bold tabular-nums text-text-bright">
+                    {reservedCoins.toLocaleString()}
+                  </div>
                 </div>
-              </div>
 
-              <div className="hidden shrink-0 border-l border-white/[.07] pl-2 sm:block">
-                <div className="text-[7px] font-bold uppercase tracking-[.13em] text-text-dim">Current Bid</div>
-                <div className={`font-mono text-[13px] font-bold tabular-nums ${own.hasBid ? 'text-green-300' : 'text-text-dim'}`}>
-                  {own.hasBid ? own.amount.toLocaleString() : '—'}
-                  {own.hasBid && <span className="ml-1 text-[7px] font-normal text-text-dim">coins</span>}
+                <div className="hidden shrink-0 border-l border-white/[.07] pl-3 sm:block">
+                  <div className="text-[7px] font-bold uppercase tracking-[.13em] text-text-dim">Current Bid</div>
+                  <div className={`font-mono text-[13px] font-bold tabular-nums ${own.hasBid ? 'text-green-300' : 'text-text-dim'}`}>
+                    {own.hasBid ? own.amount.toLocaleString() : '—'}
+                    {own.hasBid && <span className="ml-1 text-[7px] font-normal text-text-dim">coins</span>}
+                  </div>
                 </div>
               </div>
 
               {currentUser && auction.status === 'active' && (
                 own.cancelled ? (
-                  <div className="ml-auto rounded-md border border-red-500/20 bg-red-500/[.035] px-2.5 py-1.5 text-[8px] font-bold text-red-400">
+                  <div className="mt-2 rounded-md border border-red-500/20 bg-red-500/[.035] px-2.5 py-2 text-center text-[8px] font-bold text-red-400 sm:ml-auto sm:mt-0">
                     BID CANCELLED
                   </div>
                 ) : canSubmit ? (
-                  <div className="ml-0 flex min-w-0 items-center gap-1.5 sm:ml-auto">
+                  <div className="mt-2 flex w-full min-w-0 items-stretch gap-2 sm:ml-auto sm:mt-0 sm:w-auto">
                     <label htmlFor={`featured-blind-bid-${auction.id}`} className="sr-only">
                       Blind bid amount for {auction.name}
                     </label>
                     <input
                       id={`featured-blind-bid-${auction.id}`}
-                      className="input h-10 w-full min-w-0 py-1.5 px-3 text-base font-mono sm:h-8 sm:w-[105px] sm:px-2 sm:py-1 sm:text-sm"
+                      className="input h-11 min-w-0 flex-1 px-3 py-2 text-lg font-mono sm:h-8 sm:w-[105px] sm:flex-none sm:px-2 sm:py-1 sm:text-sm"
                       type="number"
                       inputMode="numeric"
                       min={startingBid}
@@ -2025,13 +2029,13 @@ function FeaturedAuctionCard({
                     <button
                       type="button"
                       onClick={onPlaceBid}
-                      className="btn-gold h-10 min-w-0 px-2 text-[11px] font-bold sm:h-8 sm:min-w-[66px] sm:px-3 sm:text-[9px]"
+                      className="btn-gold h-11 w-[92px] shrink-0 px-3 text-sm font-bold sm:h-8 sm:w-auto sm:min-w-[66px] sm:px-3 sm:text-[9px]"
                     >
                       {own.hasBid ? 'Change' : 'Bid'}
                     </button>
                   </div>
                 ) : (
-                  <div className={`ml-auto flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 ${
+                  <div className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border px-2.5 py-2 sm:ml-auto sm:mt-0 sm:w-auto ${
                     isUrgent
                       ? 'border-red-500/25 bg-red-500/[.045]'
                       : 'border-red-500/15 bg-red-500/[.025]'
@@ -2046,7 +2050,7 @@ function FeaturedAuctionCard({
                 <button
                   type="button"
                   onClick={onCancelBid}
-                  className="shrink-0 rounded-md border border-red-500/15 bg-transparent px-2.5 py-1.5 text-[8px] font-semibold uppercase tracking-[.06em] text-red-400/80 hover:border-red-500/35 hover:bg-red-500/[.04] hover:text-red-300"
+                  className="mt-2 h-11 w-full shrink-0 rounded-md border border-red-500/15 bg-transparent px-3 text-[9px] font-semibold uppercase tracking-[.06em] text-red-400/80 hover:border-red-500/35 hover:bg-red-500/[.04] hover:text-red-300 sm:mt-0 sm:w-auto sm:h-8 sm:px-2.5 sm:text-[8px]"
                 >
                   Cancel
                 </button>
