@@ -1348,6 +1348,7 @@ export default function Auctions({ ctx }) {
             </div>
           )}
         </div>
+        </div>
       </header>
 
       {/* Essential auction rules — deliberately limited to the information players need before bidding */}
