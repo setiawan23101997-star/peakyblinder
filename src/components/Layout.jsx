@@ -165,13 +165,16 @@ function NotificationBell({ ctx, onNavigate }) {
   const [loading, setLoading] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const panelRef = useRef(null)
+  const loadRequestRef = useRef(0)
 
   const memberId = currentUser?.id
   const isGuest = !memberId || currentUser?.name === 'Guest'
 
   const loadNotifications = async () => {
+    const requestId = ++loadRequestRef.current
+
     if (!supabase || isGuest) {
-      setNotifications([])
+      if (requestId === loadRequestRef.current) setNotifications([])
       return
     }
 
@@ -209,6 +212,10 @@ function NotificationBell({ ctx, onNavigate }) {
         }
       }
 
+      // Ignore an older request if Clear All (or a newer load) happened
+      // while this query was still in flight.
+      if (requestId !== loadRequestRef.current) return
+
       setNotifications(
         (data || []).map(notification => ({
           ...notification,
@@ -218,9 +225,11 @@ function NotificationBell({ ctx, onNavigate }) {
         }))
       )
     } catch (err) {
-      console.warn('Load notifications failed:', err)
+      if (requestId === loadRequestRef.current) {
+        console.warn('Load notifications failed:', err)
+      }
     } finally {
-      setLoading(false)
+      if (requestId === loadRequestRef.current) setLoading(false)
     }
   }
 
@@ -372,6 +381,11 @@ function NotificationBell({ ctx, onNavigate }) {
 
   const clearAllNotifications = async () => {
     if (!supabase || !memberId || notifications.length === 0) return
+
+    // Invalidate every in-flight/polling load first. Without this, a
+    // 5-second poll that started before the DELETE can finish afterward and
+    // reinsert the old notifications into React state.
+    ++loadRequestRef.current
 
     const previous = notifications
     setNotifications([])
