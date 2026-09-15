@@ -2258,7 +2258,7 @@ function AuctionCard({
           <div className={`shrink-0 rounded-md px-2.5 py-1 ${
             isUrgent
               ? 'bg-red-500/[.08] text-red-400'
-              : 'bg-gold/[.06] text-gold-light'
+              : 'text-gold-light'
           }`}>
             <span className={`font-mono text-[15px] font-bold leading-none tabular-nums ${
               isUrgent ? 'motion-safe:animate-pulse' : ''
