@@ -455,12 +455,12 @@ export default function Attendance({ ctx }) {
       } else if (matchingSessions.length > 1) {
         const logDate = new Date(logTs)
         const hour = Number(new Intl.DateTimeFormat('en-US', {
-          timeZone: SERVER_TIME_ZONE,
+          timeZone: SERVER_TZ,
           hour: '2-digit',
           hour12: false,
         }).format(logDate))
         const minute = Number(new Intl.DateTimeFormat('en-US', {
-          timeZone: SERVER_TIME_ZONE,
+          timeZone: SERVER_TZ,
           minute: '2-digit',
         }).format(logDate))
         const minutes = hour * 60 + minute
@@ -1868,7 +1868,7 @@ export default function Attendance({ ctx }) {
         const alreadyRecorded = new Set((missingLog.attendees || []).map(a => String(a.name).trim().toLowerCase()))
         const availableMissing = members.filter(m => {
           if (alreadyRecorded.has(String(m.name).trim().toLowerCase())) return false
-          return m.name.toLowerCase().includes(missingSearch.toLowerCase())
+          return String(m.name || '').toLowerCase().includes(missingSearch.toLowerCase())
         })
         const missingSelectedCount = Object.values(missingMembers).filter(Boolean).length
         const baseRecordedCount = (missingLog.attendees || []).length
