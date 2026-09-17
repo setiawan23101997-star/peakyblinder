@@ -756,7 +756,7 @@ function NotificationBell({ ctx, onNavigate }) {
 }
 
 export default function Layout({ ctx, page, setPage, children, toasts }) {
-  const { currentUser, setCurrentUser, addToast, allMembers } = ctx
+  const { currentUser, setCurrentUser, addToast, allMembers, supabase } = ctx
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -780,6 +780,65 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
   const liveCurrentUser = allMembers?.find(
     member => String(member.id) === String(currentUser?.id)
   ) || currentUser
+
+  const [displayCoins, setDisplayCoins] = useState(
+    Number(liveCurrentUser?.coins || 0)
+  )
+
+  // Keep the Layout coin balance live from shared context.
+  // Supabase Realtime below handles cross-page/cross-browser coin changes
+  // without polling or forcing a page refresh.
+  useEffect(() => {
+    if (liveCurrentUser?.id) {
+      setDisplayCoins(Number(liveCurrentUser?.coins || 0))
+    }
+  }, [liveCurrentUser?.id, liveCurrentUser?.coins])
+
+  // Keep the header balance on the same fast path as Marketplace.jsx.
+  // Listen only to this member's row and update both local display state and
+  // currentUser immediately when Supabase delivers the UPDATE event.
+  useEffect(() => {
+    if (!supabase || !currentUser?.id || currentUser?.name === 'Guest') return undefined
+
+    const memberId = Number(currentUser.id)
+    if (!Number.isFinite(memberId)) return undefined
+
+    const channel = supabase
+      .channel(`layout-member-balance-${memberId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'members',
+          filter: `id=eq.${memberId}`,
+        },
+        payload => {
+          const nextCoins = Number(payload?.new?.coins)
+          if (!Number.isFinite(nextCoins)) return
+
+          // Update the visible header immediately.
+          setDisplayCoins(nextCoins)
+
+          // Keep the shared logged-in user record in sync too, so any Layout
+          // UI that still reads currentUser.coins stays current as well.
+          setCurrentUser(prev => (
+            prev && String(prev.id) === String(memberId)
+              ? { ...prev, coins: nextCoins }
+              : prev
+          ))
+        }
+      )
+      .subscribe(status => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn(`[Layout] Member balance realtime ${status.toLowerCase()}.`)
+        }
+      })
+
+    return () => {
+      try { supabase.removeChannel(channel) } catch {}
+    }
+  }, [supabase, currentUser?.id, currentUser?.name, setCurrentUser])
 
   useEffect(() => {
     if (!userMenuOpen && !moreOpen) return
@@ -943,7 +1002,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               <div className="flex h-10 shrink-0 items-center gap-1 rounded-xl border border-gold/10 bg-gold/[0.025] px-2 md:hidden">
                 <span className="text-[13px]">🪙</span>
                 <span className="font-mono text-[12px] font-semibold text-gold-light">
-                  {Number(liveCurrentUser?.coins || 0).toLocaleString()}
+                  {Number(displayCoins || 0).toLocaleString()}
                 </span>
               </div>
             )}
@@ -974,7 +1033,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                   <div className="leading-tight">
                     <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim">Coins</div>
                     <div className="mt-0.5 font-mono text-[12px] font-semibold text-gold-light">
-                      {Number(liveCurrentUser?.coins || 0).toLocaleString()}
+                      {Number(displayCoins || 0).toLocaleString()}
                     </div>
                   </div>
                 </div>
