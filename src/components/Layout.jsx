@@ -941,7 +941,9 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
 
             {currentUser && (
               <>
-                <NotificationBell ctx={ctx} onNavigate={navigate} />
+                <div className="hidden md:block">
+                  <NotificationBell ctx={ctx} onNavigate={navigate} />
+                </div>
                 <div ref={userMenuRef} className="relative">
                   <button
                     type="button"
