@@ -10,7 +10,7 @@ const navItems = [
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆' },
   { id: 'calendar', label: 'Calendar', icon: '📅' },
   { id: 'notice-board', label: 'Notice Board', icon: '📜' },
-  { id: 'admin-log', label: 'Admin Panel', icon: '🛡' , staffOnly: true },
+  { id: 'admin-log', label: 'Admin', icon: '🛡' , staffOnly: true },
 ]
 
 const FALLBACK_REGIONS = [
