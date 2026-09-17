@@ -13,6 +13,26 @@ const AWAKENING_OPTIONS = [
   { value: 1, label: 'Stage 1' },
 ]
 
+async function recordAdminActivity(supabase, currentUser, action, entityType = 'Admin CP', entityId = null, details = {}) {
+  if (!supabase || !currentUser || !STAFF_ROLES.has(currentUser.role)) return false
+  try {
+    const { error } = await supabase.from('admin_audit_logs').insert({
+      actor_id: currentUser.id ?? null,
+      actor_name: currentUser.name || currentUser.username || 'Unknown Staff',
+      actor_role: currentUser.role,
+      action,
+      entity_type: entityType,
+      entity_id: entityId ?? null,
+      details: details && typeof details === 'object' ? details : {},
+    })
+    if (error) throw error
+    return true
+  } catch (error) {
+    console.warn('Failed to record admin activity:', error)
+    return false
+  }
+}
+
 const formatNumber = value => Number(value || 0).toLocaleString()
 
 function formatDate(value) {
@@ -132,7 +152,7 @@ function ActionCard({ icon, title, description, button, onClick, danger = false 
 }
 
 function AddMemberModal({ ctx, onClose }) {
-  const { saveMember, addToast, currentUser, allMembers = [] } = ctx
+  const { saveMember, addToast, currentUser, allMembers = [], supabase } = ctx
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: '', username: '', password: '', cls: 'Berserker', power: 10000, character_level: 1, awakening_stage: 0, role: 'Member', profile_grade: 'Legendary' })
   const isAdmin = currentUser?.role === 'Admin'
@@ -162,6 +182,17 @@ function AddMemberModal({ ctx, onClose }) {
     const ok = await saveMember(member)
     setSaving(false)
     if (ok) {
+      await recordAdminActivity(supabase, currentUser, 'Create Member', 'Member', member.id, {
+        member_name: member.name,
+        username: member.username,
+        role: member.role,
+        cls: member.cls,
+        character_level: member.character_level,
+        awakening_stage: member.awakening_stage,
+        profile_grade: member.profile_grade,
+        coins: member.coins,
+        power: member.power,
+      })
       addToast(`${member.name} added as ${member.role}.`, 'gold', 'Member Added')
       onClose()
     }
@@ -195,7 +226,7 @@ function AddMemberModal({ ctx, onClose }) {
 }
 
 function ManageMemberModal({ ctx, member, onClose }) {
-  const { updateMember, deleteMember, resetMemberPowerCooldown, resetMemberPassword, addToast, currentUser } = ctx
+  const { updateMember, deleteMember, resetMemberPowerCooldown, resetMemberPassword, addToast, currentUser, supabase } = ctx
   const [saving, setSaving] = useState(false)
   const [resetTarget, setResetTarget] = useState(null)
   const [form, setForm] = useState({
@@ -218,17 +249,28 @@ function ManageMemberModal({ ctx, member, onClose }) {
     const level = Math.max(1, Number.parseInt(form.level, 10) || 1)
     const awakening = Math.max(0, Number.parseInt(form.awakening, 10) || 0)
     const updates = {}
-    if (form.cls !== (member.cls || 'Berserker')) updates.cls = form.cls
-    if (form.profile_grade !== (member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary'))) updates.profile_grade = form.profile_grade
-    if (coins !== Number(member.coins || 0)) updates.coins = coins
-    if (level !== Number(member.character_level || member.level || 1)) updates.character_level = level
-    if (awakening !== Number(member.awakening_stage || 0)) updates.awakening_stage = awakening
-    if (power !== Number(member.power || 0)) { updates.power = power; updates.power_updated_at = new Date().toISOString(); updates.power_next_update_at = new Date(Date.now() + POWER_COOLDOWN_MS).toISOString() }
+    const fieldChanges = {}
+    const addChange = (key, label, before, after, delta = null) => {
+      fieldChanges[key] = { label, before, after, ...(delta !== null ? { delta } : {}) }
+    }
+    if (form.cls !== (member.cls || 'Berserker')) { updates.cls = form.cls; addChange('cls', 'Class', member.cls || 'Berserker', form.cls) }
+    if (form.profile_grade !== (member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary'))) { updates.profile_grade = form.profile_grade; addChange('profile_grade', 'Card Grade', member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary'), form.profile_grade) }
+    if (coins !== Number(member.coins || 0)) { updates.coins = coins; addChange('coins', 'Coins', Number(member.coins || 0), coins, coins - Number(member.coins || 0)) }
+    if (level !== Number(member.character_level || member.level || 1)) { updates.character_level = level; addChange('character_level', 'Character Level', Number(member.character_level || member.level || 1), level, level - Number(member.character_level || member.level || 1)) }
+    if (awakening !== Number(member.awakening_stage || 0)) { updates.awakening_stage = awakening; addChange('awakening_stage', 'Awakening', Number(member.awakening_stage || 0), awakening, awakening - Number(member.awakening_stage || 0)) }
+    if (power !== Number(member.power || 0)) { updates.power = power; updates.power_updated_at = new Date().toISOString(); updates.power_next_update_at = new Date(Date.now() + POWER_COOLDOWN_MS).toISOString(); addChange('power', 'Power', Number(member.power || 0), power, power - Number(member.power || 0)) }
     if (!Object.keys(updates).length) { onClose(); return }
     setSaving(true)
     const ok = await updateMember(member.id, updates)
     setSaving(false)
-    if (ok) { addToast(`${member.name} updated.`, 'gold', 'Member Updated'); onClose() }
+    if (ok) {
+      await recordAdminActivity(supabase, currentUser, 'Update Member', 'Member', member.id, {
+        member_name: member.name,
+        field_changes: fieldChanges,
+      })
+      addToast(`${member.name} updated.`, 'gold', 'Member Updated')
+      onClose()
+    }
   }
 
   const changeRole = async role => {
@@ -237,20 +279,54 @@ function ManageMemberModal({ ctx, member, onClose }) {
     if (role === 'Admin' && !window.confirm(`Promote ${member.name} to ADMIN?`)) return
     if (role === 'Master' && !isAdmin && !window.confirm(`Promote ${member.name} to MASTER?`)) return
     const ok = await updateMember(member.id, { role })
-    if (ok) { addToast(`${member.name} is now ${role}.`, 'gold', 'Role Updated'); onClose() }
+    if (ok) {
+      await recordAdminActivity(supabase, currentUser, 'Change Member Role', 'Member', member.id, {
+        member_name: member.name,
+        field_changes: { role: { label: 'Role', before: member.role, after: role } },
+      })
+      addToast(`${member.name} is now ${role}.`, 'gold', 'Role Updated')
+      onClose()
+    }
   }
 
   const remove = async () => {
     if (!canRemove || !window.confirm(`Remove ${member.name}?\n\nThis cannot be undone.`)) return
     const ok = await deleteMember(member.id)
-    if (ok) { addToast(`${member.name} removed.`, 'red', 'Member Removed'); onClose() }
+    if (ok) {
+      await recordAdminActivity(supabase, currentUser, 'Remove Member', 'Member', member.id, {
+        member_name: member.name,
+        username: member.username,
+        role: member.role,
+      })
+      addToast(`${member.name} removed.`, 'red', 'Member Removed')
+      onClose()
+    }
   }
 
   const resetCooldown = async () => {
     if (!isStaff || !resetMemberPowerCooldown) return
     if (!window.confirm(`Reset the Power cooldown for ${member.name}?\n\nThis gives the member 3 fresh Power updates immediately.`)) return
     const ok = await resetMemberPowerCooldown(member.id)
-    if (ok) addToast(`${member.name} can now update Power 3 times.`, 'gold', 'Power Cooldown Reset')
+    if (ok) {
+      await recordAdminActivity(supabase, currentUser, 'Reset Power Cooldown', 'Member', member.id, {
+        member_name: member.name,
+      })
+      addToast(`${member.name} can now update Power 3 times.`, 'gold', 'Power Cooldown Reset')
+    }
+  }
+
+  const resetPasswordCtx = {
+    ...ctx,
+    resetMemberPassword: async (...args) => {
+      if (!resetMemberPassword) return false
+      const ok = await resetMemberPassword(...args)
+      if (ok) {
+        await recordAdminActivity(supabase, currentUser, 'Reset Member Password', 'Member', member.id, {
+          member_name: member.name,
+        })
+      }
+      return ok
+    },
   }
 
   return (
@@ -272,7 +348,7 @@ function ManageMemberModal({ ctx, member, onClose }) {
           <div className="mt-5 flex justify-end gap-2"><button onClick={onClose} className="rounded-lg border border-white/10 px-4 py-2 text-xs text-text-dim">Cancel</button><button onClick={save} disabled={saving || !isStaff} className="btn-gold text-xs px-5 py-2.5">{saving ? 'Saving...' : 'Save Changes'}</button></div>
         </div>
       </div>
-      {resetTarget && <ResetPasswordModal ctx={ctx} member={resetTarget} onClose={() => setResetTarget(null)} />}
+      {resetTarget && <ResetPasswordModal ctx={resetPasswordCtx} member={resetTarget} onClose={() => setResetTarget(null)} />}
     </>
   )
 }
@@ -281,29 +357,413 @@ function CoinDecayModal({ ctx, onClose }) {
   const { allMembers = [], currentUser, supabase, reloadMembers, addToast } = ctx
   const [selected, setSelected] = useState([])
   const [busy, setBusy] = useState(false)
-  const rows = allMembers
-  const allSelected = rows.length > 0 && rows.every(member => selected.includes(member.id))
-  const toggleAll = () => setSelected(allSelected ? [] : rows.map(member => member.id))
-  const toggle = id => setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  const [search, setSearch] = useState('')
+
+  const rows = allMembers.filter(member => member.role !== 'Admin')
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return rows
+
+    return rows.filter(member =>
+      `${member.name || ''} ${member.username || ''} ${member.role || ''} ${member.cls || ''}`
+        .toLowerCase()
+        .includes(q)
+    )
+  }, [rows, search])
+
+  const allSelected = filteredRows.length > 0 && filteredRows.every(member => selected.includes(member.id))
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(prev => prev.filter(id => !filteredRows.some(member => member.id === id)))
+      return
+    }
+
+    setSelected(prev => Array.from(new Set([
+      ...prev,
+      ...filteredRows.map(member => member.id),
+    ])))
+  }
+
+  const toggle = id => {
+    setSelected(prev =>
+      prev.includes(id)
+        ? prev.filter(x => x !== id)
+        : [...prev, id]
+    )
+  }
+
   const run = async () => {
     if (!STAFF_ROLES.has(currentUser?.role) || selected.length === 0 || busy) return
-    if (!window.confirm(`Apply 25% Coin Decay to ${selected.length} selected member${selected.length === 1 ? '' : 's'}?\n\nTheir balances will become 75% of the current amount.`)) return
+
+    if (!window.confirm(
+      `Apply 25% Coin Decay to ${selected.length} selected member${selected.length === 1 ? '' : 's'}?\n\nTheir balances will become 75% of the current amount.`
+    )) return
+
     setBusy(true)
+
     try {
       const targets = rows.filter(member => selected.includes(member.id))
-      const results = await Promise.all(targets.map(member => supabase.from('members').update({ coins: Math.floor(Math.max(0, Number(member.coins) || 0) * 0.75) }).eq('id', member.id)))
+
+      const results = await Promise.all(
+        targets.map(member =>
+          supabase
+            .from('members')
+            .update({
+              coins: Math.floor(Math.max(0, Number(member.coins) || 0) * 0.75),
+            })
+            .eq('id', member.id)
+        )
+      )
+
       const failed = results.find(result => result.error)
       if (failed?.error) throw failed.error
+
       await reloadMembers?.()
-      addToast(`25% Coin decay applied to ${targets.length} members.`, 'gold', 'Coin Decay Applied')
+      await recordAdminActivity(supabase, currentUser, 'Apply Coin Decay', 'Coins', null, {
+        percentage: 25,
+        members_affected: targets.length,
+        targets: targets.map(member => ({
+          id: member.id,
+          name: member.name,
+          coins_before: Number(member.coins) || 0,
+          coins_after: Math.floor(Math.max(0, Number(member.coins) || 0) * 0.75),
+        })),
+      })
+      addToast(
+        `25% Coin decay applied to ${targets.length} members.`,
+        'gold',
+        'Coin Decay Applied'
+      )
       onClose()
     } catch (error) {
-      addToast(error?.message || 'Failed to apply Coin Decay.', 'red', 'Coin Decay Failed')
-    } finally { setBusy(false) }
+      addToast(
+        error?.message || 'Failed to apply Coin Decay.',
+        'red',
+        'Coin Decay Failed'
+      )
+    } finally {
+      setBusy(false)
+    }
   }
-  return <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4"><div className="w-full max-w-xl max-h-[85vh] overflow-hidden rounded-2xl border border-gold/20 bg-[#0a0b0d] shadow-[0_35px_100px_rgba(0,0,0,.7)]"><div className="flex items-center justify-between border-b border-white/[0.07] p-5"><div><div className="text-[14px] font-bold uppercase tracking-[0.2em] text-gold-light">Coin Management</div><h2 className="font-spectral text-xl font-bold text-white">25% Coin Decay</h2></div><button onClick={onClose} className="rounded-md border border-white/10 px-3 py-2 text-xs text-text-dim">✕</button></div><div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3"><span className="text-[14px] text-text-dim">{selected.length} selected</span><button onClick={toggleAll} className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-[14px] font-bold uppercase tracking-[0.1em] text-text-dim hover:border-gold/20 hover:text-gold-light disabled:opacity-40">{allSelected ? 'Clear All' : 'Select All'}</button></div><div className="max-h-[55vh] overflow-y-auto p-3">{rows.map(member => <label key={member.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-white/[0.03]"><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggle(member.id)} className="h-4 w-4 accent-yellow-500" /><div className="min-w-0 flex-1"><div className="truncate text-[13px] font-bold text-white">{member.name}</div><div className="text-[14px] text-text-dim">{member.role} · {formatNumber(member.coins)} Coins</div></div></label>)}</div><div className="flex justify-end gap-2 border-t border-white/[0.07] p-4"><button onClick={onClose} className="rounded-lg border border-white/10 px-4 py-2 text-xs text-text-dim">Cancel</button><button onClick={run} disabled={busy || selected.length === 0} className="btn-gold text-xs px-5 py-2.5">{busy ? 'Processing...' : `Apply Decay${selected.length ? ` (${selected.length})` : ''}`}</button></div></div></div>
+
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4"
+      onMouseDown={e => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="flex w-full max-w-2xl max-h-[88vh] flex-col overflow-hidden rounded-2xl border border-gold/20 bg-[#0a0b0d] shadow-[0_35px_100px_rgba(0,0,0,.8)]">
+        <div className="border-b border-white/[.07] p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-[11px] font-black uppercase tracking-[.2em] text-gold-light">
+                Coin Management
+              </div>
+              <h2 className="mt-1 font-spectral text-2xl font-bold text-white">
+                25% Coin Decay
+              </h2>
+              <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-text-dim">
+                Search for members, select the people you want, then apply the decay in one step.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[.02] text-sm text-text-dim hover:border-white/20 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <div className="relative min-w-0 flex-1">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-dim">
+                ⌕
+              </span>
+              <input
+                className="input h-11 w-full pl-9 pr-10 text-[13px]"
+                placeholder="Search member, username, class, or role..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-xs text-text-dim hover:bg-white/[.05] hover:text-white"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleAll}
+              disabled={!filteredRows.length}
+              className="h-11 shrink-0 rounded-lg border border-gold/20 bg-gold/[.04] px-4 text-[12px] font-black uppercase tracking-[.1em] text-gold-light hover:bg-gold/[.08] disabled:opacity-40"
+            >
+              {allSelected ? 'Clear Visible' : 'Select Visible'}
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
+            <span className="font-bold text-white">
+              {selected.length} selected
+            </span>
+            <span className="text-text-dim">
+              {filteredRows.length} shown
+              {search.trim() ? ` for "${search.trim()}"` : ''}
+            </span>
+            {selected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelected([])}
+                className="font-bold text-red-300 hover:text-red-200"
+              >
+                Clear all selections
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+          {filteredRows.length === 0 ? (
+            <div className="rounded-xl border border-white/[.07] bg-white/[.015] px-4 py-12 text-center">
+              <div className="text-2xl">⌕</div>
+              <div className="mt-2 text-[13px] font-bold text-white">
+                No members found
+              </div>
+              <div className="mt-1 text-[12px] text-text-dim">
+                Try another name, username, class, or role.
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {filteredRows.map(member => {
+                const isSelected = selected.includes(member.id)
+
+                return (
+                  <label
+                    key={member.id}
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition ${
+                      isSelected
+                        ? 'border-gold/25 bg-gold/[.055]'
+                        : 'border-transparent bg-white/[.015] hover:border-white/[.07] hover:bg-white/[.03]'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggle(member.id)}
+                      className="h-4 w-4 shrink-0 accent-yellow-500"
+                    />
+
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gold/10 bg-gold/[.035] text-xs">
+                        {member.cls === 'Archer'
+                          ? '🏹'
+                          : member.cls === 'Warlord'
+                            ? '🛡'
+                            : member.cls === 'Skald'
+                              ? '♫'
+                              : member.cls === 'Volva'
+                                ? '✦'
+                                : member.cls === 'Rune Fighter'
+                                  ? 'ᚱ'
+                                  : '⚔'}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] font-bold text-white">
+                          {member.name}
+                        </div>
+                        <div className="mt-0.5 truncate text-[11px] text-text-dim">
+                          {member.role} · {member.cls || '—'} · Lv. {member.character_level || member.level || 1}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <div className="font-mono text-[13px] font-bold text-gold-light">
+                          {formatNumber(member.coins)}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-wider text-text-dim">
+                          Coins
+                        </div>
+                      </div>
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-white/[.07] bg-[#090a0c] p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-[.14em] text-text-dim">
+                Ready to apply
+              </div>
+              <div className="mt-0.5 text-[13px] text-white">
+                {selected.length > 0 ? (
+                  <>
+                    <strong className="text-gold-light">{selected.length}</strong>{' '}
+                    member{selected.length === 1 ? '' : 's'} selected
+                  </>
+                ) : (
+                  'Select at least one member'
+                )}
+              </div>
+            </div>
+
+            <div className="hidden text-right sm:block">
+              <div className="text-[10px] uppercase tracking-wider text-text-dim">
+                Effect
+              </div>
+              <div className="text-[12px] font-bold text-white">
+                Balance × 75%
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-10 rounded-lg border border-white/10 px-4 text-[12px] font-bold uppercase tracking-[.08em] text-text-dim hover:border-white/20 hover:text-white"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={run}
+              disabled={busy || selected.length === 0}
+              className="btn-gold h-10 px-5 text-[12px]"
+            >
+              {busy
+                ? 'Processing...'
+                : `Apply 25% Decay${selected.length ? ` · ${selected.length}` : ''}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
+function ActivityLogPanel({
+  logs, allMembers, filteredLogs, paginatedLogs, loading, error, logSearch, setLogSearch,
+  actionFilter, setActionFilter, entityFilter, setEntityFilter, actions, entities, canDelete,
+  busy, selectedIds, visibleIds, allVisibleSelected, toggleSelectAll, deleteSelected, deleteAllLogs,
+  supabase, currentUser, setLogs, setError, logPage, logTotalPages, setLogPage, loadLogs, LOGS_PER_PAGE,
+}) {
+  const safeText = value => {
+    if (value === null || value === undefined) return ''
+    if (typeof value === 'string') return value
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    try { return JSON.stringify(value) } catch { return '[details unavailable]' }
+  }
+
+  const renderLog = log => {
+    const changes = Array.isArray(getFieldChanges(log?.details)) ? getFieldChanges(log?.details) : []
+    const coinTargets = Array.isArray(targetChanges(log?.details)) ? targetChanges(log?.details) : []
+    let detailsText = ''
+    try { detailsText = prettyDetails(log?.details) || '' } catch { detailsText = '' }
+    const target = targetName(log, allMembers)
+
+    return (
+      <div key={String(log?.id)} className="p-5 sm:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start">
+          <div className="w-full shrink-0 md:w-44">
+            <div className="font-mono text-[13px] text-text-dim">{formatDate(log?.createdAt)}</div>
+            <div className="mt-1 text-[14px] font-bold text-gold-light">{safeText(log?.actorName) || 'Unknown Staff'}</div>
+            <div className="text-[12px] uppercase tracking-wider text-text-dim">{safeText(log?.actorRole)}</div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className={`text-[13px] font-bold ${actionTone(log?.action)}`}>
+              {safeText(log?.action) || 'Unknown Action'}
+              <span className="ml-1 text-[13px] font-normal text-text-dim">· {safeText(log?.entityType) || 'System'}</span>
+            </div>
+            {target && <div className="mt-1 text-[14px] text-text-bright">Target: <span className="font-bold text-gold-light">{safeText(target)}</span></div>}
+            {changes.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {changes.map((change, index) => (
+                  <span key={`${String(change?.key || 'change')}-${index}`} className="rounded-md border border-white/[.08] bg-white/[.025] px-2 py-1 text-[13px] text-text-bright">
+                    {safeText(change?.label || change?.key)}: <strong>{safeText(change?.before) || '—'}</strong> → <strong>{safeText(change?.after) || '—'}</strong>
+                  </span>
+                ))}
+              </div>
+            )}
+            {coinTargets.length > 0 && (
+              <div className="mt-2 rounded-xl border border-white/[.07] bg-white/[.02] p-3">
+                <div className="mb-2 text-[11px] font-black uppercase tracking-[.14em] text-text-dim">Coin Changes</div>
+                <div className="flex flex-wrap gap-2">
+                  {coinTargets.map((item, index) => (
+                    <span key={`${String(item?.id ?? item?.name ?? 'coin')}-${index}`} className="rounded-lg border border-gold/10 bg-gold/[.03] px-2.5 py-1.5 text-[13px] text-text-bright">
+                      <strong className="text-gold-light">{safeText(item?.name) || 'Member'}</strong>: {formatNumber(item?.before)} → {formatNumber(item?.after)} <span className="text-red-300">({Number(item?.delta) > 0 ? '+' : ''}{formatNumber(item?.delta)})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {detailsText && <div className="mt-2 break-words text-[13px] leading-6 text-text-dim">{detailsText}</div>}
+          </div>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (!window.confirm('Delete this audit log?')) return
+                const { error: deleteError } = await supabase.from('admin_audit_logs').delete().eq('id', log.id)
+                if (deleteError) { setError(deleteError.message || 'Could not delete this audit log.'); return }
+                setLogs(prev => prev.filter(item => String(item.id) !== String(log.id)))
+                await recordAdminActivity(supabase, currentUser, 'Delete Audit Log', 'Audit Log', log.id, { deleted_action: log.action, deleted_actor: log.actorName })
+              }}
+              className="control-btn danger shrink-0"
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <section>
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-[12px] font-black uppercase tracking-[.2em] text-text-dim">Activity Log</div>
+          <div className="mt-1 text-[13px] text-text-dim">Complete administrative history. New actions appear instantly.</div>
+        </div>
+        <div className="text-[13px] text-text-dim">{filteredLogs.length.toLocaleString()} matching · {logs.length.toLocaleString()} loaded</div>
+      </div>
+
+      <div className="rounded-2xl border border-white/[.07] bg-[#090807]/80 p-3 sm:p-4">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(160px,1fr)_minmax(160px,1fr)_auto]">
+          <input value={logSearch} onChange={e => setLogSearch(e.target.value)} className="input h-11 w-full px-4 text-[13px]" placeholder="🔍 Search action, member, staff, or details..." />
+          <select value={actionFilter} onChange={e => setActionFilter(e.target.value)} className="input h-11 w-full px-4 text-[13px]"><option value="all">All Actions</option>{actions.slice(1).map(value => <option key={value}>{value}</option>)}</select>
+          <select value={entityFilter} onChange={e => setEntityFilter(e.target.value)} className="input h-11 w-full px-4 text-[13px]"><option value="all">All Areas</option>{entities.slice(1).map(value => <option key={value}>{value}</option>)}</select>
+          <button type="button" onClick={loadLogs} disabled={loading || busy} className="h-11 rounded-lg border border-white/[.08] bg-white/[.02] px-4 text-[12px] font-bold uppercase tracking-[.1em] text-text-dim hover:border-gold/20 hover:text-gold-light disabled:opacity-40">Refresh</button>
+        </div>
+        {canDelete && <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/[.07] bg-[#090807]/80 px-3 py-2.5"><button type="button" onClick={toggleSelectAll} disabled={!visibleIds.length || busy} className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-[12px] font-bold uppercase tracking-[0.1em] text-text-dim hover:border-gold/20 hover:text-gold-light disabled:opacity-40">{allVisibleSelected ? 'Deselect All Matching' : 'Select All Matching'}</button><span className="text-[12px] text-text-dim">{selectedIds.length} selected</span><button type="button" onClick={deleteSelected} disabled={!selectedIds.length || busy} className="control-btn danger ml-auto">Delete Selected</button><button type="button" onClick={deleteAllLogs} disabled={!logs.length || busy} className="rounded-lg border border-red-400/20 bg-red-400/[0.04] px-3 py-2 text-[12px] font-bold uppercase tracking-[0.1em] text-red-300 hover:bg-red-400/10 disabled:opacity-40">Delete All Logs</button></div>}
+        {error && <div className="mt-3 rounded-xl border border-red-400/20 bg-red-400/[.04] px-4 py-3 text-[13px] text-red-300">{error}</div>}
+      </div>
+
+      <div className="mt-3 overflow-hidden rounded-xl border border-white/[.07] bg-[#090807]/80">
+        {loading ? <div className="px-4 py-12 text-center text-[13px] text-text-dim">Loading activity...</div> : paginatedLogs.length === 0 ? <div className="px-4 py-12 text-center text-[13px] text-text-dim">No activity entries found.</div> : <div className="divide-y divide-white/[.055]">{paginatedLogs.map(renderLog)}</div>}
+        {filteredLogs.length > 0 && <div className="flex flex-col gap-3 border-t border-white/[.07] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-[12px] text-text-dim">Showing {(logPage - 1) * LOGS_PER_PAGE + 1}–{Math.min(logPage * LOGS_PER_PAGE, filteredLogs.length)} of {filteredLogs.length}</div><div className="flex items-center gap-1.5"><button type="button" onClick={() => setLogPage(p => Math.max(1, p - 1))} disabled={logPage <= 1} className="rounded-lg border border-white/[.08] px-3 py-2 text-[12px] font-bold text-text-dim disabled:opacity-35">← Prev</button><span className="min-w-[72px] text-center text-[12px] font-bold text-gold-light">Page {logPage} / {logTotalPages}</span><button type="button" onClick={() => setLogPage(p => Math.min(logTotalPages, p + 1))} disabled={logPage >= logTotalPages} className="rounded-lg border border-white/[.08] px-3 py-2 text-[12px] font-bold text-text-dim disabled:opacity-35">Next →</button></div></div>}
+      </div>
+    </section>
+  )
+}
 export default function AdminAuditLog({ ctx }) {
   const supabase = ctx?.supabase
   const currentUser = ctx?.currentUser
@@ -324,6 +784,10 @@ export default function AdminAuditLog({ ctx }) {
   const [showCoinDecay, setShowCoinDecay] = useState(false)
   const [showResetCoins, setShowResetCoins] = useState(false)
   const [resetText, setResetText] = useState('')
+  const [activeTab, setActiveTab] = useState('quick')
+  const [logSearch, setLogSearch] = useState('')
+  const [logPage, setLogPage] = useState(1)
+  const LOGS_PER_PAGE = 50
 
   const loadLogs = useCallback(async () => {
     if (!canView || !supabase) { setLoading(false); return }
@@ -339,21 +803,73 @@ export default function AdminAuditLog({ ctx }) {
   useEffect(() => {
     loadLogs()
     if (!canView) return undefined
-    const timer = setInterval(loadLogs, 30000)
-    return () => clearInterval(timer)
-  }, [loadLogs, canView])
+
+    const handleLocalInsert = event => {
+      const nextLog = normalizeLog(event?.detail)
+      if (!nextLog?.id) return
+      setLogs(prev => [nextLog, ...prev.filter(log => String(log.id) !== String(nextLog.id))].slice(0, 500))
+    }
+
+    window.addEventListener('admin-audit-log-created', handleLocalInsert)
+
+    if (!supabase) {
+      return () => window.removeEventListener('admin-audit-log-created', handleLocalInsert)
+    }
+
+    const channel = supabase
+      .channel('admin-audit-history-live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'admin_audit_logs' }, payload => {
+        const nextLog = normalizeLog(payload?.new)
+        if (!nextLog?.id) return
+        setLogs(prev => [nextLog, ...prev.filter(log => String(log.id) !== String(nextLog.id))].slice(0, 500))
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'admin_audit_logs' }, payload => {
+        const deletedId = payload?.old?.id
+        if (deletedId == null) return
+        setLogs(prev => prev.filter(log => String(log.id) !== String(deletedId)))
+      })
+      .subscribe()
+
+    return () => {
+      window.removeEventListener('admin-audit-log-created', handleLocalInsert)
+      supabase.removeChannel(channel)
+    }
+  }, [loadLogs, canView, supabase])
 
   const visibleMembers = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return allMembers.filter(member => !q || `${member.name || ''} ${member.username || ''} ${member.cls || ''} ${member.role || ''}`.toLowerCase().includes(q))
+    return allMembers.filter(member => {
+      // Admin accounts are intentionally hidden from the Staff Control Center roster.
+      if (member.role === 'Admin') return false
+
+      return !q || `${member.name || ''} ${member.username || ''} ${member.cls || ''} ${member.role || ''}`.toLowerCase().includes(q)
+    })
   }, [allMembers, search])
-  const staffCount = allMembers.filter(member => STAFF_ROLES.has(member.role)).length
+  const staffCount = allMembers.filter(member => ['Master', 'Elder'].includes(member.role)).length
   const recentLogs = logs.slice(0, 5)
   const actions = useMemo(() => ['all', ...Array.from(new Set(logs.map(log => log.action)))], [logs])
   const entities = useMemo(() => ['all', ...Array.from(new Set(logs.map(log => log.entityType)))], [logs])
-  const filteredLogs = useMemo(() => logs.filter(log => (actionFilter === 'all' || log.action === actionFilter) && (entityFilter === 'all' || log.entityType === entityFilter)), [logs, actionFilter, entityFilter])
+  const filteredLogs = useMemo(() => {
+    const q = logSearch.trim().toLowerCase()
+    return logs.filter(log => {
+      if (actionFilter !== 'all' && log.action !== actionFilter) return false
+      if (entityFilter !== 'all' && log.entityType !== entityFilter) return false
+      if (!q) return true
+      const haystack = [
+        log.action, log.entityType, log.actorName, log.actorRole,
+        log.details?.member_name, log.details?.target_name, log.details?.player_name,
+        log.details?.username, log.details?.scope, JSON.stringify(log.details || {})
+      ].filter(Boolean).join(' ').toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [logs, actionFilter, entityFilter, logSearch])
+  const logTotalPages = Math.max(1, Math.ceil(filteredLogs.length / LOGS_PER_PAGE))
+  const safeLogPage = Math.min(logPage, logTotalPages)
+  const paginatedLogs = filteredLogs.slice((safeLogPage - 1) * LOGS_PER_PAGE, safeLogPage * LOGS_PER_PAGE)
   const visibleIds = filteredLogs.map(log => log.id).filter(Boolean)
   const allVisibleSelected = canDelete && visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id))
+
+  useEffect(() => { setLogPage(1) }, [actionFilter, entityFilter, logSearch])
 
   const toggleSelected = id => { if (canDelete) setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) }
   const toggleSelectAll = () => setSelectedIds(prev => allVisibleSelected ? prev.filter(id => !visibleIds.includes(id)) : Array.from(new Set([...prev, ...visibleIds])))
@@ -384,7 +900,15 @@ export default function AdminAuditLog({ ctx }) {
       const results = await Promise.all(allMembers.map(member => supabase.from('members').update({ coins: 0 }).eq('id', member.id)))
       const failed = results.find(result => result.error)
       if (failed?.error) throw failed.error
-      await ctx.reloadMembers?.(); ctx.addToast?.(`All Coins were permanently reset to 0 for ${allMembers.length} members.`, 'red', 'Coins Reset'); setShowResetCoins(false); setResetText('')
+      await ctx.reloadMembers?.()
+      await recordAdminActivity(supabase, currentUser, 'Reset All Coins', 'Coins', null, {
+        members_affected: allMembers.length,
+        coins_after: 0,
+        scope: 'All members including staff',
+      })
+      ctx.addToast?.(`All Coins were permanently reset to 0 for ${allMembers.length} members.`, 'red', 'Coins Reset')
+      setShowResetCoins(false)
+      setResetText('')
     } catch (err) { ctx.addToast?.(err?.message || 'Failed to reset all Coins.', 'red', 'Coin Reset Failed') }
     finally { setBusy(false) }
   }
@@ -393,19 +917,129 @@ export default function AdminAuditLog({ ctx }) {
 
   return (
     <div className="w-full min-w-0 max-w-full space-y-7 pb-12">
-      <section className="relative overflow-hidden rounded-2xl border border-gold/20 bg-[#0b0a09]/90 shadow-[0_18px_60px_rgba(0,0,0,.28)]"><div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/70 to-transparent" /><div className="relative p-5 sm:p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="mb-2 flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_10px_rgba(242,204,96,.8)]" /><span className="text-[13px] font-bold uppercase tracking-[.22em] text-gold-dim">Clan Administration</span></div><h1 className="font-spectral text-2xl font-bold text-text-bright sm:text-3xl">Staff Control Center</h1><p className="mt-1.5 text-[14px] leading-6 text-text-dim">Manage members, Power, Coins, accounts, and staff activity from one place.</p></div><div className="rounded-lg border border-gold/15 bg-gold/[.035] px-3 py-2 text-right"><div className="text-[14px] font-bold uppercase tracking-wider text-text-dim">Signed in as</div><div className="mt-0.5 text-[14px] font-bold text-gold-light">{currentUser?.role}</div></div></div></div></section>
+      <section className="relative overflow-hidden rounded-2xl border border-gold/20 bg-[#0b0a09]/90 shadow-[0_18px_60px_rgba(0,0,0,.28)]">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/70 to-transparent" />
+        <div className="relative p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-gold-bright" /><span className="text-[13px] font-bold uppercase tracking-[.22em] text-gold-dim">Clan Administration</span></div>
+              <h1 className="font-spectral text-2xl font-bold text-text-bright sm:text-3xl">Staff Control Center</h1>
+              <p className="mt-1.5 text-[14px] leading-6 text-text-dim">Manage members, Power, Coins, accounts, and staff activity from one place.</p>
+            </div>
+            <div className="rounded-lg border border-gold/15 bg-gold/[.035] px-3 py-2 text-right"><div className="text-[14px] font-bold uppercase tracking-wider text-text-dim">Signed in as</div><div className="mt-0.5 text-[14px] font-bold text-gold-light">{currentUser?.role}</div></div>
+          </div>
+        </div>
+      </section>
 
-      <section><div className="mb-3 text-[12px] font-black uppercase tracking-[.2em] text-text-dim">Overview</div><div className="grid grid-cols-2 gap-3 xl:grid-cols-4"><StatCard label="Members" value={allMembers.length} hint="All clan characters" /><StatCard label="Staff" value={staffCount} hint="Admin · Master · Elder" /><StatCard label="Activity" value={logs.length} hint="Loaded audit events" /><StatCard label="Recent Action" value={recentLogs.length ? 'Live' : '—'} hint={recentLogs.length ? formatDate(recentLogs[0].createdAt) : 'No activity'} /></div></section>
+      <nav className="sticky top-3 z-20 rounded-2xl border border-white/[.08] bg-[#0a0b0d]/95 p-1.5 shadow-[0_14px_40px_rgba(0,0,0,.28)] backdrop-blur-md">
+        <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+          {[['quick','✦','Quick Actions'],['members','⚔','Members'],['coins','🪙','Coins'],['activity','☷','Activity Log']].map(([value, icon, label]) => (
+            <button key={value} type="button" onClick={() => setActiveTab(value)} className={`rounded-xl px-3 py-3 text-[12px] font-black uppercase tracking-[.1em] transition ${activeTab === value ? 'border border-gold/25 bg-gold/[.08] text-gold-light' : 'border border-transparent text-text-dim hover:bg-white/[.03] hover:text-white'}`}>
+              <span className="mr-1.5">{icon}</span>{label}
+            </button>
+          ))}
+        </div>
+      </nav>
 
-      <section><div className="mb-3 flex items-end justify-between"><div><div className="text-[12px] font-black uppercase tracking-[.2em] text-text-dim">Quick Actions</div><div className="mt-1 text-[13px] text-text-dim">Common staff tasks, kept simple.</div></div></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><ActionCard icon="＋" title="Add Member" description="Create a new clan character and account." button="Add Member" onClick={() => setShowAddMember(true)} /><ActionCard icon="⚔" title="Manage Members" description="Search a member and edit profile, Power, Coins, or account controls." button="Open Member List" onClick={() => document.getElementById('staff-member-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} /><ActionCard icon="🪙" title="Coin Management" description="Apply a 25% decay to selected members." button="Manage Coins" onClick={() => setShowCoinDecay(true)} /><ActionCard icon="⚡" title="Power Management" description="Select a member below to update Power or reset their cooldown." button="Choose Member" onClick={() => document.getElementById('staff-member-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} /></div></section>
+      {activeTab === 'quick' && <>
+        <section>
+          <div className="mb-4">
+            <div className="text-[12px] font-black uppercase tracking-[.2em] text-text-dim">Quick Actions</div>
+            <p className="mt-1 text-[13px] leading-5 text-text-dim">Common administrative controls, organized so the action you need is easy to find.</p>
+          </div>
 
-      <section id="staff-member-list" className="scroll-mt-5"><div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><div className="text-[12px] font-black uppercase tracking-[.2em] text-text-dim">Member Management</div><div className="mt-1 text-[13px] text-text-dim">Search first. Open a focused control panel only when you need it.</div></div><div className="text-[14px] text-text-dim">{visibleMembers.length} shown</div></div><div className="mb-4 flex flex-col gap-3 sm:flex-row"><input className="input h-12 min-w-0 flex-1 px-4 text-[14px]" placeholder="🔍 Search member, username, class, or role..." value={search} onChange={e => setSearch(e.target.value)} /><button onClick={() => setShowAddMember(true)} className="btn-gold shrink-0 px-4 text-[14px]">＋ Add Member</button></div><div className="grid gap-2">{visibleMembers.slice(0, 50).map(member => <div key={member.id} className="flex flex-col gap-3 rounded-2xl border border-white/[.08] bg-[#0c0d10] p-4 sm:flex-row sm:items-center"><div className="flex min-w-0 flex-1 items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gold/10 bg-gold/[.035] text-sm">{member.cls === 'Archer' ? '🏹' : member.cls === 'Warlord' ? '🛡' : member.cls === 'Skald' ? '♫' : member.cls === 'Volva' ? '✦' : member.cls === 'Rune Fighter' ? 'ᚱ' : '⚔'}</div><div className="min-w-0"><div className="truncate text-[14px] font-bold text-white">{member.name}</div><div className="mt-0.5 truncate text-[14px] uppercase tracking-wider text-text-dim">{member.role} · {member.cls || '—'} · Lv. {member.character_level || member.level || 1}</div></div></div><div className="grid grid-cols-2 gap-2 text-right sm:flex sm:items-center"><div><div className="text-[13px] uppercase tracking-wider text-text-dim">Power</div><div className="font-mono text-[13px] font-bold text-gold-light">{formatNumber(member.power)}</div></div><div><div className="text-[13px] uppercase tracking-wider text-text-dim">Coins</div><div className="font-mono text-[13px] font-bold text-text-bright">{formatNumber(member.coins)}</div></div><button onClick={() => setSelectedMember(member)} className="col-span-2 rounded-lg border border-gold/20 bg-gold/[.04] px-4 py-2 text-[14px] font-bold uppercase tracking-wider text-gold-light hover:bg-gold/[.09] sm:col-span-1">Manage</button></div></div>)}{visibleMembers.length > 50 && <div className="py-3 text-center text-[14px] text-text-dim">Showing first 50 results. Use search to find a specific member.</div>}{visibleMembers.length === 0 && <div className="rounded-xl border border-white/[.07] bg-[#0b0c0f] py-10 text-center text-[13px] text-text-dim">No members found.</div>}</div></section>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <ActionCard icon="＋" title="Add Member" description="Create a new clan character and account with the standard starting setup.ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ" button="Add Member" onClick={() => setShowAddMember(true)} />
+            <ActionCard icon="⚔" title="Manage Members" description="Search members and open a focused panel for profile, Power, Coins, and account controls." button="Open Members" onClick={() => setActiveTab('members')} />
+            <ActionCard icon="🪙" title="Coin Management" description="Apply the 25% Coin Decay tool to selected members or review Coin controls." button="Manage Coins" onClick={() => setShowCoinDecay(true)} />
+            <ActionCard icon="☷" title="Activity Log" description="Review administrative actions with search, filters, pagination, and live updates." button="Open Activity" onClick={() => setActiveTab('activity')} />
+          </div>
+        </section>
 
-      <section><div className="mb-3 text-[12px] font-black uppercase tracking-[.2em] text-text-dim">Coin Management</div><div className="grid gap-3 md:grid-cols-2"><ActionCard icon="🪙" title="25% Coin Decay" description="Select exactly which members should have their current Coin balance reduced to 75%." button="Select Members" onClick={() => setShowCoinDecay(true)} /><ActionCard icon="⚠" title="Reset All Coins" description="Permanently set every member's Coins to zero. Admin, Master, Elder, and Members are all included." button="Reset Everyone" onClick={() => { setResetText(''); setShowResetCoins(true) }} danger /></div></section>
+        <section className="mt-6">
+          <div className="mb-4">
+            <div className="text-[12px] font-black uppercase tracking-[.2em] text-red-300/80">Danger Zone</div>
+            <p className="mt-1 text-[13px] leading-5 text-text-dim">These actions make permanent changes. Review the warning carefully before confirming.</p>
+          </div>
 
-      <section><div className="mb-3 text-[12px] font-black uppercase tracking-[.2em] text-text-dim">Activity History</div><div className="flex min-w-0 flex-col gap-2 sm:flex-row"><select value={actionFilter} onChange={e => setActionFilter(e.target.value)} className="input h-12 flex-1 px-4 text-[14px]"><option value="all">All Actions</option>{actions.slice(1).map(value => <option key={value}>{value}</option>)}</select><select value={entityFilter} onChange={e => setEntityFilter(e.target.value)} className="input h-12 flex-1 px-4 text-[14px]"><option value="all">All Areas</option>{entities.slice(1).map(value => <option key={value}>{value}</option>)}</select><button onClick={loadLogs} disabled={loading || busy} className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-[14px] font-bold uppercase tracking-[0.1em] text-text-dim hover:border-gold/20 hover:text-gold-light disabled:opacity-40">Refresh</button></div>{canDelete && <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-white/[.07] bg-[#090807]/80 px-3 py-2.5"><button onClick={toggleSelectAll} disabled={!visibleIds.length || busy} className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-[14px] font-bold uppercase tracking-[0.1em] text-text-dim hover:border-gold/20 hover:text-gold-light disabled:opacity-40">{allVisibleSelected ? 'Deselect All' : 'Select All'}</button><span className="text-[14px] text-text-dim">{selectedIds.length} selected · {logs.length} loaded</span><button onClick={deleteSelected} disabled={!selectedIds.length || busy} className="control-btn danger ml-auto">Delete Selected</button><button onClick={deleteAllLogs} disabled={!logs.length || busy} className="rounded-lg border border-red-400/20 bg-red-400/[0.04] px-3 py-2 text-[14px] font-bold uppercase tracking-[0.1em] text-red-300 hover:bg-red-400/10 disabled:opacity-40">Delete All Logs</button></div>}{error && <div className="mt-2 rounded-xl border border-red-400/20 bg-red-400/[.04] px-4 py-3 text-[14px] text-red-300">{error}</div>}<div className="mt-3 overflow-hidden rounded-xl border border-white/[.07] bg-[#090807]/80">{loading ? <div className="px-4 py-12 text-center text-[13px] text-text-dim">Loading activity...</div> : filteredLogs.length === 0 ? <div className="px-4 py-12 text-center text-[13px] text-text-dim">No activity entries found.</div> : <div className="divide-y divide-white/[.055]">{filteredLogs.slice(0, 100).map(log => { const changes = getFieldChanges(log.details); const target = targetName(log, allMembers); return <div key={String(log.id)} className="p-5 sm:p-6"><div className="flex flex-col gap-3 md:flex-row md:items-start"><div className="w-full shrink-0 md:w-44"><div className="font-mono text-[14px] text-text-dim">{formatDate(log.createdAt)}</div><div className="mt-1 text-[14px] font-bold text-gold-light">{log.actorName}</div><div className="text-[13px] uppercase tracking-wider text-text-dim">{log.actorRole}</div></div><div className="min-w-0 flex-1"><div className={`text-[13px] font-bold ${actionTone(log.action)}`}>{log.action}<span className="ml-1 text-[14px] font-normal text-text-dim">· {log.entityType}</span></div>{target && <div className="mt-1 text-[14px] text-text-bright">Target: <span className="font-bold text-gold-light">{target}</span></div>}{changes.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{changes.map(change => <span key={change.key} className="rounded-md border border-white/[.08] bg-white/[.025] px-2 py-1 text-[14px] text-text-bright">{change.label}: <strong>{String(change.before ?? '—')}</strong> → <strong>{String(change.after ?? '—')}</strong></span>)}</div>}<div className="mt-1 break-words text-[14px] leading-6 text-text-dim">{prettyDetails(log.details) || 'No additional details recorded.'}</div></div>{canDelete && <button onClick={async () => { if (!window.confirm('Delete this audit log?')) return; await supabase.from('admin_audit_logs').delete().eq('id', log.id); setLogs(prev => prev.filter(item => item.id !== log.id)) }} className="control-btn danger shrink-0">Delete</button>}</div></div>})}</div>}</div></section>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="flex h-full flex-col rounded-2xl border border-red-400/15 bg-red-400/[.025] p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-400/15 bg-red-400/[.06] text-lg">⚠</div>
+                <div className="min-w-0">
+                  <div className="text-[14px] font-black text-red-200">Reset All Coins</div>
+                  <p className="mt-1 text-[13px] leading-5 text-text-dim">Set every member's Coins to 0. This includes all roles and cannot be undone from the website.</p>
+                </div>
+              </div>
+              <div className="mt-auto pt-5">
+                <button type="button" onClick={() => { setResetText(''); setShowResetCoins(true) }} className="w-full rounded-xl border border-red-400/20 bg-red-400/[.05] px-4 py-3 text-[13px] font-black uppercase tracking-[.1em] text-red-300 transition hover:bg-red-400/10">Reset All Coins</button>
+              </div>
+            </div>
 
-      <section><div className="mb-3 text-[12px] font-black uppercase tracking-[.2em] text-red-300/80">Danger Zone</div><div className="rounded-xl border border-red-400/15 bg-red-400/[.025] p-4"><div className="text-[13px] font-bold text-red-200">Permanent administrative actions</div><p className="mt-1 text-[14px] leading-6 text-text-dim">Use these only when you are certain. Coin reset and audit-history deletion cannot be undone from the website.</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => { setResetText(''); setShowResetCoins(true) }} className="rounded-lg border border-red-400/20 bg-red-400/[0.04] px-3 py-2 text-[14px] font-bold uppercase tracking-[0.1em] text-red-300 hover:bg-red-400/10 disabled:opacity-40">Reset All Coins</button>{canDelete && <button onClick={deleteAllLogs} disabled={busy || !logs.length} className="rounded-lg border border-red-400/20 bg-red-400/[0.04] px-3 py-2 text-[14px] font-bold uppercase tracking-[0.1em] text-red-300 hover:bg-red-400/10 disabled:opacity-40">Delete Audit History</button>}</div></div></section>
+            {canDelete && (
+              <div className="flex h-full flex-col rounded-2xl border border-red-400/15 bg-red-400/[.025] p-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-400/15 bg-red-400/[.06] text-lg">☷</div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-black text-red-200">Delete Audit History</div>
+                    <p className="mt-1 text-[13px] leading-5 text-text-dim">Permanently remove the administrative activity history. This cannot be undone.</p>
+                  </div>
+                </div>
+                <div className="mt-auto pt-5">
+                  <button type="button" onClick={deleteAllLogs} disabled={busy || !logs.length} className="w-full rounded-xl border border-red-400/20 bg-red-400/[.05] px-4 py-3 text-[13px] font-black uppercase tracking-[.1em] text-red-300 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40">Delete Audit History</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      </>}
+
+      {activeTab === 'members' && <section id="staff-member-list">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><div className="text-[12px] font-black uppercase tracking-[.2em] text-text-dim">Member Management</div><div className="mt-1 text-[13px] text-text-dim">Search first. Open a focused control panel only when you need it.</div></div><div className="text-[14px] text-text-dim">{visibleMembers.length} shown</div></div>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row"><input className="input h-12 min-w-0 flex-1 px-4 text-[14px]" placeholder="🔍 Search member, username, class, or role..." value={search} onChange={e => setSearch(e.target.value)} /><button onClick={() => setShowAddMember(true)} className="btn-gold shrink-0 px-4 text-[14px]">＋ Add Member</button></div>
+        <div className="grid gap-2">{visibleMembers.slice(0, 50).map(member => <div key={member.id} className="flex flex-col gap-3 rounded-2xl border border-white/[.08] bg-[#0c0d10] p-4 sm:flex-row sm:items-center"><div className="flex min-w-0 flex-1 items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gold/10 bg-gold/[.035] text-sm">{member.cls === 'Archer' ? '🏹' : member.cls === 'Warlord' ? '🛡' : member.cls === 'Skald' ? '♫' : member.cls === 'Volva' ? '✦' : member.cls === 'Rune Fighter' ? 'ᚱ' : '⚔'}</div><div className="min-w-0"><div className="truncate text-[14px] font-bold text-white">{member.name}</div><div className="mt-0.5 truncate text-[14px] uppercase tracking-wider text-text-dim">{member.role} · {member.cls || '—'} · Lv. {member.character_level || member.level || 1}</div></div></div><div className="grid grid-cols-2 gap-2 text-right sm:flex sm:items-center"><div><div className="text-[13px] uppercase tracking-wider text-text-dim">Power</div><div className="font-mono text-[13px] font-bold text-gold-light">{formatNumber(member.power)}</div></div><div><div className="text-[13px] uppercase tracking-wider text-text-dim">Coins</div><div className="font-mono text-[13px] font-bold text-text-bright">{formatNumber(member.coins)}</div></div><button onClick={() => setSelectedMember(member)} className="col-span-2 rounded-lg border border-gold/20 bg-gold/[.04] px-4 py-2 text-[14px] font-bold uppercase tracking-wider text-gold-light hover:bg-gold/[.09] sm:col-span-1">Manage</button></div></div>)}{visibleMembers.length > 50 && <div className="py-3 text-center text-[14px] text-text-dim">Showing first 50 results. Use search to find a specific member.</div>}{visibleMembers.length === 0 && <div className="rounded-xl border border-white/[.07] bg-[#0b0c0f] py-10 text-center text-[13px] text-text-dim">No members found.</div>}</div>
+      </section>}
+
+      {activeTab === 'coins' && <section>
+        <div className="mb-3 text-[12px] font-black uppercase tracking-[.2em] text-text-dim">Coin Management</div>
+        <div className="grid gap-3 md:grid-cols-2"><ActionCard icon="🪙" title="25% Coin Decay" description="Select exactly which members should have their current Coin balance reduced to 75%." button="Select Members" onClick={() => setShowCoinDecay(true)} /><ActionCard icon="⚠" title="Reset All Coins" description="Permanently set every member's Coins to zero. Admin, Master, Elder, and Members are all included." button="Reset Everyone" onClick={() => { setResetText(''); setShowResetCoins(true) }} danger /></div>
+      </section>}
+
+      {activeTab === 'activity' && (
+        <ActivityLogPanel
+          logs={logs}
+          allMembers={allMembers}
+          filteredLogs={filteredLogs}
+          paginatedLogs={paginatedLogs}
+          loading={loading}
+          error={error}
+          logSearch={logSearch}
+          setLogSearch={setLogSearch}
+          actionFilter={actionFilter}
+          setActionFilter={setActionFilter}
+          entityFilter={entityFilter}
+          setEntityFilter={setEntityFilter}
+          actions={actions}
+          entities={entities}
+          canDelete={canDelete}
+          busy={busy}
+          selectedIds={selectedIds}
+          visibleIds={visibleIds}
+          allVisibleSelected={allVisibleSelected}
+          toggleSelectAll={toggleSelectAll}
+          deleteSelected={deleteSelected}
+          deleteAllLogs={deleteAllLogs}
+          supabase={supabase}
+          currentUser={currentUser}
+          setLogs={setLogs}
+          setError={setError}
+          logPage={safeLogPage}
+          logTotalPages={logTotalPages}
+          setLogPage={setLogPage}
+          loadLogs={loadLogs}
+          LOGS_PER_PAGE={LOGS_PER_PAGE}
+        />
+      )}
 
       {showAddMember && <AddMemberModal ctx={ctx} onClose={() => { setShowAddMember(false); ctx.reloadMembers?.() }} />}
       {selectedMember && <ManageMemberModal ctx={ctx} member={selectedMember} onClose={() => { setSelectedMember(null); ctx.reloadMembers?.() }} />}
@@ -413,4 +1047,5 @@ export default function AdminAuditLog({ ctx }) {
       {showResetCoins && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"><div className="w-full max-w-md rounded-2xl border border-red-400/25 bg-[#0b0a09] p-5 shadow-[0_35px_100px_rgba(0,0,0,.8)]"><div className="text-3xl">⚠️</div><h2 className="mt-2 font-spectral text-xl font-bold text-red-200">Reset All Coins</h2><p className="mt-2 text-[13px] leading-relaxed text-text-dim">This permanently sets <strong className="text-white">ALL {allMembers.length} members</strong> to 0 Coins. There is no undo or website backup.</p><div className="mt-4 text-[14px] font-bold uppercase tracking-wider text-text-dim">Type RESET to continue</div><input autoFocus className="input mt-2 w-full h-12 text-center font-mono text-lg font-bold tracking-[.25em]" value={resetText} onChange={e => setResetText(e.target.value.toUpperCase())} onKeyDown={e => { if (e.key === 'Enter') resetAllCoins() }} placeholder="RESET" /><div className="mt-4 flex justify-end gap-2"><button onClick={() => setShowResetCoins(false)} className="rounded-lg border border-white/10 px-4 py-2 text-xs text-text-dim">Cancel</button><button onClick={resetAllCoins} disabled={resetText !== 'RESET' || busy} className="rounded-lg border border-red-400/30 bg-red-400/[.08] px-4 py-2 text-[13px] font-bold uppercase text-red-200 disabled:opacity-35">{busy ? 'Resetting...' : 'Confirm Reset'}</button></div></div></div>}
     </div>
   )
+
 }
