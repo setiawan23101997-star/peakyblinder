@@ -261,7 +261,7 @@ function ItemCard({ item, onBuy, canBuy, sold = false, buyerName = null, purchas
 
   return (
     <article className="group overflow-hidden rounded-[14px] border border-white/[.08] bg-[#090807]/95 transition-all duration-200 hover:-translate-y-0.5 hover:border-gold/25 hover:shadow-[0_16px_42px_rgba(0,0,0,.36)]" style={{ contentVisibility: "auto", containIntrinsicSize: "0 280px" }}>
-      <div className="grid grid-cols-[116px_minmax(0,1fr)] bg-[#060606] sm:grid-cols-[128px_minmax(0,1fr)]">
+      <div className="grid grid-cols-[96px_minmax(0,1fr)] bg-[#060606] sm:grid-cols-[116px_minmax(0,1fr)] lg:grid-cols-[128px_minmax(0,1fr)]">
         <div className="self-start p-1">
           <ItemArtwork item={item} />
         </div>
@@ -296,7 +296,7 @@ function ItemCard({ item, onBuy, canBuy, sold = false, buyerName = null, purchas
 
       <div className="border-t border-white/[.055] px-3.5 pb-3 pt-2 sm:px-4">
         <h3
-          className={`truncate text-center font-spectral text-[18px] font-bold leading-tight tracking-[.01em] ${rarityTextClass(item.rarity)}`}
+          className={`truncate text-center font-spectral text-[16px] font-bold leading-tight tracking-[.01em] sm:text-[18px] ${rarityTextClass(item.rarity)}`}
           title={item.name}
         >
           {item.name}
@@ -321,7 +321,7 @@ function ItemCard({ item, onBuy, canBuy, sold = false, buyerName = null, purchas
           </div>
         )}
 
-        <div className="mt-2.5 flex h-8 items-center justify-center gap-2.5 border-y border-white/[.055] text-[10px] font-bold uppercase tracking-[.12em]">
+        <div className="mt-2.5 flex min-h-8 items-center justify-center gap-2 border-y border-white/[.055] px-1 text-center text-[9px] font-bold uppercase tracking-[.1em] sm:text-[10px] sm:tracking-[.12em]">
           <span className="text-text-dim/60">{soldOut ? 'Status' : 'Closes in'}</span>
           <span className={soldOut ? 'text-white/55' : expired ? 'text-red-300' : 'text-text-dim/85'}>
             {soldOut ? 'Sold Out' : expired ? 'Expired' : timeRemaining(item.available_until)}
@@ -1406,27 +1406,27 @@ export default function Marketplace({ ctx }) {
       {/* MEMBER MARKETPLACE */}
       <section className="relative overflow-hidden rounded-[18px] border border-gold/15 bg-[#090807]/95 shadow-[0_18px_70px_rgba(0,0,0,.24)]">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_0%,rgba(242,204,96,.08),transparent_28%),linear-gradient(110deg,rgba(255,255,255,.018),transparent_45%)]" />
-        <div className="relative flex flex-col gap-5 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+        <div className="relative flex flex-col gap-4 px-4 py-4 sm:gap-5 sm:px-5 sm:py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.24em] text-gold-dim"><span className="h-px w-5 bg-gold/50" /> Clan Trade Hall</div>
             <h1 className="mt-1.5 font-spectral text-3xl font-bold uppercase tracking-[.02em] text-gold-light sm:text-[34px]">Marketplace</h1>
             <p className="mt-1 text-[12px] text-text-dim">Browse items supplied by the PeakyBlinder Clan. Listings are clan-owned.</p>
           </div>
-          <div className="flex items-stretch gap-2">
-            <div className="min-w-[145px] rounded-xl border border-gold/15 bg-gold/[.035] px-4 py-3">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-stretch">
+            <div className="w-full rounded-xl border border-gold/15 bg-gold/[.035] px-4 py-3 sm:min-w-[145px] sm:w-auto">
               <div className="text-[9px] font-bold uppercase tracking-[.16em] text-text-dim">Your Coins</div>
               <div className="mt-1 font-mono text-xl font-bold text-gold-bright">{formatCoins(displayCoins)}</div>
               <div className="mt-0.5 text-[9px] uppercase tracking-[.12em] text-gold-dim">Clan Balance</div>
             </div>
-            {canSubmit && <button type="button" onClick={openSubmit} className="min-w-[145px] rounded-xl border border-gold/30 bg-gold/[.07] px-4 py-3 text-left transition hover:border-gold/50 hover:bg-gold/[.12]"><div className="text-[9px] font-bold uppercase tracking-[.16em] text-gold-dim">Staff Tools</div><div className="mt-1 text-[12px] font-bold uppercase tracking-[.08em] text-gold-light">Submit Item</div><div className="mt-1 text-[9px] text-text-dim">Submit a clan inventory item for review</div></button>}
+            {canSubmit && <button type="button" onClick={openSubmit} className="w-full rounded-xl border border-gold/30 bg-gold/[.07] px-4 py-3 text-left transition hover:border-gold/50 hover:bg-gold/[.12] sm:min-w-[145px] sm:w-auto"><div className="text-[9px] font-bold uppercase tracking-[.16em] text-gold-dim">Staff Tools</div><div className="mt-1 text-[12px] font-bold uppercase tracking-[.08em] text-gold-light">Submit Item</div><div className="mt-1 text-[9px] text-text-dim">Submit a clan inventory item for review</div></button>}
           </div>
         </div>
       </section>
 
       <section className="mt-3 rounded-xl border border-white/[.07] bg-black/25 p-1.5">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap gap-1">{shopTabs.map(t => <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`rounded-lg px-4 py-2.5 text-[10px] font-bold uppercase tracking-[.12em] transition ${tab === t.id ? 'border border-gold/25 bg-gold/[.09] text-gold-bright' : 'border border-transparent text-text-dim hover:bg-white/[.025] hover:text-gold-light'}`}>{t.label}</button>)}</div>
-          <button type="button" onClick={load} disabled={loading} className="rounded-lg border border-white/[.08] px-3.5 py-2.5 text-[10px] font-bold uppercase tracking-[.12em] text-text-dim hover:border-gold/20 hover:text-gold-light disabled:opacity-40">{loading ? 'Refreshing…' : '↻ Refresh'}</button>
+          <div className="flex min-w-0 w-full flex-nowrap gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:overflow-visible">{shopTabs.map(t => <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2.5 text-[10px] font-bold uppercase tracking-[.12em] transition sm:px-4 ${tab === t.id ? 'border border-gold/25 bg-gold/[.09] text-gold-bright' : 'border border-transparent text-text-dim hover:bg-white/[.025] hover:text-gold-light'}`}>{t.label}</button>)}</div>
+          <button type="button" onClick={load} disabled={loading} className="w-full rounded-lg border border-white/[.08] px-3.5 py-2.5 text-[10px] font-bold uppercase tracking-[.12em] text-text-dim hover:border-gold/20 hover:text-gold-light disabled:opacity-40 md:w-auto">{loading ? 'Refreshing…' : '↻ Refresh'}</button>
         </div>
       </section>
 
@@ -1842,9 +1842,9 @@ export default function Marketplace({ ctx }) {
       </div>
 
       <div className="relative border-b border-white/[.07] px-3 py-3">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex min-w-0 flex-nowrap gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible">
           {staffTabs.map(t => (
-            <button key={t.id} type="button" onClick={() => setStaffTab(t.id)} className={`flex items-center gap-2 rounded-lg px-4 py-3 text-[11px] font-bold uppercase tracking-[.08em] transition-colors ${staffTab === t.id ? 'border border-gold/25 bg-gold/[.09] text-gold-bright' : 'border border-transparent text-text-dim hover:bg-white/[.025] hover:text-gold-light'}`}>
+            <button key={t.id} type="button" onClick={() => setStaffTab(t.id)} className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-3 text-[11px] font-bold uppercase tracking-[.08em] transition-colors sm:px-4 ${staffTab === t.id ? 'border border-gold/25 bg-gold/[.09] text-gold-bright' : 'border border-transparent text-text-dim hover:bg-white/[.025] hover:text-gold-light'}`}>
               {t.label}
               {Number(t.count) > 0 && <span className="rounded-full bg-white/[.08] px-2 py-0.5 text-[10px]">{t.count}</span>}
             </button>
