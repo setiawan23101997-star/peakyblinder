@@ -23,6 +23,7 @@ import Login from './components/Login'
 import EventCalendar from './components/EventCalendar'
 import NoticeBoard from './components/NoticeBoard'
 import AdminAuditLog from './components/AdminAuditLog'
+import Marketplace from './components/Marketplace'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -919,6 +920,7 @@ function App() {
       case 'members':     return <Members     ctx={ctx} />
       case 'attendance':  return <Attendance  ctx={ctx} />
       case 'auctions':    return <Auctions    ctx={ctx} />
+      case 'marketplace': return <Marketplace ctx={ctx} />
       case 'leaderboard': return <Leaderboard ctx={ctx} />
       case 'calendar':    return <EventCalendar setPage={setPage} />
       case 'notice-board': return <NoticeBoard ctx={ctx} />
