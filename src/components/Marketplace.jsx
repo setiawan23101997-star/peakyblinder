@@ -131,8 +131,9 @@ function Modal({ title, children, onClose, wide = false, compact = false, narrow
         aria-modal="true"
         aria-label={title}
         className={`relative max-h-[90vh] w-full overflow-y-auto rounded-[16px] border border-gold/20 bg-[#0a0908] shadow-[0_28px_90px_rgba(0,0,0,.85)] ${
-          wide ? 'max-w-4xl' : narrow ? 'w-[440px] max-w-[calc(100vw-24px)]' : compact ? 'max-w-xl' : 'max-w-lg'
+          wide ? 'max-w-4xl' : narrow ? 'max-w-[440px]' : compact ? 'max-w-xl' : 'max-w-lg'
         }`}
+        style={narrow ? { width: '440px', maxWidth: 'calc(100vw - 24px)' } : undefined}
         onMouseDown={e => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/[.07] bg-[#0a0908]/96 px-4 py-3 backdrop-blur">
@@ -480,8 +481,11 @@ function ImageManager({ imageFile, imagePreview, pickedLibraryImg, libraryImages
 }
 
 export default function Marketplace({ ctx }) {
-  const { currentUser, supabase, addToast } = ctx
-  const role = currentUser?.role || 'Member'
+  const { currentUser, supabase, addToast, allMembers } = ctx
+  const liveCurrentUser = allMembers?.find(
+    member => String(member.id) === String(currentUser?.id)
+  ) || currentUser
+  const role = liveCurrentUser?.role || currentUser?.role || 'Member'
   const isStaff = [ROLES.ADMIN, ROLES.MASTER, ROLES.ELDER].includes(role)
   const canReview = REVIEW_ROLES.includes(role)
   const canDistribute = DISTRIBUTE_ROLES.includes(role)
@@ -495,7 +499,7 @@ export default function Marketplace({ ctx }) {
 
   const [items, setItems] = useState([])
   const [purchases, setPurchases] = useState([])
-  const [displayCoins, setDisplayCoins] = useState(Number(currentUser?.coins || 0))
+  const [displayCoins, setDisplayCoins] = useState(Number(liveCurrentUser?.coins || 0))
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('shop')
@@ -581,10 +585,12 @@ export default function Marketplace({ ctx }) {
     load()
   }, [currentUser?.id, role])
 
-  // Keep the Marketplace balance in sync with the signed-in member.
+  // Keep the Marketplace balance synced from the shared member context.
+  // This updates the UI immediately when Coins change elsewhere without polling
+  // or forcing a Marketplace reload.
   useEffect(() => {
-    setDisplayCoins(Number(currentUser?.coins || 0))
-  }, [currentUser?.id, currentUser?.coins])
+    setDisplayCoins(Number(liveCurrentUser?.coins || 0))
+  }, [liveCurrentUser?.id, liveCurrentUser?.coins])
 
   // Keep Marketplace data in sync in the background. Realtime updates are
   // intentionally silent so the page never looks like it is reloading.
@@ -957,8 +963,6 @@ export default function Marketplace({ ctx }) {
 
       setBuyItem(null)
       addToast(`Purchased ${buyItem.name} for ${formatCoins(total)} coins.`, 'gold', 'Purchase Complete')
-      await ctx.reloadMembers?.()
-      await load()
     } catch (error) {
       addToast(error?.message || 'Purchase failed.', 'red', 'Purchase Failed')
     } finally { setBusy(false) }
