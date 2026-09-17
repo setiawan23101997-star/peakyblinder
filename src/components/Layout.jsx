@@ -10,7 +10,7 @@ const navItems = [
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆' },
   { id: 'calendar', label: 'Calendar', icon: '📅' },
   { id: 'notice-board', label: 'Notice Board', icon: '📜' },
-  { id: 'admin-log', label: 'Admin Log', icon: '🛡' , staffOnly: true },
+  { id: 'admin-log', label: 'Admin Panel', icon: '🛡' , staffOnly: true },
 ]
 
 const FALLBACK_REGIONS = [
@@ -768,9 +768,11 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
   const visibleNavItems = navItems.filter(
     item => !item.staffOnly || ['Admin', 'Master', 'Elder'].includes(currentUser?.role)
   )
-  const primaryNavItems = visibleNavItems.slice(0, 6)
-  const secondaryNavItems = visibleNavItems.slice(6)
-  const activeSecondary = secondaryNavItems.some(item => item.id === page)
+  // Desktop navigation adapts by screen size:
+  // md-xl stays compact; 2xl+ has enough room for every section.
+  const compactPrimaryNavItems = visibleNavItems.slice(0, 5)
+  const compactSecondaryNavItems = visibleNavItems.slice(5)
+  const activeSecondary = compactSecondaryNavItems.some(item => item.id === page)
 
   useEffect(() => {
     if (!userMenuOpen && !moreOpen) return
@@ -862,8 +864,8 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
   return (
     <div className="min-h-screen bg-transparent text-text-bright">
       <nav className="fixed inset-x-0 top-0 z-50 border-b border-gold/15 bg-[#080706]/95 shadow-[0_8px_35px_rgba(0,0,0,.35)] backdrop-blur-xl">
-        <div className="mx-auto flex h-[72px] max-w-[1600px] items-center gap-4 px-3 sm:px-5 lg:px-7">
-          <div className="flex min-w-0 shrink-0 items-center gap-2.5">
+        <div className="mx-auto flex h-[72px] w-full max-w-[1900px] items-center gap-3 px-3 sm:px-5 lg:px-7 2xl:px-6">
+          <div className="flex w-[270px] min-w-[220px] shrink-0 items-center gap-2.5 xl:w-[285px]">
             <button
               type="button"
               onClick={() => setMobileOpen(value => !value)}
@@ -893,11 +895,12 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
           <div className="hidden h-8 w-px bg-white/[0.07] md:block" />
 
           <div className="hidden min-w-0 flex-1 items-center md:flex">
-            <div className="flex items-center gap-0.5 rounded-xl border border-white/[0.06] bg-black/20 p-1">
-              {primaryNavItems.map(item => <NavButton key={item.id} item={item} />)}
+            {/* Normal desktop: compact navigation prevents collisions with account controls. */}
+            <div className="flex min-w-0 items-center gap-0.5 rounded-2xl border border-white/[0.055] bg-white/[0.018] p-1 min-[1800px]:hidden">
+              {compactPrimaryNavItems.map(item => <NavButton key={item.id} item={item} />)}
 
-              {secondaryNavItems.length > 0 && (
-                <div ref={moreMenuRef} className="relative">
+              {compactSecondaryNavItems.length > 0 && (
+                <div ref={moreMenuRef} className="relative shrink-0">
                   <button
                     type="button"
                     onClick={() => setMoreOpen(value => !value)}
@@ -915,35 +918,51 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
 
                   {moreOpen && (
                     <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-xl border border-gold/20 bg-[#0b0908] p-1.5 shadow-[0_20px_60px_rgba(0,0,0,.8)]">
-                      {secondaryNavItems.map(item => <NavButton key={item.id} item={item} mobile />)}
+                      {compactSecondaryNavItems.map(item => <NavButton key={item.id} item={item} mobile />)}
                     </div>
                   )}
                 </div>
               )}
             </div>
+
+            {/* Very wide desktop: all sections are visible, with no overlap. */}
+            <div className="hidden min-w-0 items-center gap-0.5 min-[1800px]:flex">
+              {visibleNavItems.map(item => <NavButton key={item.id} item={item} />)}
+            </div>
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 lg:gap-2">
             <div className="md:hidden">
               <NotificationBell ctx={ctx} onNavigate={navigate} />
             </div>
 
-            <div className="hidden xl:flex items-center gap-2 rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2">
+            <div className="hidden xl:flex shrink-0 items-center gap-2 rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-gold/10 bg-gold/[0.04] text-sm">◷</span>
               <div className="leading-tight">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-dim">Your Time</div>
-                <div className="mt-0.5 flex items-center gap-2">
-                  <span className="max-w-[120px] truncate text-[12px] font-semibold text-text-bright">{AUTO_LOCAL_TZ}</span>
-                  <span className="font-mono text-[11px] text-gold-light/85">{getLocalZoneLabel()}</span>
+                <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-text-dim">Your Time</div>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <span className="max-w-[92px] truncate text-[11px] font-semibold text-text-bright">{AUTO_LOCAL_TZ}</span>
+                  <span className="font-mono text-[10px] text-gold-light/85">{getLocalZoneLabel()}</span>
                 </div>
               </div>
             </div>
 
             {currentUser && (
               <>
-                <div className="hidden md:block">
+                <div className="hidden md:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[0.06] bg-black/15">
                   <NotificationBell ctx={ctx} onNavigate={navigate} />
                 </div>
+
+                <div className="hidden lg:flex shrink-0 items-center gap-2 rounded-xl border border-gold/10 bg-gold/[0.025] px-2.5 py-2">
+                  <span className="text-[13px]">🪙</span>
+                  <div className="leading-tight">
+                    <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim">Coins</div>
+                    <div className="mt-0.5 font-mono text-[12px] font-semibold text-gold-light">
+                      {Number(currentUser.coins || 0).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
                 <div ref={userMenuRef} className="relative">
                   <button
                     type="button"
