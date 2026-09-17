@@ -1224,14 +1224,14 @@ export default function Attendance({ ctx }) {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <div className="text-right text-[11px] sm:text-[12px] text-text-dim">
+          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
+            <div className="text-left sm:text-right text-[11px] sm:text-[12px] text-text-dim">
               <span>Server </span><span className="font-semibold text-gold-light">{formatGMT8(now)}</span>
               <span className="mx-1.5">·</span>
               <span>Local </span><span className="font-semibold text-text-bright">{formatInAutoLocalZone(now)}</span>
             </div>
             {isElder && (
-              <button type="button" onClick={() => setShowRecordModal(true)} className="btn-gold min-h-9 px-3 text-[12px] font-bold">
+              <button type="button" onClick={() => setShowRecordModal(true)} className="btn-gold min-h-9 w-full px-3 text-[12px] font-bold sm:w-auto">
                 + Record
               </button>
             )}
@@ -1302,7 +1302,7 @@ export default function Attendance({ ctx }) {
 
       {/* Weekly status — compact stat chips */}
       <div className="flex flex-wrap items-stretch gap-2">
-        <button type="button" onClick={() => setShowPerfectAttendance(true)} className="flex min-w-[210px] flex-1 items-center justify-between gap-3 rounded-xl border border-white/[.08] bg-[#0c0a09]/[.97] px-3.5 py-2.5 text-left hover:border-gold/20">
+        <button type="button" onClick={() => setShowPerfectAttendance(true)} className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl border border-white/[.08] bg-[#0c0a09]/[.97] px-3.5 py-2.5 text-left hover:border-gold/20">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim">Perfect Attendance</div>
             <div className="mt-0.5 text-[13px] font-semibold text-text-bright">{qualifiedPerfectAttendance.length} qualified · 8/8 required</div>
@@ -1404,11 +1404,11 @@ export default function Attendance({ ctx }) {
           {paginatedHistoryLogs.length === 0 && <div className="px-4 py-10 text-center text-[12px] text-text-dim">No attendance records found.</div>}
         </div>
 
-        <div className="flex items-center justify-between border-t border-white/[.06] px-4 py-2.5">
+        <div className="flex flex-col gap-2 border-t border-white/[.06] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-[11px] text-text-dim">Page {safeHistoryPage} of {historyTotalPages} · {filteredHistoryLogs.length} matching</span>
           <div className="flex gap-1">
-            <button type="button" disabled={safeHistoryPage <= 1} onClick={() => setHistoryPage(page => Math.max(1, page - 1))} className="rounded-lg border border-white/[.08] px-2.5 py-1.5 text-[11px] text-text-dim disabled:opacity-30">← Prev</button>
-            <button type="button" disabled={safeHistoryPage >= historyTotalPages} onClick={() => setHistoryPage(page => Math.min(historyTotalPages, page + 1))} className="rounded-lg border border-white/[.08] px-2.5 py-1.5 text-[11px] text-text-dim disabled:opacity-30">Next →</button>
+            <button type="button" disabled={safeHistoryPage <= 1} onClick={() => setHistoryPage(page => Math.max(1, page - 1))} className="flex-1 rounded-lg border border-white/[.08] px-2.5 py-1.5 text-[11px] text-text-dim disabled:opacity-30 sm:flex-none">← Prev</button>
+            <button type="button" disabled={safeHistoryPage >= historyTotalPages} onClick={() => setHistoryPage(page => Math.min(historyTotalPages, page + 1))} className="flex-1 rounded-lg border border-white/[.08] px-2.5 py-1.5 text-[11px] text-text-dim disabled:opacity-30 sm:flex-none">Next →</button>
           </div>
         </div>
       </section>
@@ -1416,7 +1416,7 @@ export default function Attendance({ ctx }) {
       {/* Record Attendance modal */}
       {isElder && showRecordModal && (
         <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/75 p-3 backdrop-blur-[3px]" role="dialog" aria-modal="true">
-          <div className="flex w-full max-w-3xl max-h-[88vh] flex-col overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
+          <div className="flex w-full max-w-3xl max-h-[92vh] flex-col overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
             <div className="flex items-start justify-between gap-3 border-b border-white/[.07] px-4 py-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1491,17 +1491,17 @@ export default function Attendance({ ctx }) {
                 </div>
               )}
 
-              <div className="mt-3 flex gap-1.5">
+              <div className="mt-3 flex flex-col gap-1.5 sm:flex-row">
                 <div className="relative min-w-0 flex-1">
                   <input className="input h-8 w-full pl-8 text-[12px]" placeholder="Search member..." value={search} onChange={e => setSearch(e.target.value)} />
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim text-[13px]">⌕</span>
                 </div>
-                <button type="button" onClick={toggleAllFiltered} className="rounded-lg border border-white/[.08] px-2.5 text-[11px] font-semibold text-text-dim hover:border-gold/25 hover:text-gold-light">{allFilteredSelected ? 'Clear Visible' : 'Select Visible'}</button>
-                {selectedCount > 0 && <button type="button" onClick={clearSelection} className="rounded-lg border border-white/[.08] px-2.5 text-[11px] text-text-dim hover:text-red-300">Clear</button>}
+                <button type="button" onClick={toggleAllFiltered} className="min-h-8 w-full rounded-lg border border-white/[.08] px-2.5 text-[11px] font-semibold sm:w-auto sm:shrink-0 text-text-dim hover:border-gold/25 hover:text-gold-light">{allFilteredSelected ? 'Clear Visible' : 'Select Visible'}</button>
+                {selectedCount > 0 && <button type="button" onClick={clearSelection} className="min-h-8 w-full rounded-lg border border-white/[.08] px-2.5 text-[11px] text-text-dim hover:text-red-300 sm:w-auto sm:shrink-0">Clear</button>}
               </div>
 
               <div className="mt-2.5 overflow-hidden rounded-xl border border-white/[.07]">
-                <div className="grid grid-cols-[28px_minmax(0,1fr)_72px_125px] items-center gap-2 border-b border-white/[.06] bg-black/20 px-3 py-2 text-[10px] font-bold uppercase tracking-[.12em] text-text-dim">
+                <div className="hidden sm:grid grid-cols-[28px_minmax(0,1fr)_72px_125px] items-center gap-2 border-b border-white/[.06] bg-black/20 px-3 py-2 text-[10px] font-bold uppercase tracking-[.12em] text-text-dim">
                   <span />
                   <span>Member</span>
                   <span className="text-right">GP</span>
@@ -1512,14 +1512,21 @@ export default function Attendance({ ctx }) {
                     const checked = !!selectedMembers[m.id]
                     const reward = getAttendanceReward(m.power, selectedEvent)
                     return (
-                      <button key={m.id} type="button" onClick={() => toggleMember(m.id)} aria-pressed={checked} className={`grid w-full grid-cols-[28px_minmax(0,1fr)_72px_125px] items-center gap-2 px-3 py-2.5 text-left ${checked ? 'bg-gold/[.055]' : 'hover:bg-white/[.02]'}`}>
+                      <button key={m.id} type="button" onClick={() => toggleMember(m.id)} aria-pressed={checked} className={`grid w-full grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 text-left sm:grid-cols-[28px_minmax(0,1fr)_72px_125px] ${checked ? 'bg-gold/[.055]' : 'hover:bg-white/[.02]'}`}>
                         <span className={`flex h-5 w-5 items-center justify-center rounded-md border text-[13px] ${checked ? 'border-gold bg-gold text-black' : 'border-white/15 bg-black/20 text-transparent'}`}>✓</span>
-                        <span className="min-w-0"><span className={`block truncate text-[13px] font-semibold ${checked ? 'text-gold-light' : 'text-text-bright'}`}>{m.name}</span><span className="block truncate text-[10px] text-text-dim">{m.cls || 'Member'}</span></span>
-                        <span className="text-right font-sans text-[11px] text-text-dim">{formatGp(m.power)}</span>
-                        <span className="text-right">
-                          <span className="block font-sans text-[13px] font-bold text-green-300">+{reward}</span>
-                          <span className="block mt-0.5 text-[10px] text-text-dim">Base +{ATTENDANCE_REWARDS[selectedEvent]?.base || 0} · GP +{getAttendanceGpBonus(m.power, selectedEvent)}</span>
-                        </span>
+                         <span className="min-w-0">
+                           <span className={`block truncate text-[13px] font-semibold ${checked ? 'text-gold-light' : 'text-text-bright'}`}>{m.name}</span>
+                           <span className="block truncate text-[10px] text-text-dim">{m.cls || 'Member'}</span>
+                           <span className="mt-0.5 block truncate text-[10px] font-sans text-text-dim sm:hidden">{formatGp(m.power)} GP · Base +{ATTENDANCE_REWARDS[selectedEvent]?.base || 0} · GP +{getAttendanceGpBonus(m.power, selectedEvent)}</span>
+                         </span>
+                         <span className="text-right font-sans text-[11px] text-text-dim">
+                           <span className="font-semibold text-green-300 sm:hidden">+{reward}</span>
+                           <span className="hidden sm:inline">{formatGp(m.power)}</span>
+                         </span>
+                         <span className="hidden text-right sm:block">
+                           <span className="block font-sans text-[13px] font-bold text-green-300">+{reward}</span>
+                           <span className="block mt-0.5 text-[10px] text-text-dim">Base +{ATTENDANCE_REWARDS[selectedEvent]?.base || 0} · GP +{getAttendanceGpBonus(m.power, selectedEvent)}</span>
+                         </span>
                       </button>
                     )
                   })}
@@ -1528,11 +1535,11 @@ export default function Attendance({ ctx }) {
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-2 border-t border-white/[.07] px-4 py-3">
+            <div className="flex flex-col gap-2.5 border-t border-white/[.07] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0"><div className="text-[12px] font-semibold text-text-bright">{selectedCount ? `${selectedCount} members ready` : 'No members selected'}</div><div className="truncate text-[11px] text-text-dim">{selectedSession?.displayName || 'Select a session'}</div></div>
-              <div className="flex gap-1.5">
-                <button type="button" onClick={() => setShowRecordModal(false)} disabled={submitting} className="rounded-lg border border-white/[.08] px-3 py-1.5 text-[12px] text-text-dim disabled:opacity-40">Cancel</button>
-                <button type="button" onClick={async () => { const ok = await recordAttendance(); if (ok) setShowRecordModal(false) }} disabled={submitting || selectedCount === 0 || !selectedSession} className="btn-gold min-h-8 px-3 text-[12px] font-bold disabled:opacity-40">
+              <div className="flex w-full gap-1.5 sm:w-auto">
+                <button type="button" onClick={() => setShowRecordModal(false)} disabled={submitting} className="flex-1 rounded-lg border border-white/[.08] px-3 py-1.5 text-[12px] text-text-dim disabled:opacity-40 sm:flex-none">Cancel</button>
+                <button type="button" onClick={async () => { const ok = await recordAttendance(); if (ok) setShowRecordModal(false) }} disabled={submitting || selectedCount === 0 || !selectedSession} className="btn-gold min-h-8 flex-1 px-3 text-[12px] font-bold disabled:opacity-40 sm:flex-none">
                   {submitting ? 'Saving…' : selectedCount ? `Record ${selectedCount}` : 'Select Members'}
                 </button>
               </div>
@@ -2016,12 +2023,12 @@ export default function Attendance({ ctx }) {
                     ? `${missingSelectedCount} member${missingSelectedCount === 1 ? '' : 's'} selected · reward calculated from each member's GP automatically`
                     : 'Select the missing member(s) first.'}
                 </div>
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
                   <button
                     type="button"
                     onClick={() => setShowAddMissing(false)}
                     disabled={addingMissing}
-                    className="rounded-lg border border-white/10 px-4 py-2 text-xs text-text-dim hover:text-text-bright disabled:opacity-40"
+                    className="flex-1 rounded-lg border border-white/10 px-4 py-2 text-xs text-text-dim hover:text-text-bright disabled:opacity-40 sm:flex-none"
                   >
                     Cancel
                   </button>
@@ -2029,7 +2036,7 @@ export default function Attendance({ ctx }) {
                     type="button"
                     onClick={addMissingRecord}
                     disabled={addingMissing || missingSelectedCount === 0 || baseRecordedCount >= 50}
-                    className="btn-gold min-h-9 px-4 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="btn-gold min-h-9 flex-1 px-4 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed sm:flex-none"
                   >
                     {addingMissing ? 'Adding…' : `Add ${missingSelectedCount || ''} Missing Member${missingSelectedCount === 1 ? '' : 's'}`}
                   </button>
@@ -2094,7 +2101,7 @@ export default function Attendance({ ctx }) {
               </div>
 
               {/* Summary bar */}
-              <div className="flex items-center justify-between gap-3 border-b border-white/[.06] bg-black/15 px-4 sm:px-5 py-3">
+              <div className="flex flex-col gap-2.5 border-b border-white/[.06] bg-black/15 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div>
                   <div className="text-[13px] font-bold uppercase tracking-[.16em] text-gold-light">Attendees</div>
                   <div className="mt-0.5 text-[13px] text-text-dim">Individual GP-based rewards</div>
