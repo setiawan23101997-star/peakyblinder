@@ -536,7 +536,7 @@ function NotificationBell({ ctx, onNavigate }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-3 z-[120] w-[min(380px,calc(100vw-20px))] overflow-hidden rounded-[14px] border border-gold/25 bg-[#0a0807] shadow-[0_28px_90px_rgba(0,0,0,.88)]">
+        <div className="fixed left-2.5 right-2.5 top-[82px] z-[120] w-auto max-w-none overflow-hidden rounded-[14px] border border-gold/25 bg-[#0a0807] shadow-[0_28px_90px_rgba(0,0,0,.88)] md:absolute md:left-auto md:right-0 md:top-full md:mt-3 md:w-[380px] md:max-w-[calc(100vw-20px)]">
           {/* Header */}
           <div className="relative border-b border-white/[.07] px-4 pb-2.5 pt-3.5">
             <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-gold/55 to-transparent" />
