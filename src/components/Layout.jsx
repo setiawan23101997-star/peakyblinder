@@ -756,7 +756,7 @@ function NotificationBell({ ctx, onNavigate }) {
 }
 
 export default function Layout({ ctx, page, setPage, children, toasts }) {
-  const { currentUser, setCurrentUser, addToast } = ctx
+  const { currentUser, setCurrentUser, addToast, allMembers } = ctx
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -773,6 +773,13 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
   const compactPrimaryNavItems = visibleNavItems.slice(0, 5)
   const compactSecondaryNavItems = visibleNavItems.slice(5)
   const activeSecondary = compactSecondaryNavItems.some(item => item.id === page)
+
+  // Prefer the live member record from App.jsx. When staff changes Coins,
+  // updateMember/reloadMembers can update allMembers and Layout re-renders
+  // immediately without forcing a page refresh or doing periodic polling.
+  const liveCurrentUser = allMembers?.find(
+    member => String(member.id) === String(currentUser?.id)
+  ) || currentUser
 
   useEffect(() => {
     if (!userMenuOpen && !moreOpen) return
@@ -936,7 +943,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               <div className="flex h-10 shrink-0 items-center gap-1 rounded-xl border border-gold/10 bg-gold/[0.025] px-2 md:hidden">
                 <span className="text-[13px]">🪙</span>
                 <span className="font-mono text-[12px] font-semibold text-gold-light">
-                  {Number(currentUser.coins || 0).toLocaleString()}
+                  {Number(liveCurrentUser?.coins || 0).toLocaleString()}
                 </span>
               </div>
             )}
@@ -967,7 +974,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                   <div className="leading-tight">
                     <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim">Coins</div>
                     <div className="mt-0.5 font-mono text-[12px] font-semibold text-gold-light">
-                      {Number(currentUser.coins || 0).toLocaleString()}
+                      {Number(liveCurrentUser?.coins || 0).toLocaleString()}
                     </div>
                   </div>
                 </div>
