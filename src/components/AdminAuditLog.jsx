@@ -82,7 +82,7 @@ function prettyDetails(details) {
   return Object.entries(details || {})
     .filter(([key, value]) => {
       if (value === null || value === undefined || value === '') return false
-      return !['coins_before', 'coins_after', 'coin_change', 'coin_before', 'coin_after', 'coin_delta', 'power_before', 'power_after', 'power_change', 'field_changes', 'changes'].includes(String(key).toLowerCase())
+      return !['coins_before', 'coins_after', 'coin_change', 'coin_before', 'coin_after', 'coin_delta', 'power_before', 'power_after', 'power_change', 'field_changes', 'changes', 'targets', 'percentage', 'members_affected'].includes(String(key).toLowerCase())
     })
     .map(([key, value]) => {
       let rendered = value
