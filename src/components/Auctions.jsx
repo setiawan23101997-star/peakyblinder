@@ -1813,7 +1813,7 @@ function BlindBidPanel({
                   </button>
                 </div>
 
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-text-dim">
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[12px] text-text-dim">
                   <span>
                     {own.hasBid
                       ? `${own.changesLeft} change${own.changesLeft === 1 ? '' : 's'} remaining`
