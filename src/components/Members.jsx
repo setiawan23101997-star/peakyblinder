@@ -1551,7 +1551,7 @@ export default function Members({ ctx }) {
           <div className="rounded-xl border border-white/[0.07] bg-[#0b0c0f] p-4">
             <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-text-dim">Power Updates</div>
             <div className="mt-1 font-mono text-xl font-black text-white">STAFF MANAGED</div>
-            <div className="mt-1 text-[10px] leading-relaxed text-text-dim">Need to update your Power? Please ask an <strong className="font-bold text-white/75">Master, or Elder</strong> to update it for you.</div>
+            <div className="mt-1 text-[12px] leading-relaxed text-text-dim">Need to update your Power? Please ask an <strong className="font-bold text-white/75">Master, or Elder</strong> to update it for you.</div>
           </div>
         </div>
       )}
