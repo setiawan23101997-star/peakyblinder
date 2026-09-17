@@ -589,7 +589,11 @@ export default function Marketplace({ ctx }) {
   // This updates the UI immediately when Coins change elsewhere without polling
   // or forcing a Marketplace reload.
   useEffect(() => {
-    setDisplayCoins(Number(liveCurrentUser?.coins || 0))
+    // Sync from the shared member context when it changes.
+    // Supabase Realtime below can update displayCoins directly between context syncs.
+    if (liveCurrentUser?.id) {
+      setDisplayCoins(Number(liveCurrentUser?.coins || 0))
+    }
   }, [liveCurrentUser?.id, liveCurrentUser?.coins])
 
   // Listen only for this player's member-row updates. This is event-driven
@@ -2049,7 +2053,7 @@ export default function Marketplace({ ctx }) {
             <div className="rounded-lg border border-white/[.07] bg-white/[.018] px-3 py-2.5">
               <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim/55">Your Balance</div>
               <div className="mt-1 font-mono text-[20px] font-bold leading-none text-text-bright">
-                {formatCoins(Number(currentUser?.coins || 0))}
+                {formatCoins(Number(displayCoins || 0))}
                 <span className="ml-1 text-[10px] font-semibold tracking-[.08em] text-text-dim">COINS</span>
               </div>
             </div>
