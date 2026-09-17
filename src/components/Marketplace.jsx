@@ -592,6 +592,41 @@ export default function Marketplace({ ctx }) {
     setDisplayCoins(Number(liveCurrentUser?.coins || 0))
   }, [liveCurrentUser?.id, liveCurrentUser?.coins])
 
+  // Listen only for this player's member-row updates. This is event-driven
+  // (no interval/polling), so the balance changes as soon as Supabase sends
+  // the database update without making the Marketplace feel like it refreshes.
+  useEffect(() => {
+    if (!supabase || !currentUser?.id) return undefined
+
+    const memberId = Number(currentUser.id)
+    const channel = supabase
+      .channel(`marketplace-member-balance-${memberId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'members',
+          filter: `id=eq.${memberId}`,
+        },
+        payload => {
+          const nextCoins = Number(payload?.new?.coins)
+          if (Number.isFinite(nextCoins)) {
+            setDisplayCoins(nextCoins)
+          }
+        }
+      )
+      .subscribe(status => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn(`[Marketplace] Member balance realtime ${status.toLowerCase()}.`)
+        }
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [supabase, currentUser?.id])
+
   // Keep Marketplace data in sync in the background. Realtime updates are
   // intentionally silent so the page never looks like it is reloading.
   useEffect(() => {
@@ -952,7 +987,8 @@ export default function Marketplace({ ctx }) {
     setBusy(true)
     try {
       const total = Number(buyItem.price)
-      if (Number(currentUser?.coins || 0) < total) throw new Error(`Not enough coins. You need ${formatCoins(total)} coins.`)
+      const availableCoins = Number(liveCurrentUser?.coins ?? displayCoins ?? 0)
+      if (availableCoins < total) throw new Error(`Not enough coins. You need ${formatCoins(total)} coins.`)
       const { error } = await supabase.rpc('marketplace_purchase_item', { p_buyer_id: currentUser.id, p_item_id: buyItem.id, p_quantity: 1 })
       if (error) throw error
 
@@ -1999,37 +2035,37 @@ export default function Marketplace({ ctx }) {
           <div className="rounded-lg border border-white/[.07] bg-white/[.018] px-3 py-2.5">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[7px] font-bold uppercase tracking-[.16em] text-text-dim/50">Confirm purchase</div>
-                <div className={`mt-1 truncate font-spectral text-[15px] font-bold ${rarityTextClass(buyItem.rarity)}`}>{buyItem.name}</div>
+                <div className="text-[10px] font-bold uppercase tracking-[.16em] text-text-dim/50">Confirm purchase</div>
+                <div className={`mt-1 truncate font-spectral text-[19px] font-bold ${rarityTextClass(buyItem.rarity)}`}>{buyItem.name}</div>
               </div>
               <div className="shrink-0 text-right">
-                <div className="font-mono text-[16px] font-bold leading-none text-gold-bright">{formatCoins(Number(buyItem.price))}</div>
-                <div className="mt-1 text-[7px] font-semibold uppercase tracking-[.12em] text-gold-dim">Coins</div>
+                <div className="font-mono text-[19px] font-bold leading-none text-gold-bright">{formatCoins(Number(buyItem.price))}</div>
+                <div className="mt-1 text-[10px] font-semibold uppercase tracking-[.12em] text-gold-dim">Coins</div>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-lg border border-white/[.07] bg-white/[.018] px-3 py-2.5">
-              <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim/55">Your Balance</div>
-              <div className="mt-1 font-mono text-[14px] font-bold leading-none text-text-bright">
+              <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim/55">Your Balance</div>
+              <div className="mt-1 font-mono text-[20px] font-bold leading-none text-text-bright">
                 {formatCoins(Number(currentUser?.coins || 0))}
-                <span className="ml-1 text-[8px] font-semibold tracking-[.08em] text-text-dim">COINS</span>
+                <span className="ml-1 text-[10px] font-semibold tracking-[.08em] text-text-dim">COINS</span>
               </div>
             </div>
 
             <div className="rounded-lg border border-gold/15 bg-gold/[.035] px-3 py-2.5">
-              <div className="text-[8px] font-bold uppercase tracking-[.14em] text-text-dim/55">After Purchase</div>
-              <div className="mt-1 font-mono text-[14px] font-bold leading-none text-gold-light">
+              <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim/55">After Purchase</div>
+              <div className="mt-1 font-mono text-[20px] font-bold leading-none text-gold-light">
                 {formatCoins(Math.max(0, Number(displayCoins || 0) - Number(buyItem.price)))}
-                <span className="ml-1 text-[8px] font-semibold tracking-[.08em] text-gold-dim">COINS</span>
+                <span className="ml-1 text-[10px] font-semibold tracking-[.08em] text-gold-dim">COINS</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-white/[.06] pt-3">
-            <button type="button" disabled={busy} onClick={() => setBuyItem(null)} className="rounded-lg border border-white/[.08] px-3.5 py-2 text-[9px] font-bold uppercase tracking-[.1em] text-text-dim transition hover:border-white/[.14] hover:text-text-bright">Cancel</button>
-            <button type="button" disabled={busy} onClick={confirmBuy} className="rounded-lg border border-gold/30 bg-gold/[.09] px-4 py-2 text-[9px] font-bold uppercase tracking-[.1em] text-gold-light transition hover:border-gold/45 hover:bg-gold/[.14] disabled:cursor-not-allowed disabled:opacity-50">{busy ? 'Processing…' : 'Confirm Purchase'}</button>
+            <button type="button" disabled={busy} onClick={() => setBuyItem(null)} className="rounded-lg border border-white/[.08] px-3.5 py-2 text-[12px] font-bold uppercase tracking-[.1em] text-text-dim transition hover:border-white/[.14] hover:text-text-bright">Cancel</button>
+            <button type="button" disabled={busy} onClick={confirmBuy} className="rounded-lg border border-gold/30 bg-gold/[.09] px-4 py-2 text-[12px] font-bold uppercase tracking-[.1em] text-gold-light transition hover:border-gold/45 hover:bg-gold/[.14] disabled:cursor-not-allowed disabled:opacity-50">{busy ? 'Processing…' : 'Confirm Purchase'}</button>
           </div>
         </div>
       </Modal>}
