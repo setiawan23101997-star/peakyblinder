@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import ChangePasswordModal from './ChangePasswordModal'
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+  { id: 'dashboard', label: 'Dashboard', icon: '⚔️' },
   { id: 'members', label: 'Members', icon: '👥' },
   { id: 'attendance', label: 'Attendance', icon: '📋' },
   { id: 'auctions', label: 'Auctions', icon: '🔨' },
