@@ -293,7 +293,7 @@ function DistributorStatusBadge({ name }) {
         }`}
         title={isSystem ? 'Ended automatically by the timer' : `Handed out by ${name}`}
       >
-        <span aria-hidden="true">{isSystem ? '⏱' : '✓'}</span>
+        <span aria-hidden="true">{isSystem ? '⏱' : ''}</span>
         <span className="truncate max-w-[140px]">{name}</span>
       </span>
     )

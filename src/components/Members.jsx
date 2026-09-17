@@ -371,8 +371,10 @@ function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUp
   const [profileSaving, setProfileSaving] = useState(false)
   const [, setClock] = useState(0)
 
-  const isStaff = isStaffRole(member?.role)
-  const cooldown = isStaff ? 0 : getCooldown(member)
+  // Only Admin, Master, and Elder can edit Power. Regular members cannot edit Power at all.
+  const viewerIsStaff = isStaffRole(currentUser?.role)
+  const cooldown = viewerIsStaff ? 0 : getCooldown(member)
+  const canEditPower = viewerIsStaff
 
   useEffect(() => {
     if (!member?.power_next_update_at) return undefined
@@ -407,7 +409,10 @@ function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUp
 
   const currentLevel = Number(member.character_level || member.level || 1)
   const currentAwakening = Number(member.awakening_stage) || 0
-  const canManageOwnGrade = Boolean(isSelf && currentUser?.role && ['Admin', 'Master', 'Elder'].includes(currentUser.role))
+  // Only Admin, Master, and Elder can edit character customization.
+  // Staff can edit their own profile or any other member's profile.
+  const canManageProfile = viewerIsStaff
+  const canManageOwnGrade = canManageProfile
   const currentGradeKey = member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary')
   const hasProfileChanges =
     selectedClass !== (member.cls || 'Berserker') ||
@@ -499,14 +504,14 @@ function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUp
               <Info label="Last Update" value={formatDateTime(member.power_updated_at)} />
             </div>
 
-            {isSelf && (
+            {canManageProfile && (
               <div className="mt-5 rounded-2xl border border-white/[0.08] bg-[#0c0d10] overflow-hidden">
                 <div className="border-b border-white/[0.06] px-4 py-3.5 sm:px-5">
                   <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-light">
-                    Customize My Character
+                    {isSelf ? 'Customize My Character' : `Customize ${member.name}'s Character`}
                   </div>
                   <div className="mt-1 text-[10px] leading-relaxed text-text-dim">
-                    Class, level and awakening are self-service profile settings. Card Grade is staff-managed and does not consume Power updates.
+                    Staff-only profile controls. You can edit class, level, awakening, and Card Grade for this character.
                   </div>
                 </div>
 
@@ -569,10 +574,9 @@ function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUp
                   <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/20 px-3 py-2.5">
                     <div className="flex items-center gap-2 text-[9px] leading-relaxed text-text-dim">
                       <span className="text-gold-bright">◆</span>
-                      <span>{canManageOwnGrade
-                        ? <>As <strong className="font-bold text-white/75">{member.role}</strong>, you can change your own Card Grade.</>
-                        : <>Card Grade is managed by <strong className="font-bold text-white/75">Admin, Master, or Elder</strong>. Ask a staff member if you want to change your grade.</>
-                      }</span>
+                      <span>
+                        <strong className="font-bold text-white/75">Admin, Master, and Elder</strong> can edit this character's profile settings.
+                      </span>
                     </div>
                   </div>
 
@@ -621,29 +625,29 @@ function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUp
               </div>
             )}
 
-            {isSelf && (
+            {canEditPower && (
               <section className="mt-5 overflow-hidden rounded-xl border border-gold/15 bg-[#0b0c0f]">
                 <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] px-4 py-3.5 sm:px-5">
                   <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-light">Update My Power</div>
-                    <div className="mt-1 text-[10px] text-text-dim">{isStaff ? "Unlimited Power updates for staff." : "Up to 3 updates in each 7-day window."}</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-light">{isSelf ? 'Update My Power' : 'Staff Power Update'}</div>
+                    <div className="mt-1 text-[10px] text-text-dim">{viewerIsStaff ? (isSelf ? 'Unlimited Power updates for staff.' : "Staff can update this member's Power without the 7-day limit.") : 'Up to 3 updates in each 7-day window.'}</div>
                   </div>
 
                   <div className={`shrink-0 rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] ${
-                    isStaff
+                    viewerIsStaff
                       ? 'border-gold/30 bg-gold/[0.06] text-gold-bright'
                       : cooldown > 0
                         ? 'border-white/10 bg-white/[0.02] text-text-dim'
                         : 'border-emerald-400/25 bg-emerald-400/[0.05] text-emerald-300'
                   }`}>
-                    {isStaff ? 'UNLIMITED' : cooldown > 0 ? `LOCKED · ${cooldownText(cooldown)}` : `${getPowerWindowRemaining(member)} / 3 LEFT`}
+                    {viewerIsStaff ? 'UNLIMITED' : cooldown > 0 ? `LOCKED · ${cooldownText(cooldown)}` : `${getPowerWindowRemaining(member)} / 3 LEFT`}
                   </div>
                 </div>
 
                 <div className="px-4 py-4 sm:px-5">
                   <div className="mb-4 flex items-center gap-2">
                     {[0, 1, 2].map(index => {
-                      const active = isStaff || (cooldown <= 0 && index < getPowerWindowRemaining(member))
+                      const active = viewerIsStaff || (cooldown <= 0 && index < getPowerWindowRemaining(member))
                       return (
                         <div
                           key={index}
@@ -653,7 +657,7 @@ function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUp
                     })}
                   </div>
 
-                  {isStaff || cooldown <= 0 ? (
+                  {viewerIsStaff || cooldown <= 0 ? (
                     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
                       <div>
                         <div className="mb-1.5 flex items-center justify-between">
@@ -773,8 +777,9 @@ function RankingPanel({ members, onClose }) {
   )
 }
 
-function StaffControlPanel({ members, currentUser, onSelectMember, onClose }) {
+function StaffControlPanel({ members, currentUser, onSelectMember, onCoinDecay, onCoinReset, coinActionBusy, onClose }) {
   const [search, setSearch] = useState('')
+  const [selectedMemberIds, setSelectedMemberIds] = useState([])
 
   const manageableMembers = members.filter(member => {
     const query = search.trim().toLowerCase()
@@ -782,6 +787,37 @@ function StaffControlPanel({ members, currentUser, onSelectMember, onClose }) {
 
     return `${member.name || ''} ${member.username || ''}`.toLowerCase().includes(query)
   })
+
+  const toggleMember = (memberId) => {
+    setSelectedMemberIds(current => {
+      const key = String(memberId)
+      return current.some(id => String(id) === key)
+        ? current.filter(id => String(id) !== key)
+        : [...current, memberId]
+    })
+  }
+
+  const selectAllVisible = () => {
+    setSelectedMemberIds(current => {
+      const visibleIds = manageableMembers.map(member => member.id)
+      const allSelected = visibleIds.length > 0 && visibleIds.every(id => current.some(selectedId => String(selectedId) === String(id)))
+      if (allSelected) {
+        return current.filter(selectedId => !visibleIds.some(id => String(id) === String(selectedId)))
+      }
+      return [...current, ...visibleIds.filter(id => !current.some(selectedId => String(selectedId) === String(id)))]
+    })
+  }
+
+  const selectedCount = selectedMemberIds.length
+  const allVisibleSelected = manageableMembers.length > 0 && manageableMembers.every(member =>
+    selectedMemberIds.some(id => String(id) === String(member.id))
+  )
+
+  const handleSelectedDecay = async () => {
+    if (!selectedCount) return
+    const ok = await onCoinDecay(selectedMemberIds)
+    if (ok) setSelectedMemberIds([])
+  }
 
   return (
     <div
@@ -793,8 +829,8 @@ function StaffControlPanel({ members, currentUser, onSelectMember, onClose }) {
           <div>
             <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-gold-light">Clan Administration</div>
             <h2 className="font-spectral text-2xl font-bold text-white">Staff Control Panel</h2>
-            <p className="mt-1 text-[10px] leading-relaxed text-text-dim">
-              Manage other members here. Your own Coins are intentionally excluded from staff controls.
+            <p className="mt-1 text-[11px] leading-relaxed text-text-dim">
+              Manage individual members and apply Coin economy actions. Select specific members or select all members for Coin decay.
             </p>
           </div>
           <button
@@ -807,13 +843,49 @@ function StaffControlPanel({ members, currentUser, onSelectMember, onClose }) {
         </div>
 
         <div className="max-h-[70vh] overflow-y-auto p-4 sm:p-5">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-text-dim">
-                Select a member to manage
+          <div className="mb-5 rounded-xl border border-gold/20 bg-gold/[0.035] p-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="text-[9px] font-black uppercase tracking-[0.2em] text-gold-light">🪙 Coin Economy</div>
+                <div className="mt-1 font-semibold text-white">Selected Member Coin Decay</div>
+                <p className="mt-1 max-w-2xl text-[12px] leading-relaxed text-text-dim">
+                  Select the members you want to affect. The 25% decay reduces each selected balance to 75% of its current value. Admin, Master, and Elder can also be selected.
+                </p>
               </div>
-              <div className="mt-1 text-[10px] text-text-dim">
-                Search by character name or username.
+
+              <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={handleSelectedDecay}
+                  disabled={coinActionBusy || selectedCount === 0}
+                  className="rounded-lg border border-gold/30 bg-gold/[0.06] px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-gold-light transition hover:bg-gold/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {coinActionBusy ? 'Processing...' : `↓ 25% Decay${selectedCount ? ` (${selectedCount})` : ''}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={onCoinReset}
+                  disabled={coinActionBusy}
+                  className="rounded-lg border border-red-500/35 bg-red-500/[0.06] px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-red-300 transition hover:bg-red-500/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {coinActionBusy ? 'Processing...' : '⚠ Reset Everyone to 0'}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-lg border border-gold/15 bg-black/10 px-3 py-2 text-[12px] leading-relaxed text-text-dim">
+              <span className="font-black uppercase tracking-wider text-gold-light">Selected:</span> {selectedCount} member{selectedCount === 1 ? '' : 's'}.
+              {' '}Use <span className="font-bold text-white">Select All</span> below to select every member currently shown.
+            </div>
+          </div>
+
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-text-dim">
+                Select members for Coin decay
+              </div>
+              <div className="mt-1 text-[11px] text-text-dim">
+                Search by character name or username. Click a member's name/card to open their staff controls.
               </div>
             </div>
             <div className="relative w-full sm:w-72">
@@ -828,6 +900,32 @@ function StaffControlPanel({ members, currentUser, onSelectMember, onClose }) {
             </div>
           </div>
 
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+            <div className="text-[12px] text-text-dim">
+              Showing <span className="font-bold text-white">{manageableMembers.length}</span> member{manageableMembers.length === 1 ? '' : 's'}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={selectAllVisible}
+                disabled={manageableMembers.length === 0 || coinActionBusy}
+                className="rounded-md border border-gold/25 bg-gold/[0.04] px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-gold-light hover:bg-gold/[0.10] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {allVisibleSelected ? 'Clear All' : 'Select All'}
+              </button>
+              {selectedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMemberIds([])}
+                  disabled={coinActionBusy}
+                  className="rounded-md border border-white/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-text-dim hover:bg-white/5 disabled:opacity-40"
+                >
+                  Clear Selection
+                </button>
+              )}
+            </div>
+          </div>
+
           {manageableMembers.length === 0 ? (
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-8 text-center text-sm text-text-dim">
               No matching members found.
@@ -836,19 +934,41 @@ function StaffControlPanel({ members, currentUser, onSelectMember, onClose }) {
             <div className="grid gap-2 sm:grid-cols-2">
               {manageableMembers.map(member => {
                 const roleClass = ROLE_META[member.role] || ROLE_META.Member
+                const isSelected = selectedMemberIds.some(id => String(id) === String(member.id))
                 return (
-                  <button
+                  <div
                     key={member.id}
-                    type="button"
-                    onClick={() => onSelectMember(member)}
-                    className="group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-left transition hover:border-gold/30 hover:bg-gold/[0.04]"
+                    className={`group flex items-center gap-3 rounded-xl border p-3 text-left transition ${
+                      isSelected
+                        ? 'border-gold/40 bg-gold/[0.07]'
+                        : 'border-white/[0.07] bg-white/[0.02] hover:border-gold/30 hover:bg-gold/[0.04]'
+                    }`}
                   >
-                    <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleMember(member.id)}
+                      disabled={coinActionBusy}
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-black transition ${
+                        isSelected
+                          ? 'border-gold/70 bg-gold text-black'
+                          : 'border-white/20 bg-black/20 text-transparent hover:border-gold/40'
+                      }`}
+                      aria-label={`${isSelected ? 'Deselect' : 'Select'} ${member.name || 'member'}`}
+                    >
+                      ✓
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onSelectMember(member)}
+                      className="min-w-0 flex-1 text-left"
+                    >
                       <div className="truncate font-semibold text-white group-hover:text-gold-light">{member.name}</div>
                       <div className="mt-0.5 truncate text-[10px] text-text-dim">
-                        {member.cls || '—'} · Lv. {member.character_level || member.level || 1} · {formatNumber(member.power)} Power
+                        {member.cls || '—'} · Lv. {member.character_level || member.level || 1} · {formatNumber(member.coins)} Coins
                       </div>
-                    </div>
+                    </button>
+
                     <div className="flex shrink-0 items-center gap-2">
                       <span className={`rounded-md border px-2 py-1 text-[8px] font-black uppercase tracking-[0.12em] ${roleClass}`}>
                         {member.role || 'Member'}
@@ -859,8 +979,15 @@ function StaffControlPanel({ members, currentUser, onSelectMember, onClose }) {
                         </span>
                       )}
                     </div>
-                    <span className="text-text-dim transition group-hover:translate-x-0.5 group-hover:text-gold-light">›</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectMember(member)}
+                      className="shrink-0 px-1 text-text-dim transition hover:text-gold-light"
+                      aria-label={`Manage ${member.name || 'member'}`}
+                    >
+                      ›
+                    </button>
+                  </div>
                 )
               })}
             </div>
@@ -1051,7 +1178,7 @@ function StaffEditor({ member, ctx, onClose, onResetPassword }) {
 }
 
 export default function Members({ ctx }) {
-  const { members = [], saveMember, updateMember, deleteMember, resetMemberPowerCooldown, currentUser, addToast } = ctx
+  const { members = [], allMembers: ctxAllMembers = [], saveMember, updateMember, deleteMember, resetMemberPowerCooldown, currentUser, addToast } = ctx
   const [search, setSearch] = useState('')
   const [classFilter, setClassFilter] = useState('All')
   const [sortBy, setSortBy] = useState('power')
@@ -1061,6 +1188,9 @@ export default function Members({ ctx }) {
   const [showStaffPanel, setShowStaffPanel] = useState(false)
   const [staffEditing, setStaffEditing] = useState(null)
   const [resetTarget, setResetTarget] = useState(null)
+  const [coinActionBusy, setCoinActionBusy] = useState(false)
+  const [coinResetConfirmOpen, setCoinResetConfirmOpen] = useState(false)
+  const [coinResetConfirmation, setCoinResetConfirmation] = useState('')
   const [loading, setLoading] = useState(false)
   const [newMember, setNewMember] = useState({
     name: '', username: '', password: '', cls: 'Berserker', power: 10000, character_level: 1, awakening_stage: 0, role: 'Member', profile_grade: 'Legendary',
@@ -1090,18 +1220,144 @@ export default function Members({ ctx }) {
   const classes = useMemo(() => ['All', ...new Set(visibleMembers.map(m => m.cls).filter(Boolean))], [visibleMembers])
 
   const ownMember = members.find(m => m.id === currentUser?.id) || visibleMembers.find(m => m.username && m.username === currentUser?.username)
-  const handleProfileUpdate = async (member, updates) => {
-    if (!currentUser || member.id !== currentUser.id) {
-      addToast('You can only customize your own character.', 'red', 'Not Allowed')
+
+  const handleCoinDecay = async (selectedMemberIds = []) => {
+    if (!currentUser || !isElder) {
+      addToast('Only Admin, Master, and Elder can use Global Coin Controls.', 'red', 'Not Allowed')
       return false
     }
+
+    // Use the complete member list from App.jsx so Admin accounts are included
+    // even when the current viewer normally has hidden Admin visibility.
+    const allMemberRows = Array.isArray(ctxAllMembers) && ctxAllMembers.length > 0
+      ? ctxAllMembers
+      : (Array.isArray(members) ? members : [])
+
+    const selectedKeys = new Set((Array.isArray(selectedMemberIds) ? selectedMemberIds : []).map(id => String(id)))
+    const targetRows = selectedKeys.size > 0
+      ? allMemberRows.filter(member => selectedKeys.has(String(member.id)))
+      : []
+    const memberCount = targetRows.length
+
+    if (memberCount === 0) {
+      addToast('Select at least one member for Coin Decay.', 'red', 'No Members Selected')
+      return false
+    }
+
+    const confirmed = window.confirm(
+      `⚠️ APPLY 25% COIN DECAY?\n\nThis will reduce the Coin balances of ${memberCount} selected member${memberCount === 1 ? '' : 's'} to 75% of their current amount.\n\nAdmin, Master, and Elder can be included.\n\nThis changes the live Coin balances immediately.`
+    )
+    if (!confirmed) return false
+
+    setCoinActionBusy(true)
+    try {
+      // Do the update directly through the existing members UPDATE path.
+      // This avoids the RPC 400 error and uses the same database permission
+      // path already used elsewhere by this application.
+      const results = await Promise.all(
+        targetRows.map(member => {
+          const currentCoins = Math.max(0, Number(member.coins) || 0)
+          const newCoins = Math.floor(currentCoins * 0.75)
+
+          return ctx.supabase
+            .from('members')
+            .update({ coins: newCoins })
+            .eq('id', member.id)
+        })
+      )
+
+      const failed = results.find(result => result.error)
+      if (failed?.error) throw failed.error
+
+      await ctx.reloadMembers?.()
+      addToast(`25% Coin decay applied to ${memberCount} selected member${memberCount === 1 ? '' : 's'}.`, 'gold', 'Coin Decay Applied')
+      return true
+    } catch (error) {
+      console.error('[Coin Decay] FAILED:', error)
+      addToast(error?.message || 'Failed to apply Coin decay.', 'red', 'Coin Decay Failed')
+      return false
+    } finally {
+      setCoinActionBusy(false)
+    }
+  }
+
+  const handleCoinReset = async () => {
+    if (!currentUser || !isElder) {
+      addToast('Only Admin, Master, and Elder can use Global Coin Controls.', 'red', 'Not Allowed')
+      return false
+    }
+
+    const allMemberRows = Array.isArray(ctxAllMembers) && ctxAllMembers.length > 0
+      ? ctxAllMembers
+      : (Array.isArray(members) ? members : [])
+    const memberCount = allMemberRows.length
+
+    if (memberCount === 0) {
+      addToast('No members were found.', 'red', 'Coin Reset Failed')
+      return false
+    }
+
+    const firstWarning = window.confirm(
+      `🚨 FINAL WARNING — RESET EVERYONE'S COINS TO 0\n\nThis will permanently set ALL ${memberCount} member Coin balances to ZERO.\n\nAdmin, Master, Elder, and regular Members are ALL included.\n\nThere is NO undo, restore, or in-website backup for this action.\n\nContinue to the final confirmation?`
+    )
+    if (!firstWarning) return false
+
+    setCoinResetConfirmation('')
+    setCoinResetConfirmOpen(true)
+    return true
+  }
+
+  const confirmCoinReset = async () => {
+    if (coinResetConfirmation !== 'RESET') return false
+
+    const allMemberRows = Array.isArray(ctxAllMembers) && ctxAllMembers.length > 0
+      ? ctxAllMembers
+      : (Array.isArray(members) ? members : [])
+    const memberCount = allMemberRows.length
+
+    setCoinResetConfirmOpen(false)
+    setCoinResetConfirmation('')
+    setCoinActionBusy(true)
+    try {
+      // Direct update through the existing members UPDATE path. No RPC is
+      // required, so an RPC schema/signature problem cannot block the reset.
+      const results = await Promise.all(
+        allMemberRows.map(member =>
+          ctx.supabase
+            .from('members')
+            .update({ coins: 0 })
+            .eq('id', member.id)
+        )
+      )
+
+      const failed = results.find(result => result.error)
+      if (failed?.error) throw failed.error
+
+      await ctx.reloadMembers?.()
+      addToast(`All Coins were permanently reset to 0 for ${memberCount} members.`, 'red', 'Coins Reset')
+      return true
+    } catch (error) {
+      console.error('[Coin Reset] FAILED:', error)
+      addToast(error?.message || 'Failed to reset all Coins.', 'red', 'Coin Reset Failed')
+      return false
+    } finally {
+      setCoinActionBusy(false)
+    }
+  }
+
+  const handleProfileUpdate = async (member, updates) => {
+    if (!currentUser || !isStaffRole(currentUser.role)) {
+      addToast('Only Admin, Master, and Elder can edit character profiles.', 'red', 'Not Allowed')
+      return false
+    }
+
     const ok = await updateMember(member.id, updates)
     if (ok) {
       const gradeChanged = Object.prototype.hasOwnProperty.call(updates || {}, 'profile_grade')
       addToast(
-        gradeChanged
-          ? 'Your character profile and Card Grade were updated.'
-          : 'Your character profile was updated.',
+        member.id === currentUser.id
+          ? (gradeChanged ? 'Your character profile and Card Grade were updated.' : 'Your character profile was updated.')
+          : (gradeChanged ? `${member.name}'s character profile and Card Grade were updated.` : `${member.name}'s character profile was updated.`),
         'gold',
         'Character Updated'
       )
@@ -1130,34 +1386,25 @@ export default function Members({ ctx }) {
   }
 
   const handlePowerUpdate = async (member, newPower) => {
-    if (!currentUser || member.id !== currentUser.id) {
-      addToast('You can only update your own Power.', 'red', 'Not Allowed')
-      return false
-    }
+    const viewerIsStaff = isStaffRole(currentUser?.role)
 
-    const isStaff = isStaffRole(currentUser.role)
-    const remaining = isStaff ? 0 : getCooldown(member)
-
-    if (!isStaff && remaining > 0) {
-      addToast(`Power is locked for ${cooldownText(remaining)}.`, 'red', 'Power Locked')
+    // Power can only be changed by Admin, Master, or Elder.
+    // Staff can change their own Power or any other member's Power.
+    if (!currentUser || !viewerIsStaff) {
+      addToast('Only Admin, Master, and Elder can update Power.', 'red', 'Not Allowed')
       return false
     }
 
     const updates = { power: newPower }
     const ok = await updateMember(member.id, updates)
     if (ok) {
-      if (isStaff) {
-        addToast(`Power updated to ${formatNumber(newPower)}. Staff Power updates are unlimited.`, 'gold', 'Power Updated')
-      } else {
-        const remainingUpdates = Math.max(0, 3 - (getPowerUpdatesUsed(member) + 1))
-        addToast(
-          remainingUpdates > 0
-            ? `Power updated to ${formatNumber(newPower)}. You have ${remainingUpdates} Power update${remainingUpdates === 1 ? '' : 's'} remaining.`
-            : `Power updated to ${formatNumber(newPower)}. Your Power is now locked until the next 7-day window.`,
-          'gold',
-          'Power Updated'
-        )
-      }
+      addToast(
+        member.id === currentUser.id
+          ? `Power updated to ${formatNumber(newPower)}. Staff Power updates are unlimited.`
+          : `${member.name}'s Power updated to ${formatNumber(newPower)}.`,
+        'gold',
+        'Power Updated'
+      )
       return true
     }
     return false
@@ -1296,13 +1543,15 @@ export default function Members({ ctx }) {
                 </div>
                 <div className="mt-1 text-xs text-text-dim">{ownMember.cls} · {formatNumber(ownMember.power)} Power</div>
               </div>
-              <button onClick={() => setSelected(ownMember)} className="rounded-md border border-gold/35 bg-gold/5 px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-gold-light hover:bg-gold/10">Manage My Power</button>
+              {isStaffRole(currentUser?.role) && (
+                <button onClick={() => setSelected(ownMember)} className="rounded-md border border-gold/35 bg-gold/5 px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-gold-light hover:bg-gold/10">Manage My Power</button>
+              )}
             </div>
           </div>
           <div className="rounded-xl border border-white/[0.07] bg-[#0b0c0f] p-4">
-            <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-text-dim">Next Power Update</div>
-            <div className="mt-1 font-mono text-xl font-black text-white">{cooldownText(getCooldown(ownMember))}</div>
-            <div className="mt-1 text-[10px] text-text-dim">{getCooldown(ownMember) > 0 ? `Available ${formatDateTime(ownMember.power_next_update_at)}` : 'Your Power is ready to be updated.'}</div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-text-dim">Power Updates</div>
+            <div className="mt-1 font-mono text-xl font-black text-white">STAFF MANAGED</div>
+            <div className="mt-1 text-[10px] leading-relaxed text-text-dim">Need to update your Power? Please ask an <strong className="font-bold text-white/75">Master, or Elder</strong> to update it for you.</div>
           </div>
         </div>
       )}
@@ -1349,6 +1598,9 @@ export default function Members({ ctx }) {
         <StaffControlPanel
           members={members}
           currentUser={currentUser}
+          onCoinDecay={handleCoinDecay}
+          onCoinReset={handleCoinReset}
+          coinActionBusy={coinActionBusy}
           onSelectMember={member => {
             setShowStaffPanel(false)
             setStaffEditing(member)
@@ -1359,6 +1611,52 @@ export default function Members({ ctx }) {
 
       {staffEditing && (
         <StaffEditor member={staffEditing} ctx={ctx} onClose={() => setStaffEditing(null)} onResetPassword={setResetTarget} />
+      )}
+
+      {coinResetConfirmOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-red-500/25 bg-[#0b0c0f] p-6 shadow-2xl">
+            <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-red-300">Final Confirmation</div>
+            <div className="mt-3 text-sm text-white">
+              This will permanently set every member's Coins to <span className="font-black text-red-300">0</span>.
+            </div>
+            <label className="mt-3 block">
+              <span className="mb-2 block text-xs text-text-dim">Type <span className="font-black text-white">RESET</span> exactly to continue.</span>
+              <input
+                type="text"
+                value={coinResetConfirmation}
+                onChange={event => setCoinResetConfirmation(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' && coinResetConfirmation === 'RESET') confirmCoinReset()
+                }}
+                placeholder="Type RESET"
+                autoFocus
+                className="w-full rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-sm font-bold uppercase tracking-wider text-white outline-none placeholder:text-text-dim focus:border-red-400/50"
+              />
+            </label>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setCoinResetConfirmOpen(false)
+                  setCoinResetConfirmation('')
+                  addToast('Coin reset cancelled. Nothing was changed.', 'blue', 'Reset Cancelled')
+                }}
+                className="flex-1 rounded-lg border border-white/10 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-dim hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmCoinReset}
+                disabled={coinResetConfirmation !== 'RESET' || coinActionBusy}
+                className="flex-1 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-red-300 hover:bg-red-500/20"
+              >
+                <span className="font-black">RESET</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {resetTarget && (
