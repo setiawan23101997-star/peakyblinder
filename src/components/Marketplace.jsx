@@ -505,6 +505,7 @@ export default function Marketplace({ ctx }) {
   const [tab, setTab] = useState('shop')
   const [staffTab, setStaffTab] = useState(canReview ? 'pending' : 'distribution')
   const [buyItem, setBuyItem] = useState(null)
+  const [purchaseError, setPurchaseError] = useState('')
   const [busy, setBusy] = useState(false)
   const [showSubmit, setShowSubmit] = useState(false)
   const [reviewItem, setReviewItem] = useState(null)
@@ -865,6 +866,11 @@ export default function Marketplace({ ctx }) {
     return purchase?.purchased_at || null
   }
 
+  const openBuy = item => {
+    setPurchaseError('')
+    setBuyItem(item)
+  }
+
   const openSubmit = () => {
     clearImage()
     setForm({ ...emptyForm })
@@ -988,12 +994,26 @@ export default function Marketplace({ ctx }) {
 
   const confirmBuy = async () => {
     if (!buyItem) return
+
+    setPurchaseError('')
     setBusy(true)
+
     try {
       const total = Number(buyItem.price)
       const availableCoins = Number(liveCurrentUser?.coins ?? displayCoins ?? 0)
-      if (availableCoins < total) throw new Error(`Not enough coins. You need ${formatCoins(total)} coins.`)
-      const { error } = await supabase.rpc('marketplace_purchase_item', { p_buyer_id: currentUser.id, p_item_id: buyItem.id, p_quantity: 1 })
+
+      if (availableCoins < total) {
+        setPurchaseError(
+          `You need ${formatCoins(total)} Coins to purchase this item.`
+        )
+        return
+      }
+
+      const { error } = await supabase.rpc('marketplace_purchase_item', {
+        p_buyer_id: currentUser.id,
+        p_item_id: buyItem.id,
+        p_quantity: 1,
+      })
       if (error) throw error
 
       // Update the balance shown by Marketplace immediately after the RPC succeeds.
@@ -1004,8 +1024,11 @@ export default function Marketplace({ ctx }) {
       setBuyItem(null)
       addToast(`Purchased ${buyItem.name} for ${formatCoins(total)} coins.`, 'gold', 'Purchase Complete')
     } catch (error) {
+      // Keep all non-balance purchase errors on the existing toast behavior.
       addToast(error?.message || 'Purchase failed.', 'red', 'Purchase Failed')
-    } finally { setBusy(false) }
+    } finally {
+      setBusy(false)
+    }
   }
 
   const approve = async () => {
@@ -1421,7 +1444,7 @@ export default function Marketplace({ ctx }) {
             {loading ? null : filteredActiveItems.length > 0 ? (
               <>
                 <SectionTitle title="Available Now" />
-                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{filteredActiveItems.map(item => <MemoizedItemCard key={item.id} item={item} onBuy={setBuyItem} canBuy={canBuy} />)}</div>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{filteredActiveItems.map(item => <MemoizedItemCard key={item.id} item={item} onBuy={openBuy} canBuy={canBuy} />)}</div>
               </>
             ) : activeItems.length === 0 ? (
               <div className="relative overflow-hidden rounded-[20px] border border-gold/15 bg-[#080706]/95 shadow-[0_18px_70px_rgba(0,0,0,.28)]">
@@ -2049,7 +2072,26 @@ export default function Marketplace({ ctx }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          {purchaseError && (
+      <div
+        role="alert"
+        className="flex items-start gap-2.5 rounded-lg border border-red-400/25 bg-red-500/[.06] px-3 py-2.5 text-left"
+      >
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-red-400/35 bg-red-400/[.08] text-[11px] font-bold text-red-300">
+          !
+        </span>
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-[.14em] text-red-300">
+            Purchase Unavailable
+          </div>
+          <div className="mt-0.5 text-[11px] leading-4 text-red-200/80">
+            {purchaseError}
+          </div>
+        </div>
+      </div>
+    )}
+
+    <div className="grid grid-cols-2 gap-2">
             <div className="rounded-lg border border-white/[.07] bg-white/[.018] px-3 py-2.5">
               <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim/55">Your Balance</div>
               <div className="mt-1 font-mono text-[20px] font-bold leading-none text-text-bright">
@@ -2068,7 +2110,7 @@ export default function Marketplace({ ctx }) {
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-white/[.06] pt-3">
-            <button type="button" disabled={busy} onClick={() => setBuyItem(null)} className="rounded-lg border border-white/[.08] px-3.5 py-2 text-[12px] font-bold uppercase tracking-[.1em] text-text-dim transition hover:border-white/[.14] hover:text-text-bright">Cancel</button>
+            <button type="button" disabled={busy} onClick={() => { setPurchaseError(''); setBuyItem(null) }} className="rounded-lg border border-white/[.08] px-3.5 py-2 text-[12px] font-bold uppercase tracking-[.1em] text-text-dim transition hover:border-white/[.14] hover:text-text-bright">Cancel</button>
             <button type="button" disabled={busy} onClick={confirmBuy} className="rounded-lg border border-gold/30 bg-gold/[.09] px-4 py-2 text-[12px] font-bold uppercase tracking-[.1em] text-gold-light transition hover:border-gold/45 hover:bg-gold/[.14] disabled:cursor-not-allowed disabled:opacity-50">{busy ? 'Processing…' : 'Confirm Purchase'}</button>
           </div>
         </div>
