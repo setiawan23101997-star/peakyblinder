@@ -1301,26 +1301,31 @@ export default function Attendance({ ctx }) {
       </section>
 
       {/* Weekly status — compact stat chips */}
-      <div className="flex flex-wrap items-stretch gap-2">
-        <button type="button" onClick={() => setShowPerfectAttendance(true)} className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl border border-white/[.08] bg-[#0c0a09]/[.97] px-3.5 py-2.5 text-left hover:border-gold/20">
-          <div>
+      <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <button
+          type="button"
+          onClick={() => setShowPerfectAttendance(true)}
+          className="flex min-w-0 w-full items-center justify-between gap-3 rounded-xl border border-white/[.08] bg-[#0c0a09]/[.97] px-3.5 py-3 text-left hover:border-gold/20 sm:py-2.5"
+        >
+          <div className="min-w-0">
             <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim">Perfect Attendance</div>
-            <div className="mt-0.5 text-[13px] font-semibold text-text-bright">{qualifiedPerfectAttendance.length} qualified · 8/8 required</div>
+            <div className="mt-0.5 truncate text-[13px] font-semibold text-text-bright">{qualifiedPerfectAttendance.length} qualified · 8/8 required</div>
           </div>
-          <span className="text-[13px] font-bold text-gold-bright">+150</span>
+          <span className="flex-shrink-0 whitespace-nowrap text-[13px] font-bold text-gold-bright">+150</span>
         </button>
+
         <button
           type="button"
           onClick={() => setShowRewardGuide(true)}
-          className="flex min-w-0 flex-[2] flex-wrap items-center gap-1.5 rounded-xl border border-white/[.08] bg-[#0c0a09]/[.97] px-3.5 py-2.5 text-left transition-colors hover:border-gold/25 hover:bg-gold/[.02]"
+          className="flex min-w-0 w-full flex-wrap items-center gap-1.5 rounded-xl border border-white/[.08] bg-[#0c0a09]/[.97] px-3.5 py-3 text-left transition-colors hover:border-gold/25 hover:bg-gold/[.02] sm:py-2.5"
           title="View reward and GP bonus criteria"
         >
-          <div className="mr-1">
+          <div className="mr-1 min-w-0 basis-full sm:basis-auto">
             <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim">Reward Guide</div>
             <div className="text-[11px] text-text-dim">Click to view GP bonus criteria</div>
           </div>
           {[['Battle', 100], ['Boss', 50], ['Annihilation', 75], ['Sindri', 75], ['Sanctuary', 50]].map(([name, base]) => (
-            <div key={name} className="rounded-lg border border-white/[.06] bg-black/15 px-2.5 py-1.5">
+            <div key={name} className="flex-shrink-0 rounded-lg border border-white/[.06] bg-black/15 px-2.5 py-1.5">
               <span className="text-[10px] text-text-dim">{name}</span>
               <span className="ml-1.5 text-[11px] font-semibold text-text-bright">+{base}</span>
             </div>
