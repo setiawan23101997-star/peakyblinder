@@ -1,2207 +1,2316 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 
-const eventTypes = [
-  'Inter-Server Battle',
-  'Clan Annihilation',
-  'World Boss',
-  "Sindri's Treasure Island",
-  'Clan Sanctuary',
-]
-
-const WEEKLY_EVENT_SESSIONS = [
-  {
-    id: 'server-battle-tue-1900',
-    event: 'Inter-Server Battle',
-    day: 2,
-    dayLabel: 'Tuesday',
-    time: '20:00',
-    endTime: '21:00',
-    label: 'Tuesday · 20:00–21:00',
-    displayName: 'Server Battle',
-  },
-  {
-    id: 'clan-annihilation-thu-1300',
-    event: 'Clan Annihilation',
-    day: 4,
-    dayLabel: 'Thursday',
-    time: '13:00',
-    endTime: '14:00',
-    label: 'Thursday · 13:00–14:00',
-    displayName: 'Clan Annihilation · First Run',
-  },
-  {
-    id: 'clan-annihilation-thu-2000',
-    event: 'Clan Annihilation',
-    day: 4,
-    dayLabel: 'Thursday',
-    time: '20:00',
-    endTime: '21:00',
-    label: 'Thursday · 20:00–21:00',
-    displayName: 'Clan Annihilation · Second Run',
-  },
-  {
-    id: 'world-boss-thu-1900',
-    event: 'World Boss',
-    day: 4,
-    dayLabel: 'Thursday',
-    time: '19:00',
-    label: 'Thursday · 19:00',
-    displayName: 'World Boss · Myrkrheim · Wrath of the Earth Bergbernd',
-  },
-  {
-    id: 'sindri-sat-1300',
-    event: "Sindri's Treasure Island",
-    day: 6,
-    dayLabel: 'Saturday',
-    time: '13:00',
-    endTime: '14:00',
-    label: 'Saturday · 13:00–14:00',
-    displayName: "Sindri's Treasure Island · First Run",
-  },
-  {
-    id: 'sindri-sat-2000',
-    event: "Sindri's Treasure Island",
-    day: 6,
-    dayLabel: 'Saturday',
-    time: '20:00',
-    endTime: '21:00',
-    label: 'Saturday · 20:00–21:00',
-    displayName: "Sindri's Treasure Island · Second Run",
-  },
-  {
-    id: 'world-boss-sat-1900',
-    event: 'World Boss',
-    day: 6,
-    dayLabel: 'Saturday',
-    time: '19:00',
-    label: 'Saturday · 19:00',
-    displayName: 'World Boss · Glasir Forest · Divine Beast of Void Ulnos',
-  },
-  {
-    id: 'clan-sanctuary-sat-2100',
-    event: 'Clan Sanctuary',
-    day: 6,
-    dayLabel: 'Saturday',
-    time: '21:00',
-    label: 'Saturday · 21:00',
-    displayName: 'Clan Sanctuary',
-  },
-]
-
-/* Automatic attendance reward rules from the clan reward table.
-   Perfect Attendance is a separate weekly +150 bonus. */
-const ATTENDANCE_REWARDS = {
-  'Inter-Server Battle': { base: 100, bonuses: [5, 10, 15, 20] },
-  'World Boss': { base: 50, bonuses: [3, 5, 10, 15] },
-  'Clan Annihilation': { base: 75, bonuses: [5, 10, 15, 20] },
-  "Sindri's Treasure Island": { base: 75, bonuses: [5, 10, 15, 20] },
-  'Clan Sanctuary': { base: 50, bonuses: [3, 5, 10, 15] },
+const ROLES = {
+  ADMIN: 'Admin',
+  MASTER: 'Master',
+  ELDER: 'Elder',
 }
 
-const PERFECT_ATTENDANCE_BONUS = 150
-const PERFECT_ATTENDANCE_REQUIRED_SESSIONS = WEEKLY_EVENT_SESSIONS.length
+const REVIEW_ROLES = [ROLES.ADMIN, ROLES.MASTER]
+const DISTRIBUTE_ROLES = [ROLES.ADMIN, ROLES.MASTER, ROLES.ELDER]
+const LISTING_CONTROL_ROLES = [ROLES.ADMIN, ROLES.MASTER, ROLES.ELDER]
+const BULK_LISTING_REMOVE_ROLES = [ROLES.MASTER]
+const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary']
+const IMAGE_BUCKET = 'auction-images'
 
-function getAttendanceGpBonus(power, event) {
-  const gp = Number(power) || 0
-  const reward = ATTENDANCE_REWARDS[event]
-  if (!reward || gp < 100000) return 0
-  if (gp < 150000) return reward.bonuses[0]
-  if (gp < 200000) return reward.bonuses[1]
-  if (gp < 250000) return reward.bonuses[2]
-  return reward.bonuses[3]
-}
+const formatCoins = value => new Intl.NumberFormat('en-US').format(Number(value) || 0)
 
-function getAttendanceReward(power, event) {
-  const reward = ATTENDANCE_REWARDS[event]
-  if (!reward) return 0
-  return reward.base + getAttendanceGpBonus(power, event)
-}
-
-function formatGp(power) {
-  return (Number(power) || 0).toLocaleString()
-}
-
-function getServerDateParts(ts = Date.now()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: SERVER_TZ,
+const formatDate = value => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    weekday: 'short',
-  }).formatToParts(new Date(ts))
-  return {
-    year: Number(parts.find(p => p.type === 'year')?.value),
-    month: Number(parts.find(p => p.type === 'month')?.value),
-    day: Number(parts.find(p => p.type === 'day')?.value),
-    weekday: parts.find(p => p.type === 'weekday')?.value || '',
-  }
-}
-
-function getWeekStartTuesday(ts = Date.now()) {
-  const { year, month, day } = getServerDateParts(ts)
-  const base = new Date(Date.UTC(year, month - 1, day))
-  const dayOfWeek = base.getUTCDay()
-  const daysSinceTuesday = (dayOfWeek + 7 - 2) % 7
-  base.setUTCDate(base.getUTCDate() - daysSinceTuesday)
-  return base
-}
-
-function formatDateKey(date) {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
-}
-
-function getAttendanceWeekKey(ts = Date.now()) {
-  return formatDateKey(getWeekStartTuesday(ts))
-}
-
-function getAttendanceWeekLabel(ts = Date.now()) {
-  const start = getWeekStartTuesday(ts)
-  const end = new Date(start)
-  end.setUTCDate(end.getUTCDate() + 4)
-  const fmt = date => date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' })
-  return `${fmt(start)} – ${fmt(end)}`
-}
-
-function getSessionForEvent(event, sessionId) {
-  return WEEKLY_EVENT_SESSIONS.find(s => s.event === event && s.id === sessionId) ||
-    WEEKLY_EVENT_SESSIONS.find(s => s.event === event) || null
-}
-
-function getRunLabel(session) {
-  const name = String(session?.displayName || '').toLowerCase()
-  if (name.includes('first run')) return 'First Run'
-  if (name.includes('second run')) return 'Second Run'
-  return 'Single Run'
-}
-
-function getRunTagClass(run) {
-  if (run === 'First Run') return 'border-sky-400/20 bg-sky-400/[.06] text-sky-300'
-  if (run === 'Second Run') return 'border-violet-400/20 bg-violet-400/[.06] text-violet-300'
-  return 'border-white/[.10] bg-white/[.035] text-text-dim'
-}
-
-function getLogSession(log) {
-  const directSessionId = log?.sessionId
-  const attendeeSessionId = (log?.attendees || []).find(a => a?.sessionId)?.sessionId
-  return getSessionForEvent(log?.event, directSessionId || attendeeSessionId)
-}
-
-function getAttendeeMemberId(attendee) {
-  return attendee?.memberId != null ? String(attendee.memberId) : null
-}
-
-const SERVER_TZ = 'Asia/Singapore'
-const SERVER_TZ_LABEL = 'GMT+8'
-
-// Automatically use the timezone configured on the player's browser/device.
-// Server time remains authoritative for saved attendance records.
-const AUTO_LOCAL_TZ = (() => {
-  try {
-    return new Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local'
-  } catch {
-    return 'Local'
-  }
-})()
-
-function getLocalZoneLabel() {
-  try {
-    const parts = new Intl.DateTimeFormat(undefined, {
-      timeZone: AUTO_LOCAL_TZ,
-      timeZoneName: 'shortOffset',
-    }).formatToParts(new Date())
-    return parts.find(p => p.type === 'timeZoneName')?.value || AUTO_LOCAL_TZ
-  } catch {
-    return AUTO_LOCAL_TZ
-  }
-}
-
-const FALLBACK_REGIONS = [
-  { id: 'ph', code: 'ph', flag: '🇵🇭', name: 'Philippines', tz: 'Asia/Manila',       label: 'GMT+8' },
-  { id: 'us', code: 'us', flag: '🇺🇸', name: 'New York',    tz: 'America/New_York',  label: 'ET' },
-  { id: 'br', code: 'br', flag: '🇧🇷', name: 'Brazil',      tz: 'America/Sao_Paulo', label: 'BRT' },
-  { id: 'de', code: 'de', flag: '🇩🇪', name: 'Germany',     tz: 'Europe/Berlin',     label: 'CET' },
-  { id: 'by', code: 'by', flag: '🇧🇾', name: 'Belarus',     tz: 'Europe/Minsk',      label: 'MSK' },
-  { id: 'ua', code: 'ua', flag: '🇺🇦', name: 'Ukraine',     tz: 'Europe/Kyiv',       label: 'EET' },
-  { id: 'th', code: 'th', flag: '🇹🇭', name: 'Thailand',    tz: 'Asia/Bangkok',      label: 'GMT+7' },
-  { id: 'id', code: 'id', flag: '🇮🇩', name: 'Indonesia',   tz: 'Asia/Jakarta',      label: 'GMT+7' },
-]
-
-/* ── Cached Intl formatters ───────────────────────────────────────── */
-
-const _dtfCache = new Map()
-function getDTF(locale, opts) {
-  const key = locale + '|' + JSON.stringify(opts)
-  let dtf = _dtfCache.get(key)
-  if (!dtf) {
-    dtf = new Intl.DateTimeFormat(locale, opts)
-    _dtfCache.set(key, dtf)
-  }
-  return dtf
-}
-
-const CLOCK_OPTS = {
-  day: '2-digit', month: 'short', year: 'numeric',
-  hour: '2-digit', minute: '2-digit', second: '2-digit',
-  hour12: false,
-}
-const SHORT_OPTS = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }
-const SHORT_NO_YEAR_OPTS = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }
-
-function formatClockInZone(ts, tz) {
-  return getDTF('en-GB', { timeZone: tz, ...CLOCK_OPTS }).format(new Date(ts))
-}
-function formatShortInZone(ts, tz) {
-  return getDTF('en-GB', { timeZone: tz, ...SHORT_OPTS }).format(new Date(ts))
-}
-function formatShortNoYearInZone(ts, tz) {
-  return getDTF('en-GB', { timeZone: tz, ...SHORT_NO_YEAR_OPTS }).format(new Date(ts))
-}
-
-function formatGMT8(ts = Date.now()) {
-  return formatClockInZone(ts, SERVER_TZ)
-}
-function formatGMT8Short(ts = Date.now()) {
-  return formatShortInZone(ts, SERVER_TZ)
-}
-function formatInZone(ts, tz) {
-  return formatShortNoYearInZone(ts, tz)
-}
-
-function formatInAutoLocalZone(ts) {
-  return formatShortNoYearInZone(ts, AUTO_LOCAL_TZ)
-}
-
-function getSessionTimestamp(session, weekTs = Date.now(), timeValue = session.time) {
-  const start = getWeekStartTuesday(weekTs)
-  const dayOffset = Math.max(0, Number(session.day) - 2)
-  const [hours, minutes] = String(timeValue || '00:00').split(':').map(Number)
-
-  // The event calendar is authored in server GMT+8 (Asia/Singapore).
-  // Convert the server wall-clock time into a timestamp before formatting it
-  // in the player's device timezone.
-  return Date.UTC(
-    start.getUTCFullYear(),
-    start.getUTCMonth(),
-    start.getUTCDate() + dayOffset,
-    Number.isFinite(hours) ? hours : 0,
-    Number.isFinite(minutes) ? minutes : 0,
-    0,
-    0
-  ) - (8 * 60 * 60 * 1000)
-}
-
-function formatSessionTimes(session, weekTs = Date.now()) {
-  const startTs = getSessionTimestamp(session, weekTs, session.time)
-  const endTs = session.endTime
-    ? getSessionTimestamp(session, weekTs, session.endTime)
-    : null
-
-  const localFormatter = new Intl.DateTimeFormat('en-GB', {
-    timeZone: AUTO_LOCAL_TZ,
+    month: 'short',
+    day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false,
-  })
-
-  return {
-    serverTime: session.endTime ? `${session.time}–${session.endTime}` : session.time,
-    localTime: endTs
-      ? `${localFormatter.format(new Date(startTs))}–${localFormatter.format(new Date(endTs))}`
-      : localFormatter.format(new Date(startTs)),
-  }
+  }).format(date)
 }
 
-/** Small flag image from flagcdn.com with emoji fallback. */
-function FlagImage({ code, flag, name, width = 20, height = 15 }) {
-  const [failed, setFailed] = useState(false)
+const formatShortDate = value => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
+}
 
-  if (!code || failed) {
-    if (!flag) return null
-    return (
-      <span
-        className="inline-flex items-center justify-center flex-shrink-0 leading-none"
-        style={{ width, height, fontSize: Math.round(height * 1.1) }}
-        aria-hidden="true"
+const timeRemaining = value => {
+  if (!value) return 'No expiry'
+  const diff = new Date(value).getTime() - Date.now()
+  if (diff <= 0) return 'Expired'
+  const days = Math.floor(diff / 86400000)
+  const hours = Math.floor((diff % 86400000) / 3600000)
+  if (days > 0) return `${days} day${days === 1 ? '' : 's'} left`
+  return `${hours} hour${hours === 1 ? '' : 's'} left`
+}
+
+const displayNameForLibraryImage = img => {
+  if (!img) return ''
+  if (img.displayName) return img.displayName
+  const base = (img.name || '').split('/').pop()
+  const m = base.match(/^(\d+)-[a-z0-9]+\.([a-z0-9]+)$/i)
+  if (m) return `image-${m[1]}.${m[2]}`
+  return base || 'Marketplace artwork'
+}
+
+const rarityClass = rarity => {
+  const r = String(rarity || 'common').toLowerCase()
+  if (r === 'legendary') return 'border-amber-300/45 bg-amber-300/[.06] text-amber-200'
+  if (r === 'epic') return 'border-red-400/35 bg-red-400/[.05] text-red-300'
+  if (r === 'rare') return 'border-blue-400/35 bg-blue-400/[.05] text-blue-300'
+  if (r === 'uncommon') return 'border-emerald-400/35 bg-emerald-400/[.05] text-emerald-300'
+  return 'border-white/15 bg-white/[.025] text-text-dim'
+}
+
+const rarityTextClass = rarity => {
+  const r = String(rarity || 'common').toLowerCase()
+  if (r === 'legendary') return 'text-amber-200'
+  if (r === 'epic') return 'text-red-300'
+  if (r === 'rare') return 'text-blue-300'
+  if (r === 'uncommon') return 'text-emerald-300'
+  return 'text-text-bright'
+}
+
+const rarityGlowClass = rarity => {
+  const r = String(rarity || 'common').toLowerCase()
+  if (r === 'legendary') return 'bg-[radial-gradient(circle,rgba(255,215,70,.62),rgba(255,170,0,.28)_34%,rgba(255,120,0,.10)_56%,transparent_78%)]'
+  if (r === 'epic') return 'bg-[radial-gradient(circle,rgba(255,45,65,.72),rgba(245,35,50,.36)_34%,rgba(190,20,35,.16)_56%,transparent_78%)]'
+  if (r === 'rare') return 'bg-[radial-gradient(circle,rgba(55,155,255,.68),rgba(35,105,235,.30)_34%,rgba(20,70,190,.13)_56%,transparent_78%)]'
+  if (r === 'uncommon') return 'bg-[radial-gradient(circle,rgba(35,235,145,.62),rgba(20,190,110,.28)_34%,rgba(10,130,75,.12)_56%,transparent_78%)]'
+  return 'bg-[radial-gradient(circle,rgba(205,155,70,.48),rgba(150,100,30,.20)_34%,rgba(120,75,20,.08)_56%,transparent_78%)]'
+}
+
+const rarityArtworkBorderClass = rarity => {
+  const r = String(rarity || 'common').toLowerCase()
+  if (r === 'legendary') return 'border-amber-300/70 shadow-[inset_0_0_22px_rgba(255,190,30,.16),0_0_18px_rgba(255,175,0,.10)]'
+  if (r === 'epic') return 'border-red-500/75 shadow-[inset_0_0_24px_rgba(255,35,50,.20),0_0_20px_rgba(235,25,40,.16)]'
+  if (r === 'rare') return 'border-blue-400/70 shadow-[inset_0_0_22px_rgba(45,145,255,.18),0_0_18px_rgba(35,110,235,.12)]'
+  if (r === 'uncommon') return 'border-emerald-400/65 shadow-[inset_0_0_22px_rgba(30,220,130,.16),0_0_18px_rgba(20,180,100,.10)]'
+  return 'border-amber-100/20 shadow-[inset_0_0_18px_rgba(205,155,70,.06)]'
+}
+
+const statusClass = status => {
+  if (status === 'active') return 'border-emerald-400/30 bg-emerald-400/[.06] text-emerald-300'
+  if (status === 'pending_review') return 'border-amber-300/30 bg-amber-300/[.06] text-amber-200'
+  if (status === 'rejected') return 'border-red-400/30 bg-red-400/[.06] text-red-300'
+  if (status === 'sold_out') return 'border-blue-400/30 bg-blue-400/[.06] text-blue-300'
+  if (status === 'distributed') return 'border-emerald-400/30 bg-emerald-400/[.06] text-emerald-300'
+  if (status === 'purchased') return 'border-amber-300/30 bg-amber-300/[.06] text-amber-200'
+  return 'border-white/10 bg-white/[.025] text-text-dim'
+}
+
+const statusLabel = status => String(status || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Unknown'
+
+function SectionTitle({ eyebrow, title, description, action }) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        {eyebrow && <div className="mb-1 text-[10px] font-bold uppercase tracking-[.22em] text-gold-dim">{eyebrow}</div>}
+        <h2 className="font-spectral text-xl font-bold text-text-bright">{title}</h2>
+        {description && <p className="mt-1 text-[11px] leading-4 text-text-dim">{description}</p>}
+      </div>
+      {action}
+    </div>
+  )
+}
+
+function Modal({ title, children, onClose, wide = false, compact = false, narrow = false }) {
+  return (
+    <div
+      className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 p-3 backdrop-blur-[3px] sm:p-5"
+      onMouseDown={onClose}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`relative max-h-[90vh] w-full overflow-y-auto rounded-[16px] border border-gold/20 bg-[#0a0908] shadow-[0_28px_90px_rgba(0,0,0,.85)] ${
+          wide ? 'max-w-4xl' : narrow ? 'max-w-[440px]' : compact ? 'max-w-xl' : 'max-w-lg'
+        }`}
+        style={narrow ? { width: '440px', maxWidth: 'calc(100vw - 24px)' } : undefined}
+        onMouseDown={e => e.stopPropagation()}
       >
-        {flag}
-      </span>
-    )
-  }
-
-  return (
-    <img
-      src={`https://flagcdn.com/w20/${code}.png`}
-      srcSet={`https://flagcdn.com/w20/${code}.png 1x, https://flagcdn.com/w40/${code}.png 2x`}
-      width={width}
-      height={height}
-      alt={name ? `${name} flag` : ''}
-      loading="lazy"
-      decoding="async"
-      className="rounded-[2px] border border-gold/20 object-cover flex-shrink-0"
-      style={{ width, height }}
-      onError={() => setFailed(true)}
-    />
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/[.07] bg-[#0a0908]/96 px-4 py-3 backdrop-blur">
+          <h2 className="min-w-0 truncate font-spectral text-lg font-bold text-gold-light">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close dialog"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-base leading-none text-text-dim transition hover:border-gold/25 hover:bg-gold/[.04] hover:text-gold-light"
+          >
+            ×
+          </button>
+        </div>
+        <div className={compact ? 'p-4' : 'p-5'}>{children}</div>
+      </div>
+    </div>
   )
 }
 
-export default function Attendance({ ctx }) {
-  const {
-    members, setMembers, attendanceLogs, setAttendanceLogs,
-    currentUser, addToast, supabase,
-  } = ctx
-
-  const [selectedEvent, setSelectedEvent] = useState(eventTypes[0])
-  const [selectedSessionId, setSelectedSessionId] = useState(WEEKLY_EVENT_SESSIONS[0].id)
-  const [selectedMembers, setSelectedMembers] = useState({})
-  const [search, setSearch] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [expandedLogs, setExpandedLogs] = useState({})
-  const [detailLog, setDetailLog] = useState(null)
-  const [deletingId, setDeletingId] = useState(null)
-  const [removingAttendeeKey, setRemovingAttendeeKey] = useState(null)
-  const [attendeeSearch, setAttendeeSearch] = useState('')
-  const [openActionMenuId, setOpenActionMenuId] = useState(null)
-  const [showAddMissing, setShowAddMissing] = useState(false)
-  const [missingLog, setMissingLog] = useState(null)
-  const [missingMembers, setMissingMembers] = useState({})
-  const [missingSearch, setMissingSearch] = useState('')
-  const [addingMissing, setAddingMissing] = useState(false)
-  const [awardingPerfect, setAwardingPerfect] = useState(false)
-  const [showPerfectAttendance, setShowPerfectAttendance] = useState(false)
-  const [showRewardGuide, setShowRewardGuide] = useState(false)
-  const [showEventSchedule, setShowEventSchedule] = useState(false)
-  const [perfectSearch, setPerfectSearch] = useState('')
-  const [perfectFilter, setPerfectFilter] = useState('qualified')
-  const [now, setNow] = useState(Date.now())
-  const [expandedDays, setExpandedDays] = useState({ 2: false, 4: false, 6: false })
-  const [expandedSections, setExpandedSections] = useState({
-    calendar: false,
-    perfect: false,
-    record: false,
-    history: false,
-  })
-  const [showRecordModal, setShowRecordModal] = useState(false)
-  const [historyPage, setHistoryPage] = useState(1)
-  const [historySearch, setHistorySearch] = useState('')
-  const HISTORY_PAGE_SIZE = 8
-
-  const toggleSection = (key) => {
-    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }))
-  }
-
-  const setAllSections = (expanded) => {
-    setExpandedSections({
-      calendar: expanded,
-      perfect: expanded,
-      record: expanded,
-      history: expanded,
-    })
-  }
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [])
-
-  const isElder = currentUser?.role === 'Elder' || currentUser?.role === 'Master' || currentUser?.role === 'Admin'
-  const filtered = members.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
-  const selectedSession = getSessionForEvent(selectedEvent, selectedSessionId)
-  const eventSessions = WEEKLY_EVENT_SESSIONS.filter(session => session.event === selectedEvent)
-  const currentWeekKey = getAttendanceWeekKey(now)
-  const currentWeekLabel = getAttendanceWeekLabel(now)
-
-  useEffect(() => {
-    if (!eventSessions.some(session => session.id === selectedSessionId)) {
-      setSelectedSessionId(eventSessions[0]?.id || '')
-    }
-  }, [selectedEvent, selectedSessionId])
-
-  const selectedTargets = members.filter(m => selectedMembers[m.id])
-  const selectedRewardRows = selectedTargets.map(m => ({
-    member: m,
-    gp: Number(m.power) || 0,
-    gpBonus: getAttendanceGpBonus(m.power, selectedEvent),
-    reward: getAttendanceReward(m.power, selectedEvent),
-  }))
-  const selectedTotalCoins = selectedRewardRows.reduce((sum, row) => sum + row.reward, 0)
-
-  const weeklyPerfectAttendance = members.map(member => {
-    const memberId = String(member.id)
-    const attendedSessionIds = new Set()
-    const perfectBonusEntries = []
-
-    ;(attendanceLogs || []).forEach(log => {
-      const logTs = log.ts || Number(log.id) || 0
-      if (!logTs || getAttendanceWeekKey(logTs) !== currentWeekKey) return
-
-      const attendee = (log.attendees || []).find(a =>
-        getAttendeeMemberId(a) === memberId ||
-        String(a.name || '').trim().toLowerCase() === String(member.name || '').trim().toLowerCase()
-      )
-      if (!attendee) return
-
-      // Current records store the exact session inside attendee JSON.
-      if (attendee.sessionId) {
-        attendedSessionIds.add(attendee.sessionId)
-        return
-      }
-
-      // Legacy records: one log for a single event session.
-      // For duplicated events, legacy data cannot safely distinguish the run,
-      // so it counts only when an exact session can be inferred from the timestamp.
-      const matchingSessions = WEEKLY_EVENT_SESSIONS.filter(session => session.event === log.event)
-      if (matchingSessions.length === 1) {
-        attendedSessionIds.add(matchingSessions[0].id)
-      } else if (matchingSessions.length > 1) {
-        const logDate = new Date(logTs)
-        const hour = Number(new Intl.DateTimeFormat('en-US', {
-          timeZone: SERVER_TZ,
-          hour: '2-digit',
-          hour12: false,
-        }).format(logDate))
-        const minute = Number(new Intl.DateTimeFormat('en-US', {
-          timeZone: SERVER_TZ,
-          minute: '2-digit',
-        }).format(logDate))
-        const minutes = hour * 60 + minute
-        const inferred = matchingSessions.find(session => {
-          const match = String(session.startTime || '').match(/(\d{1,2}):(\d{2})/)
-          if (!match) return false
-          return Number(match[1]) * 60 + Number(match[2]) === minutes
-        })
-        if (inferred) attendedSessionIds.add(inferred.id)
-      }
-    })
-
-    // Perfect-award history is kept in the member's attend_log.
-    ;(member.attend_log || []).forEach(entry => {
-      if (entry?.type === 'perfect_attendance_bonus' && entry?.weekKey === currentWeekKey) {
-        perfectBonusEntries.push(entry)
-      }
-    })
-
-    return {
-      member,
-      attendedSessionIds,
-      attendedCount: attendedSessionIds.size,
-      qualified: attendedSessionIds.size === PERFECT_ATTENDANCE_REQUIRED_SESSIONS,
-      awarded: perfectBonusEntries.length > 0,
-    }
-  })
-
-  const qualifiedPerfectAttendance = weeklyPerfectAttendance.filter(row => row.qualified)
-  const unawardedPerfectAttendance = qualifiedPerfectAttendance.filter(row => !row.awarded)
-  const perfectAttendanceTotal = unawardedPerfectAttendance.length * PERFECT_ATTENDANCE_BONUS
-
-  const toggleMember = (id) => setSelectedMembers(prev => ({ ...prev, [id]: !prev[id] }))
-  const toggleLog = (id) => setExpandedLogs(prev => ({ ...prev, [id]: !prev[id] }))
-
-
-  const recordAttendance = async () => {
-    const ids = Object.keys(selectedMembers).filter(k => selectedMembers[k])
-    if (ids.length === 0) {
-      addToast('Select at least one member.', 'red', 'Error')
-      return false
-    }
-
-    if (!selectedSession || !ATTENDANCE_REWARDS[selectedEvent]) {
-      addToast('Please select a scheduled event session with an automatic reward rule.', 'red', 'Session Required')
-      return false
-    }
-
-    const duplicateSession = (attendanceLogs || []).find(log => {
-      const logTs = log.ts || Number(log.id) || 0
-      if (!logTs || getAttendanceWeekKey(logTs) !== getAttendanceWeekKey(Date.now())) return false
-      return (log.attendees || []).some(a => a.sessionId === selectedSession.id)
-    })
-    if (duplicateSession) {
-      addToast(`${selectedSession.displayName} is already recorded for this week.`, 'red', 'Already Recorded')
-      return false
-    }
-
-    setSubmitting(true)
-
-    const nowDate = new Date()
-    const dateStr = nowDate.toLocaleDateString()
-    const ts = nowDate.getTime()
-
-    const targets = members.filter(m => ids.includes(String(m.id)))
-
-    const results = await Promise.all(targets.map(async (m) => {
-      const reward = getAttendanceReward(m.power, selectedEvent)
-      const attendEntry = {
-        event: selectedEvent,
-        sessionId: selectedSession.id,
-        sessionLabel: selectedSession.label,
-        sessionDisplayName: selectedSession.displayName,
-        date: dateStr,
-        ts,
-        qualifier: 'full',
-        coins: reward,
-        baseCoins: ATTENDANCE_REWARDS[selectedEvent].base,
-        gp: Number(m.power) || 0,
-        gpBonus: getAttendanceGpBonus(m.power, selectedEvent),
-        perfectAttendanceBonus: 0,
-      }
-      const { data, error } = await supabase.rpc('record_attendance_and_log', {
-        p_member_name: m.name,
-        p_coins_delta: reward,
-        p_attendance_delta: 1,
-        p_attend_entry: attendEntry,
-        p_bonus_tx_entries: [],
-      })
-      if (error) {
-        console.error(`Failed to save ${m.name}:`, error)
-        return { id: m.id, name: m.name, ok: false, error }
-      }
-      return { id: m.id, name: m.name, ok: true, newCoins: data }
-    }))
-
-    const failed = results.filter(r => !r.ok)
-    if (failed.length > 0) {
-      addToast(`Couldn't save attendance for: ${failed.map(f => f.name).join(', ')}`, 'red', 'Save Failed')
-      setSubmitting(false)
-      return false
-    }
-
-    const log = {
-      id: ts,
-      event: selectedEvent,
-      date: dateStr,
-      ts,
-      members: ids.length,
-      recorded_by: currentUser?.name || 'System',
-      attendees: targets.map(m => {
-        const reward = getAttendanceReward(m.power, selectedEvent)
-        return {
-          memberId: m.id,
-          name: m.name,
-          cls: m.cls,
-          qualifier: 'full',
-          sessionId: selectedSession.id,
-          sessionLabel: selectedSession.label,
-          sessionDisplayName: selectedSession.displayName,
-          earned: reward,
-          gp: Number(m.power) || 0,
-          baseCoins: ATTENDANCE_REWARDS[selectedEvent].base,
-          gpBonus: getAttendanceGpBonus(m.power, selectedEvent),
-          perfectAttendanceBonus: 0,
-        }
-      }),
-    }
-
-    const { error: logError } = await supabase
-      .from('attendance_logs')
-      .insert([log])
-
-    if (logError) {
-      console.error('Failed to save log:', logError)
-      addToast('Coins saved, but the attendance log failed to save.', 'red', 'Partial Save')
-    }
-
-    setMembers(prev => prev.map(m => {
-      if (!ids.includes(String(m.id))) return m
-      const reward = getAttendanceReward(m.power, selectedEvent)
-      const attendEntry = {
-        event: selectedEvent,
-        sessionId: selectedSession.id,
-        sessionLabel: selectedSession.label,
-        sessionDisplayName: selectedSession.displayName,
-        date: dateStr,
-        ts,
-        qualifier: 'full',
-        coins: reward,
-        baseCoins: ATTENDANCE_REWARDS[selectedEvent].base,
-        gp: Number(m.power) || 0,
-        gpBonus: getAttendanceGpBonus(m.power, selectedEvent),
-        perfectAttendanceBonus: 0,
-      }
-      return {
-        ...m,
-        coins: (m.coins || 0) + reward,
-        attendance: (m.attendance || 0) + 1,
-        attend_log: [...(m.attend_log || []), attendEntry],
-      }
-    }))
-    setAttendanceLogs(prev => [log, ...prev])
-
-    setSelectedMembers({})
-    setSubmitting(false)
-    addToast(
-      `${ids.length} members recorded for ${selectedEvent} · ${selectedSession.displayName}.`,
-      'gold',
-      'Attendance Saved'
-    )
-    return true
-  }
-
-  const deleteLog = async (log) => {
-    if (!isElder) {
-      addToast('Only Elders and Masters can delete attendance.', 'red', 'Not Allowed')
-      return
-    }
-
-    const attendees = log.attendees || []
-    const totalCoins = attendees.reduce((s, a) => s + (a.earned || 0), 0)
-
-    const confirmMsg =
-      `Delete "${log.event}" attendance from ${formatGMT8Short(log.ts || log.id)}?\n\n` +
-      `This will reverse:\n` +
-      `• ${attendees.length} member(s)\n` +
-      `• ${totalCoins.toLocaleString()} coins total\n\n` +
-      `This cannot be undone.`
-
-    if (!window.confirm(confirmMsg)) return
-
-    setDeletingId(log.id)
-
-    const reversed = await Promise.all(attendees.map(async (a) => {
-      const member = members.find(m => m.name === a.name)
-      if (!member) return { name: a.name, ok: true, skipped: true }
-
-      const newCoins = Math.max(0, (member.coins || 0) - (a.earned || 0))
-      const newAttendance = Math.max(0, (member.attendance || 0) - 1)
-
-      const filteredLog = (member.attend_log || []).filter(entry => {
-        const entryTs = entry.ts || 0
-        if (entryTs && log.ts && entryTs === log.ts) return false
-        if (a.sessionId && entry.sessionId === a.sessionId && entry.event === log.event) return false
-        return true
-      })
-
-      const { error } = await supabase
-        .from('members')
-        .update({
-          coins: newCoins,
-          attendance: newAttendance,
-          attend_log: filteredLog,
-        })
-        .eq('id', member.id)
-
-      if (error) {
-        console.error(`Failed to reverse ${a.name}:`, error)
-        return { name: a.name, ok: false, error }
-      }
-      return { name: a.name, ok: true, memberId: member.id, newCoins, newAttendance, filteredLog }
-    }))
-
-    const failed = reversed.filter(r => !r.ok)
-    if (failed.length > 0) {
-      addToast(`Couldn't reverse all members: ${failed.map(f => f.name).join(', ')}`, 'red', 'Partial Reversal')
-    }
-
-    setMembers(prev => prev.map(m => {
-      const r = reversed.find(x => x.memberId === m.id)
-      if (!r) return m
-      return {
-        ...m,
-        coins: r.newCoins,
-        attendance: r.newAttendance,
-        attend_log: r.filteredLog,
-      }
-    }))
-
-    const { error: delErr } = await supabase
-      .from('attendance_logs')
-      .delete()
-      .eq('id', log.id)
-
-    if (delErr) {
-      console.error('Failed to delete log row:', delErr)
-      addToast(`Couldn't remove the log: ${delErr.message}`, 'red', 'Delete Failed')
-      setDeletingId(null)
-      return
-    }
-
-    setAttendanceLogs(prev => prev.filter(l => l.id !== log.id))
-    setDeletingId(null)
-    addToast(
-      `Attendance reversed — ${attendees.length} member(s), ${totalCoins.toLocaleString()} coins removed.`,
-      'red',
-      'Attendance Deleted'
-    )
-  }
-
-  const removeAttendee = async (log, attendee) => {
-    if (!isElder) {
-      addToast('Only Admin, Master, and Elder can remove an attendee.', 'red', 'Not Allowed')
-      return
-    }
-
-    if (!log || !attendee) return
-
-    const member = members.find(m =>
-      String(m.id) === String(attendee.memberId) ||
-      String(m.name).trim().toLowerCase() === String(attendee.name).trim().toLowerCase()
-    )
-
-    if (!member) {
-      addToast(`Member "${attendee.name}" could not be found.`, 'red', 'Member Not Found')
-      return
-    }
-
-    const reward = Number(attendee.earned ?? attendee.coins ?? 0)
-    const newCoins = Math.max(0, Number(member.coins || 0) - reward)
-    const newAttendance = Math.max(0, Number(member.attendance || 0) - 1)
-
-    const updatedAttendees = (log.attendees || []).filter(a => {
-      if (attendee.memberId != null && a.memberId != null) {
-        return String(a.memberId) !== String(attendee.memberId)
-      }
-      return String(a.name).trim().toLowerCase() !== String(attendee.name).trim().toLowerCase()
-    })
-
-    const confirmMsg =
-      `Remove "${attendee.name}" from ${getLogSession(log)?.displayName || log.event}?\n\n` +
-      `This will reverse ${reward.toLocaleString()} Coins and 1 attendance for this player.\n\n` +
-      `The rest of the attendance record will remain unchanged.`
-
-    if (!window.confirm(confirmMsg)) return
-
-    const key = `${log.id}-${attendee.memberId || attendee.name}`
-    setRemovingAttendeeKey(key)
-
-    const filteredMemberLog = (member.attend_log || []).filter(entry => {
-      const sameEvent = String(entry.event || '') === String(log.event || '')
-      const sameMember = attendee.memberId != null && entry.memberId != null
-        ? String(entry.memberId) === String(attendee.memberId)
-        : true
-      const sameSession = attendee.sessionId
-        ? String(entry.sessionId || '') === String(attendee.sessionId)
-        : true
-      const sameTs = entry.ts && log.ts
-        ? Number(entry.ts) === Number(log.ts)
-        : true
-
-      return !(sameEvent && sameMember && sameSession && sameTs)
-    })
-
-    const { error: memberError } = await supabase
-      .from('members')
-      .update({
-        coins: newCoins,
-        attendance: newAttendance,
-        attend_log: filteredMemberLog,
-      })
-      .eq('id', member.id)
-
-    if (memberError) {
-      console.error(`Failed to remove attendee ${attendee.name}:`, memberError)
-      setRemovingAttendeeKey(null)
-      addToast(`Couldn't remove ${attendee.name}: ${memberError.message}`, 'red', 'Remove Failed')
-      return
-    }
-
-    const { error: logError } = await supabase
-      .from('attendance_logs')
-      .update({ attendees: updatedAttendees })
-      .eq('id', log.id)
-
-    if (logError) {
-      console.error('Failed to update attendance log after attendee removal:', logError)
-
-      await supabase
-        .from('members')
-        .update({
-          coins: member.coins || 0,
-          attendance: member.attendance || 0,
-          attend_log: member.attend_log || [],
-        })
-        .eq('id', member.id)
-
-      setRemovingAttendeeKey(null)
-      addToast(`Couldn't update the attendance record: ${logError.message}`, 'red', 'Remove Failed')
-      return
-    }
-
-    const updatedLog = { ...log, attendees: updatedAttendees }
-
-    setMembers(prev => prev.map(m =>
-      String(m.id) === String(member.id)
-        ? { ...m, coins: newCoins, attendance: newAttendance, attend_log: filteredMemberLog }
-        : m
-    ))
-
-    setAttendanceLogs(prev => prev.map(item =>
-      String(item.id) === String(log.id) ? updatedLog : item
-    ))
-
-    setDetailLog(prev =>
-      prev && String(prev.id) === String(log.id) ? updatedLog : prev
-    )
-
-    setRemovingAttendeeKey(null)
-
-    addToast(
-      `${attendee.name} removed · ${reward.toLocaleString()} Coins reversed.`,
-      'red',
-      'Attendee Removed'
-    )
-  }
-
-  const openAddMissing = (log = null) => {
-    const target = log || sortedLogs[0] || null
-    if (!target) {
-      addToast('There is no attendance record to add members to.', 'red', 'No Record')
-      return
-    }
-
-    const attendees = target.attendees || []
-    setMissingLog(target)
-    setMissingMembers({})
-    setMissingSearch('')
-    setShowAddMissing(true)
-  }
-
-  const toggleMissingMember = (id) => {
-    setMissingMembers(prev => ({ ...prev, [id]: !prev[id] }))
-  }
-
-  const addMissingRecord = async () => {
-    if (!isElder) {
-      addToast('Only Admin, Master, and Elder can add missing attendance records.', 'red', 'Not Allowed')
-      return
-    }
-
-    if (!missingLog) return
-
-    const ids = Object.keys(missingMembers).filter(id => missingMembers[id])
-    if (ids.length === 0) {
-      addToast('Select at least one missing member.', 'red', 'No Members Selected')
-      return
-    }
-
-    if (!ATTENDANCE_REWARDS[missingLog.event]) {
-      addToast('This event does not have an automatic reward rule yet.', 'red', 'Reward Rule Missing')
-      return
-    }
-
-    const existingNames = new Set((missingLog.attendees || []).map(a => String(a.name).trim().toLowerCase()))
-    const targets = members.filter(m =>
-      ids.includes(String(m.id)) &&
-      !existingNames.has(String(m.name).trim().toLowerCase())
-    )
-
-    if (targets.length === 0) {
-      addToast('Those members are already included in this attendance record.', 'red', 'Already Recorded')
-      return
-    }
-
-    setAddingMissing(true)
-
-    const logTs = missingLog.ts || Number(missingLog.id) || Date.now()
-    const missingSession = getLogSession(missingLog)
-    const logDate = missingLog.date || new Date(logTs).toLocaleDateString()
-    const newAttendees = targets.map(m => {
-      const reward = getAttendanceReward(m.power, missingLog.event)
-      return {
-        memberId: m.id,
-        name: m.name,
-        cls: m.cls,
-        qualifier: 'full',
-        earned: reward,
-        gp: Number(m.power) || 0,
-        baseCoins: ATTENDANCE_REWARDS[missingLog.event].base,
-        gpBonus: getAttendanceGpBonus(m.power, missingLog.event),
-        perfectAttendanceBonus: 0,
-      }
-    })
-    const updatedAttendees = [...(missingLog.attendees || []), ...newAttendees]
-
-    const { error: logError } = await supabase
-      .from('attendance_logs')
-      .update({
-        members: updatedAttendees.length,
-        attendees: updatedAttendees,
-      })
-      .eq('id', missingLog.id)
-
-    if (logError) {
-      console.error('Failed to update attendance record:', logError)
-      addToast(`Couldn't add the missing members: ${logError.message}`, 'red', 'Save Failed')
-      setAddingMissing(false)
-      return
-    }
-
-    const results = await Promise.all(targets.map(async (m) => {
-      const reward = getAttendanceReward(m.power, missingLog.event)
-      const attendEntry = {
-        event: missingLog.event,
-        sessionId: missingLog.sessionId || missingSession?.id || null,
-        sessionLabel: missingLog.sessionLabel || missingSession?.label || null,
-        sessionDisplayName: missingLog.sessionDisplayName || missingSession?.displayName || null,
-        date: logDate,
-        ts: logTs,
-        qualifier: 'full',
-        coins: reward,
-        baseCoins: ATTENDANCE_REWARDS[missingLog.event].base,
-        gp: Number(m.power) || 0,
-        gpBonus: getAttendanceGpBonus(m.power, missingLog.event),
-        perfectAttendanceBonus: 0,
-      }
-
-      const nextAttendLog = [...(m.attend_log || []), attendEntry]
-      const { error } = await supabase
-        .from('members')
-        .update({
-          coins: (m.coins || 0) + reward,
-          attendance: (m.attendance || 0) + 1,
-          attend_log: nextAttendLog,
-        })
-        .eq('id', m.id)
-
-      return { member: m, ok: !error, error, nextAttendLog }
-    }))
-
-    const failed = results.filter(r => !r.ok)
-    if (failed.length > 0) {
-      console.error('Failed to update some missing members:', failed)
-      addToast(
-        `Attendance record updated, but some members failed: ${failed.map(r => r.member.name).join(', ')}`,
-        'red',
-        'Partial Save'
-      )
-      setAddingMissing(false)
-      return
-    }
-
-    const updatedLog = {
-      ...missingLog,
-      members: updatedAttendees.length,
-      attendees: updatedAttendees,
-    }
-
-    setAttendanceLogs(prev => prev.map(log => log.id === missingLog.id ? updatedLog : log))
-    setMembers(prev => prev.map(m => {
-      const result = results.find(r => r.member.id === m.id)
-      if (!result) return m
-      return {
-        ...m,
-        coins: (m.coins || 0) + getAttendanceReward(m.power, missingLog.event),
-        attendance: (m.attendance || 0) + 1,
-        attend_log: result.nextAttendLog,
-      }
-    }))
-
-    setShowAddMissing(false)
-    setMissingLog(null)
-    setMissingMembers({})
-    setAddingMissing(false)
-
-    addToast(
-      `${targets.length} missing member${targets.length === 1 ? '' : 's'} added to ${missingLog.event}. Rewards were calculated from each member's GP.`,
-      'gold',
-      'Missing Record Added'
-    )
-  }
-
-  const awardPerfectAttendance = async (rows) => {
-    if (!isElder || awardingPerfect || !rows?.length) return
-
-    const freshRows = rows.filter(row => row.qualified && !row.awarded)
-    if (freshRows.length === 0) {
-      addToast('There are no unawarded qualified players for this week.', 'red', 'Already Awarded')
-      return
-    }
-
-    const total = freshRows.length * PERFECT_ATTENDANCE_BONUS
-    const names = freshRows.map(row => row.member.name).join(', ')
-    const confirmed = window.confirm(
-      `Award Weekly Perfect Attendance?\n\n${freshRows.length} qualified player(s):\n${names}\n\n+${PERFECT_ATTENDANCE_BONUS} Coins each\nTotal: +${total.toLocaleString()} Coins\n\nThis weekly bonus can only be awarded once per player.`
-    )
-    if (!confirmed) return
-
-    setAwardingPerfect(true)
-    const weekKey = currentWeekKey
-    const awardedAt = Date.now()
-    const results = await Promise.all(freshRows.map(async row => {
-      const member = row.member
-      const alreadyAwarded = (member.attend_log || []).some(entry => entry?.type === 'perfect_attendance_bonus' && entry?.weekKey === weekKey)
-      if (alreadyAwarded) return { member, ok: true, skipped: true }
-
-      const bonusEntry = {
-        type: 'perfect_attendance_bonus',
-        weekKey,
-        weekLabel: currentWeekLabel,
-        coins: PERFECT_ATTENDANCE_BONUS,
-        sessions: PERFECT_ATTENDANCE_REQUIRED_SESSIONS,
-        awardedAt,
-        awardedBy: currentUser?.name || 'System',
-      }
-      const nextAttendLog = [...(member.attend_log || []), bonusEntry]
-      const { error } = await supabase
-        .from('members')
-        .update({
-          coins: (member.coins || 0) + PERFECT_ATTENDANCE_BONUS,
-          attend_log: nextAttendLog,
-        })
-        .eq('id', member.id)
-
-      return { member, ok: !error, error, nextAttendLog }
-    }))
-
-    const failed = results.filter(result => !result.ok)
-    const successful = results.filter(result => result.ok)
-
-    setMembers(prev => prev.map(member => {
-      const result = successful.find(item => item.member.id === member.id)
-      if (!result || result.skipped) return member
-      return {
-        ...member,
-        coins: (member.coins || 0) + PERFECT_ATTENDANCE_BONUS,
-        attend_log: result.nextAttendLog,
-      }
-    }))
-
-    setAwardingPerfect(false)
-
-    if (failed.length > 0) {
-      addToast(`Perfect Attendance awarded to ${successful.filter(r => !r.skipped).length} player(s). Failed: ${failed.map(r => r.member.name).join(', ')}`, 'red', 'Partial Award')
-      return
-    }
-
-    addToast(`+150 Coins awarded to ${successful.filter(r => !r.skipped).length} Perfect Attendance player(s).`, 'gold', 'Perfect Attendance Awarded')
-  }
-
-  const resetPerfectAttendanceAwards = async () => {
-    if (!isElder || awardingPerfect) return
-
-    const awardedRows = weeklyPerfectAttendance.filter(row => row.awarded)
-    if (awardedRows.length === 0) {
-      addToast('There are no Perfect Attendance awards to reset for this week.', 'red', 'Nothing to Reset')
-      return
-    }
-
-    const total = awardedRows.length * PERFECT_ATTENDANCE_BONUS
-    const names = awardedRows.map(row => row.member.name).join(', ')
-    const confirmed = window.confirm(
-      `Reset Weekly Perfect Attendance awards?\n\n` +
-      `${awardedRows.length} player(s):\n${names}\n\n` +
-      `This will remove the +${PERFECT_ATTENDANCE_BONUS} bonus and subtract ` +
-      `${total.toLocaleString()} Coins in total.\n\n` +
-      `The players will become eligible to be awarded again.`
-    )
-    if (!confirmed) return
-
-    setAwardingPerfect(true)
-    const weekKey = currentWeekKey
-
-    const results = await Promise.all(awardedRows.map(async row => {
-      const member = row.member
-      const nextAttendLog = (member.attend_log || []).filter(entry =>
-        !(entry?.type === 'perfect_attendance_bonus' && entry?.weekKey === weekKey)
-      )
-
-      const removedCount =
-        (member.attend_log || []).length - nextAttendLog.length
-
-      if (removedCount === 0) {
-        return { member, ok: true, skipped: true, nextAttendLog }
-      }
-
-      const newCoins = Math.max(0, Number(member.coins) - (removedCount * PERFECT_ATTENDANCE_BONUS))
-
-      const { error } = await supabase
-        .from('members')
-        .update({
-          coins: newCoins,
-          attend_log: nextAttendLog,
-        })
-        .eq('id', member.id)
-
-      return {
-        member,
-        ok: !error,
-        error,
-        nextAttendLog,
-        newCoins,
-      }
-    }))
-
-    const failed = results.filter(result => !result.ok)
-    const successful = results.filter(result => result.ok && !result.skipped)
-
-    setMembers(prev => prev.map(member => {
-      const result = successful.find(item => item.member.id === member.id)
-      if (!result) return member
-
-      return {
-        ...member,
-        coins: result.newCoins,
-        attend_log: result.nextAttendLog,
-      }
-    }))
-
-    setAwardingPerfect(false)
-
-    if (failed.length > 0) {
-      addToast(
-        `Reset completed for ${successful.length} player(s). Failed: ${failed.map(r => r.member.name).join(', ')}`,
-        'red',
-        'Partial Reset'
-      )
-      return
-    }
-
-    addToast(
-      `Perfect Attendance reset for ${successful.length} player(s). ${total.toLocaleString()} Coins reversed.`,
-      'gold',
-      'Awards Reset'
-    )
-  }
-
-  const sortedLogs = [...attendanceLogs].sort((a, b) => {
-    const ta = a.ts || Number(a.id) || new Date(a.date).getTime() || 0
-    const tb = b.ts || Number(b.id) || new Date(b.date).getTime() || 0
-    return tb - ta
-  })
-
-  const selectedCount = Object.values(selectedMembers).filter(Boolean).length
-  const allFilteredSelected = filtered.length > 0 && filtered.every(m => selectedMembers[m.id])
-
-  const toggleAllFiltered = () => {
-    setSelectedMembers(prev => {
-      const next = { ...prev }
-      if (allFilteredSelected) {
-        filtered.forEach(m => delete next[m.id])
-      } else {
-        filtered.forEach(m => { next[m.id] = true })
-      }
-      return next
-    })
-  }
-
-  const clearSelection = () => setSelectedMembers({})
-
-  const visiblePerfectRows = weeklyPerfectAttendance.filter(row => {
-    const matchesSearch = String(row.member.name || '').toLowerCase().includes(perfectSearch.trim().toLowerCase())
-    if (!matchesSearch) return false
-    if (perfectFilter === 'qualified') return row.qualified
-    if (perfectFilter === 'ready') return row.qualified && !row.awarded
-    if (perfectFilter === 'awarded') return row.awarded
-    return true
-  })
-
-  const filteredHistoryLogs = sortedLogs.filter(log => {
-    const q = historySearch.trim().toLowerCase()
-    if (!q) return true
-    const attendees = log.attendees || []
-    const haystack = [
-      log.event,
-      log.sessionDisplayName,
-      log.sessionLabel,
-      log.recorded_by,
-      log.recordedBy,
-      ...attendees.map(a => a.name),
-    ].filter(Boolean).join(' ').toLowerCase()
-    return haystack.includes(q)
-  })
-
-  const historyTotalPages = Math.max(1, Math.ceil(filteredHistoryLogs.length / HISTORY_PAGE_SIZE))
-  const safeHistoryPage = Math.min(historyPage, historyTotalPages)
-  const paginatedHistoryLogs = filteredHistoryLogs.slice(
-    (safeHistoryPage - 1) * HISTORY_PAGE_SIZE,
-    safeHistoryPage * HISTORY_PAGE_SIZE
+function Field({ label, children, hint }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[.15em] text-text-dim">{label}</span>
+      {children}
+      {hint && <span className="mt-1 block text-[11px] leading-4 text-text-dim/55">{hint}</span>}
+    </label>
   )
+}
+
+function ItemArtwork({ item, size = 'card' }) {
+  const src = item?.image_url || item?.image_data
+  const isTable = size === 'table'
+  const isPurchase = size === 'purchase'
+  const isReview = size === 'review'
+
+  const box = isTable
+    ? 'h-12 w-12'
+    : isPurchase
+      ? 'h-48 w-full sm:h-52'
+      : isReview
+        ? 'h-36 w-full sm:h-40'
+        : 'aspect-square w-full self-start'
+
+  const imageClass = isTable
+    ? 'h-full w-full object-contain'
+    : isPurchase
+      ? 'max-h-40 max-w-40 sm:max-h-[170px] sm:max-w-[170px] object-contain'
+      : isReview
+        ? 'max-h-[116px] max-w-[116px] sm:max-h-[128px] sm:max-w-[128px] object-contain'
+        : 'max-h-[108px] max-w-[108px] object-contain'
+
+  if (isTable) {
+    return (
+      <div className={`relative flex ${box} items-center justify-center overflow-hidden rounded-lg border border-white/[.07] bg-[#070707]`}>
+        {src
+          ? <img src={src} alt={item?.name || 'Marketplace item'} className={`${imageClass} relative z-10 drop-shadow-[0_6px_14px_rgba(0,0,0,.65)]`} loading="lazy" />
+          : <span className="relative z-10 text-xl text-gold-dim/25">◇</span>}
+      </div>
+    )
+  }
 
   return (
-    <div className="min-w-0 space-y-3">
-      {/* Header */}
-      <header className="rounded-2xl border border-gold/15 bg-[#0c0a09]/90">
-        <div className="flex flex-col gap-2 px-4 py-3 sm:px-5 sm:py-3.5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.18em] text-gold-dim">
-              <span className="h-1.5 w-1.5 rounded-full bg-gold-bright" />
-              Clan Management
-            </div>
-            <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
-              <h1 className="font-spectral text-2xl sm:text-3xl font-bold tracking-tight text-text-bright">Attendance</h1>
-              <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-0.5 text-[11px] font-sans text-text-dim">{members.length} members</span>
-              <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-0.5 text-[11px] font-sans text-text-dim">{sortedLogs.length} logs</span>
-            </div>
-            <p className="mt-0.5 text-[12px] sm:text-[13px] text-text-dim">
-              {isElder ? 'Select a session, mark attendees, and let GP determine the reward.' : 'View clan attendance and event participation.'}
-            </p>
+    <div className={`group/art relative flex ${box} items-center justify-center overflow-hidden rounded-[11px] border bg-[#070707] ${rarityArtworkBorderClass(item?.rarity)}`}>
+      {src && (isPurchase || isReview) && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-[-14%] bg-cover bg-center opacity-[.32] blur-2xl"
+          style={{
+            backgroundImage: `
+              radial-gradient(
+                ellipse at center,
+                rgba(255,255,255,.025) 0%,
+                rgba(255,255,255,.01) 42%,
+                rgba(0,0,0,.16) 70%,
+                rgba(0,0,0,.62) 100%
+              ),
+              url(${src})
+            `,
+          }}
+        />
+      )}
+
+      <div
+        className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${rarityGlowClass(item?.rarity)} ${
+          isPurchase ? 'h-44 w-44 blur-lg opacity-95' : isReview ? 'h-36 w-36 blur-lg opacity-90' : 'h-32 w-32 blur-lg opacity-92'
+        }`}
+      />
+
+      {src
+        ? (
+          <div className={`relative z-10 flex items-center justify-center ${
+            isPurchase ? 'h-[82%] w-[82%]' : isReview ? 'h-[76%] w-[76%]' : 'h-[76%] w-[76%]'
+          }`}>
+            <img
+              src={src}
+              alt={item?.name || 'Marketplace item'}
+              className="block h-full w-full object-contain drop-shadow-[0_10px_22px_rgba(0,0,0,.9)] transition-transform duration-300 group-hover/art:scale-[1.02]"
+              loading="lazy"
+              style={{ imageRendering: 'auto' }}
+            />
+          </div>
+        )
+        : <span className="relative z-10 text-4xl text-gold-dim/25">◇</span>}
+
+      <div className="pointer-events-none absolute inset-0 z-20 bg-[radial-gradient(ellipse_at_center,transparent_44%,rgba(0,0,0,.025)_72%,rgba(0,0,0,.28)_100%)]" />
+    </div>
+  )
+}
+
+function ItemCard({ item, onBuy, canBuy, sold = false, buyerName = null, purchasedAt = null }) {
+  const stock = Number(item?.stock) || 0
+  const bundleQuantity = Math.max(1, Number(item?.bundle_quantity ?? item?.stock) || 1)
+  const price = Number(item?.price) || 0
+  const expired = item?.available_until && new Date(item.available_until).getTime() <= Date.now()
+  const soldOut = sold || item?.status === 'sold_out' || stock < 1
+  const rarity = String(item?.rarity || 'common').toLowerCase()
+
+  const rarityBadge = {
+    legendary: 'border-amber-300/45 bg-amber-300/[.055] text-amber-200',
+    epic: 'border-red-400/35 bg-red-400/[.05] text-red-300',
+    rare: 'border-blue-400/35 bg-blue-400/[.05] text-blue-300',
+    uncommon: 'border-emerald-400/35 bg-emerald-400/[.05] text-emerald-300',
+    common: 'border-white/15 bg-white/[.025] text-text-dim',
+  }[rarity] || 'border-white/15 bg-white/[.025] text-text-dim'
+
+  return (
+    <article className="group overflow-hidden rounded-[14px] border border-white/[.08] bg-[#090807]/95 transition-all duration-200 hover:-translate-y-0.5 hover:border-gold/25 hover:shadow-[0_16px_42px_rgba(0,0,0,.36)]" style={{ contentVisibility: "auto", containIntrinsicSize: "0 280px" }}>
+      <div className="grid grid-cols-[116px_minmax(0,1fr)] bg-[#060606] sm:grid-cols-[128px_minmax(0,1fr)]">
+        <div className="self-start p-1">
+          <ItemArtwork item={item} />
+        </div>
+
+        <div className="min-w-0 px-3 py-2 sm:px-3.5">
+          <div className="flex min-h-[25px] min-w-0 items-start">
+            <span
+              className={`inline-flex max-w-full shrink items-center justify-center rounded-full border px-2.5 py-1.5 text-[9px] font-extrabold uppercase leading-none tracking-[.12em] whitespace-nowrap ${rarityBadge}`}
+              title={item.rarity || 'common'}
+            >
+              {item.rarity || 'common'}
+            </span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <div className="text-right text-[11px] sm:text-[12px] text-text-dim">
-              <span>Server </span><span className="font-semibold text-gold-light">{formatGMT8(now)}</span>
-              <span className="mx-1.5">·</span>
-              <span>Local </span><span className="font-semibold text-text-bright">{formatInAutoLocalZone(now)}</span>
+          <div className="mt-2 min-w-0">
+            <div className="text-[9px] font-bold uppercase tracking-[.17em] text-text-dim/60">Price</div>
+            <div className="mt-0.5 flex min-w-0 items-baseline gap-1.5 font-mono font-bold leading-none text-gold-bright">
+              <span className="min-w-0 truncate text-[20px] font-extrabold sm:text-[21px]">{formatCoins(price)}</span>
+              <span className="shrink-0 text-[9px] font-bold tracking-[.05em] text-gold-light/75">COINS</span>
             </div>
-            {isElder && (
-              <button type="button" onClick={() => setShowRecordModal(true)} className="btn-gold min-h-9 px-3 text-[12px] font-bold">
-                + Record
-              </button>
-            )}
+          </div>
+
+          <div className="mt-2 border-t border-white/[.055] pt-1.5">
+            <div className="text-[9px] font-bold uppercase tracking-[.17em] text-text-dim/60">Package</div>
+            <div className="mt-0.5 flex items-baseline gap-1.5 font-mono font-bold leading-none text-text-bright">
+              <span className="text-[16px] font-extrabold">{bundleQuantity}×</span>
+              <span className="font-sans text-[10px] font-medium text-text-dim/80">items</span>
+            </div>
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Weekly calendar — thin expandable bar */}
-      <section className="overflow-hidden rounded-2xl border border-gold/15 bg-[#0c0a09]/[.97]">
-        <button
-          type="button"
-          onClick={() => setShowEventSchedule(value => !value)}
-          className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left sm:px-5 hover:bg-white/[.018]"
-          aria-expanded={showEventSchedule}
+      <div className="border-t border-white/[.055] px-3.5 pb-3 pt-2 sm:px-4">
+        <h3
+          className={`truncate text-center font-spectral text-[18px] font-bold leading-tight tracking-[.01em] ${rarityTextClass(item.rarity)}`}
+          title={item.name}
         >
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[12px] font-bold uppercase tracking-[.14em] text-text-dim">Weekly Event Calendar</span>
-              <span className="rounded-md border border-white/[.08] bg-black/15 px-2 py-0.5 text-[11px] text-text-dim">{currentWeekLabel}</span>
-              <span className="text-[10px] text-text-dim">8 sessions · GMT+8</span>
-            </div>
-          </div>
-          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-[14px] font-semibold text-text-dim">
-            {showEventSchedule ? '−' : '+'}
-          </span>
-        </button>
+          {item.name}
+        </h3>
 
-        {showEventSchedule && (
-          <div className="border-t border-white/[.06] px-3 py-3 sm:px-4">
-            <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-              {[2, 4, 6].map(day => {
-                const daySessions = WEEKLY_EVENT_SESSIONS.filter(session => session.day === day)
-                const dayLabel = daySessions[0]?.dayLabel || ''
-                return (
-                  <div key={day} className="rounded-xl border border-white/[.07] bg-black/15 p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-[11px] font-bold uppercase tracking-[.12em] text-text-dim">{dayLabel}</span>
-                      <span className="text-[10px] text-text-dim">{daySessions.length} sessions</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {daySessions.map((session, index) => {
-                        const times = formatSessionTimes(session, now)
-                        const run = getRunLabel(session)
-                        return (
-                          <div key={session.id} className="rounded-lg border border-white/[.06] bg-[#10100e] px-2.5 py-2">
-                            <div className="flex items-start gap-2">
-                              <span className="mt-0.5 text-[9px] text-text-dim">{String(index + 1).padStart(2, '0')}</span>
-                              <div className="min-w-0 flex-1">
-                                <div className="text-[11px] font-semibold leading-4 text-text-bright">{session.displayName}</div>
-                                <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] text-text-dim">
-                                  <span>Server {times.serverTime}</span>
-                                  <span>Local {times.localTime}</span>
-                                  {run !== 'Single Run' && <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${getRunTagClass(run)}`}>{run}</span>}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+        {sold && (
+          <div className="mx-auto mt-2 max-w-[320px] rounded-lg border border-white/[.06] bg-white/[.018] px-2.5 py-1.5 text-center">
+            <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim/80">Purchased By</div>
+            <div className="mt-0.5 truncate text-[13px] font-semibold text-gold-light">{buyerName || 'Buyer information unavailable'}</div>
+            {purchasedAt && (
+              <div className="mt-0.5 text-[9px] text-text-dim/80">
+                {new Date(purchasedAt).toLocaleString(undefined, {
+                  year: 'numeric',
+                  month: 'short',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  timeZoneName: 'short',
+                })}
+              </div>
+            )}
           </div>
         )}
-      </section>
 
-      {/* Weekly status — compact stat chips */}
-      <div className="flex flex-wrap items-stretch gap-2">
-        <button type="button" onClick={() => setShowPerfectAttendance(true)} className="flex min-w-[210px] flex-1 items-center justify-between gap-3 rounded-xl border border-white/[.08] bg-[#0c0a09]/[.97] px-3.5 py-2.5 text-left hover:border-gold/20">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim">Perfect Attendance</div>
-            <div className="mt-0.5 text-[13px] font-semibold text-text-bright">{qualifiedPerfectAttendance.length} qualified · 8/8 required</div>
-          </div>
-          <span className="text-[13px] font-bold text-gold-bright">+150</span>
-        </button>
+        <div className="mt-2.5 flex h-8 items-center justify-center gap-2.5 border-y border-white/[.055] text-[10px] font-bold uppercase tracking-[.12em]">
+          <span className="text-text-dim/60">{soldOut ? 'Status' : 'Closes in'}</span>
+          <span className={soldOut ? 'text-white/55' : expired ? 'text-red-300' : 'text-text-dim/85'}>
+            {soldOut ? 'Sold Out' : expired ? 'Expired' : timeRemaining(item.available_until)}
+          </span>
+        </div>
+
         <button
           type="button"
-          onClick={() => setShowRewardGuide(true)}
-          className="flex min-w-0 flex-[2] flex-wrap items-center gap-1.5 rounded-xl border border-white/[.08] bg-[#0c0a09]/[.97] px-3.5 py-2.5 text-left transition-colors hover:border-gold/25 hover:bg-gold/[.02]"
-          title="View reward and GP bonus criteria"
+          disabled={!canBuy || soldOut || expired}
+          onClick={() => onBuy(item)}
+          className="mt-2.5 flex h-10 w-full items-center justify-center gap-2 rounded-[9px] border border-[#6b5425] bg-gradient-to-b from-gold/[.12] to-gold/[.04] text-[10px] font-bold uppercase tracking-[.14em] text-gold-light transition hover:border-[#d4af37] hover:from-gold/[.18] hover:to-gold/[.065] hover:shadow-[0_6px_18px_rgba(242,204,96,.07)] disabled:cursor-not-allowed disabled:border-white/[.06] disabled:bg-white/[.015] disabled:text-text-dim/35"
         >
-          <div className="mr-1">
-            <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim">Reward Guide</div>
-            <div className="text-[11px] text-text-dim">Click to view GP bonus criteria</div>
-          </div>
-          {[['Battle', 100], ['Boss', 50], ['Annihilation', 75], ['Sindri', 75], ['Sanctuary', 50]].map(([name, base]) => (
-            <div key={name} className="rounded-lg border border-white/[.06] bg-black/15 px-2.5 py-1.5">
-              <span className="text-[10px] text-text-dim">{name}</span>
-              <span className="ml-1.5 text-[11px] font-semibold text-text-bright">+{base}</span>
-            </div>
-          ))}
+          {!canBuy ? 'Sign In To Purchase' : soldOut ? 'Sold Out' : expired ? 'Expired' : 'Buy Now'}
+          {canBuy && !soldOut && !expired && <span className="text-gold-bright"></span>}
+        </button>
+      </div>
+    </article>
+  )
+}
+
+
+const MemoizedItemCard = React.memo(ItemCard)
+
+function ImageManager({ imageFile, imagePreview, pickedLibraryImg, libraryImages, libraryLoading, libraryError, uploading, deletingImageName, canDeleteImage, fileInputRef, onRefresh, onFileChange, onPick, onClear, onDeleteImage }) {
+  const selectedLabel = imageFile
+    ? imageFile.name
+    : pickedLibraryImg
+      ? (pickedLibraryImg.displayName || displayNameForLibraryImage(pickedLibraryImg))
+      : ''
+  const hasSelectedImage = Boolean(imageFile || pickedLibraryImg || imagePreview)
+
+  return (
+    <div className="rounded-xl border border-white/[.07] bg-black/20 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold uppercase tracking-[.15em] text-gold-dim">Item Artwork</div>
+          <div className="mt-1 text-[11px] text-text-dim">Use an Auction House image or upload a new one for this Clan Marketplace item.</div>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={libraryLoading || uploading}
+          className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-gold-light hover:text-gold-bright disabled:opacity-40"
+        >
+          {libraryLoading ? 'Loading…' : 'Refresh'}
         </button>
       </div>
 
-      {/* Recent Attendance — only a small page of records is rendered */}
-      <section className="overflow-hidden rounded-2xl border border-white/[.08] bg-[#0c0a09]/95 shadow-[0_10px_40px_rgba(0,0,0,.18)]">
-        <div className="flex flex-col gap-2.5 border-b border-white/[.06] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-base font-bold text-text-bright">Recent Attendance</h2>
-            <p className="mt-0.5 text-[12px] text-text-dim">Showing the latest 8 records · use search to find older sessions</p>
+      <div className="flex items-center gap-3 rounded-lg border border-white/[.06] bg-black/20 p-3">
+        {imagePreview ? (
+          <img src={imagePreview} alt="Selected artwork" className="h-14 w-14 shrink-0 rounded-lg border border-gold/25 bg-black object-contain" />
+        ) : (
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-white/[.1] text-[10px] text-text-dim/45">IMAGE</div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Selected Asset</div>
+          <div className="mt-1 truncate text-[11px] text-text-bright">
+            {hasSelectedImage ? selectedLabel || 'Selected image' : 'No image selected'}
           </div>
-          <div className="flex items-center gap-1.5">
-            {isElder && sortedLogs.length > 0 && <button type="button" onClick={() => openAddMissing()} className="rounded-lg border border-gold/20 bg-gold/[.035] px-2.5 py-1.5 text-[11px] font-bold text-gold-light hover:border-gold/40">+ Add Missing</button>}
-            <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-1 text-[11px] font-sans text-text-dim">{sortedLogs.length} logs</span>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={onFileChange}
+            disabled={uploading}
+            className="sr-only"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="rounded-lg border border-gold/30 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gold-light hover:bg-gold/10 disabled:opacity-40"
+          >
+            {uploading ? 'Uploading…' : hasSelectedImage ? 'Change' : 'Upload'}
+          </button>
+          {hasSelectedImage && (
+            <button
+              type="button"
+              onClick={onClear}
+              disabled={uploading}
+              className="rounded-lg border border-red-500/25 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-red-400 hover:bg-red-500/10 disabled:opacity-40"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 border-t border-white/[.06] pt-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="text-[11px] font-bold uppercase tracking-[.15em] text-text-dim">Image Library</div>
+          <div className="text-[11px] text-text-dim">
+            {libraryLoading ? 'Loading…' : libraryError ? <span className="text-red-400">{libraryError}</span> : `${libraryImages.length} assets`}
           </div>
         </div>
 
-        <div className="border-b border-white/[.06] bg-black/10 px-4 py-2.5">
-          <div className="flex gap-1.5">
-            <div className="relative min-w-0 flex-1">
-              <input
-                className="input h-8 w-full pl-8 text-[12px]"
-                placeholder="Search event, run, player, or recorder..."
-                value={historySearch}
-                onChange={e => { setHistorySearch(e.target.value); setHistoryPage(1) }}
-              />
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim text-[13px]">⌕</span>
-            </div>
-            {historySearch && <button type="button" onClick={() => { setHistorySearch(''); setHistoryPage(1) }} className="rounded-lg border border-white/[.08] px-2.5 text-[11px] text-text-dim hover:text-text-bright">Clear</button>}
-          </div>
-        </div>
+        {libraryImages.length > 0 ? (
+          <div className="grid max-h-[220px] grid-cols-6 gap-2 overflow-y-auto pr-1 sm:grid-cols-8">
+            {libraryImages.map(image => {
+              const picked = pickedLibraryImg?.name === image.name || (!imageFile && imagePreview === image.url)
+              const title = image.displayName || displayNameForLibraryImage(image)
+              const isDeleting = deletingImageName === image.name
 
-        <div className="divide-y divide-white/[.045]">
-          {paginatedHistoryLogs.map(log => {
-            const attendees = log.attendees || []
-            const logTs = log.ts || Number(log.id) || new Date(log.date).getTime() || 0
-            const totalAwarded = attendees.reduce((sum, a) => sum + (Number(a.earned) || 0), 0)
-            const session = getLogSession(log)
-            const run = getRunLabel(session)
-            const isDeleting = deletingId === log.id
-            return (
-              <div key={log.id} className="px-4 py-3 hover:bg-white/[.018]">
-                <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="truncate text-[14px] font-semibold text-text-bright">{log.sessionDisplayName || log.event}</span>
-                      <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-bold ${getRunTagClass(run)}`}>{run}</span>
-                      <span className="rounded-md border border-white/[.07] bg-black/20 px-1.5 py-0.5 text-[10px] font-sans text-text-dim">{attendees.length}/50</span>
-                    </div>
-                    <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] sm:text-[12px] text-text-dim">
-                      <span title={`Server time: ${formatGMT8Short(logTs)} · GMT+8`}>Local {formatInAutoLocalZone(logTs)}</span>
-                      <span>by <strong className="text-gold-light">{log.recorded_by || log.recordedBy || 'System'}</strong></span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 lg:justify-end">
-                    <span className="flex items-center gap-1 text-[12px] font-bold text-gold-light"><span aria-hidden="true">🪙</span>{totalAwarded.toLocaleString()}</span>
-                    <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => { setAttendeeSearch(''); setDetailLog(log) }} title="View attendance details" aria-label="View attendance details" className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[.08] text-[13px] text-text-dim hover:border-white/[.16] hover:text-text-bright">⌕</button>
-                      {isElder && attendees.length < 50 && <button type="button" onClick={() => openAddMissing(log)} title="Add missing members" aria-label="Add missing members" className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[.08] text-[14px] text-text-dim hover:border-white/[.16] hover:text-text-bright">+</button>}
-                      {isElder && (
-                        <div className="relative">
-                          <button type="button" onClick={() => setOpenActionMenuId(openActionMenuId === log.id ? null : log.id)} title="More actions" aria-label="More actions" aria-expanded={openActionMenuId === log.id} className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[.08] text-[16px] text-text-dim hover:border-white/[.16] hover:text-text-bright">⋮</button>
-                          {openActionMenuId === log.id && (
-                            <div className="absolute right-0 top-9 z-30 min-w-[120px] rounded-lg border border-white/[.10] bg-[#11100f] p-1 shadow-xl">
-                              <button type="button" onClick={() => { setOpenActionMenuId(null); deleteLog(log) }} disabled={isDeleting} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-red-300 hover:bg-red-500/[.07] disabled:opacity-40">
-                                {isDeleting ? 'Deleting…' : 'Delete record'}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+              return (
+                <div
+                  key={image.name}
+                  className={`group relative overflow-hidden rounded-lg border ${
+                    picked ? 'border-gold-bright ring-1 ring-gold/40' : 'border-white/[.08] hover:border-gold/40'
+                  } ${isDeleting ? 'pointer-events-none opacity-40' : ''}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onPick(image)}
+                    title={title}
+                    className="block w-full"
+                    aria-pressed={picked}
+                    aria-label={`Use image ${title}`}
+                  >
+                    <img src={image.url} alt={title} className="aspect-square w-full object-contain bg-black" loading="lazy" />
+                  </button>
+
+                  {picked && (
+                    <span className="absolute left-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-gold text-[11px] font-bold text-black">
+                      ✓
+                    </span>
+                  )}
+
+                  {canDeleteImage && (
+                    <button
+                      type="button"
+                      onClick={event => {
+                        event.stopPropagation()
+                        onDeleteImage(image)
+                      }}
+                      disabled={isDeleting || Boolean(deletingImageName)}
+                      title={`Delete image ${title}`}
+                      aria-label={`Delete image ${title}`}
+                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full border border-red-500/50 bg-black/85 text-[9px] font-bold leading-none text-red-400 opacity-0 transition hover:border-red-400 hover:bg-red-500 hover:text-white group-hover:opacity-100 focus-visible:opacity-100 disabled:cursor-not-allowed"
+                    >
+                      {isDeleting ? '…' : '✕'}
+                    </button>
+                  )}
                 </div>
-              </div>
-            )
-          })}
-          {paginatedHistoryLogs.length === 0 && <div className="px-4 py-10 text-center text-[12px] text-text-dim">No attendance records found.</div>}
-        </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-white/[.08] py-7 text-center text-[11px] text-text-dim">No images available yet.</div>
+        )}
 
-        <div className="flex items-center justify-between border-t border-white/[.06] px-4 py-2.5">
-          <span className="text-[11px] text-text-dim">Page {safeHistoryPage} of {historyTotalPages} · {filteredHistoryLogs.length} matching</span>
-          <div className="flex gap-1">
-            <button type="button" disabled={safeHistoryPage <= 1} onClick={() => setHistoryPage(page => Math.max(1, page - 1))} className="rounded-lg border border-white/[.08] px-2.5 py-1.5 text-[11px] text-text-dim disabled:opacity-30">← Prev</button>
-            <button type="button" disabled={safeHistoryPage >= historyTotalPages} onClick={() => setHistoryPage(page => Math.min(historyTotalPages, page + 1))} className="rounded-lg border border-white/[.08] px-2.5 py-1.5 text-[11px] text-text-dim disabled:opacity-30">Next →</button>
+        <div className="mt-2 text-[10px] text-text-dim/45">Shared with the Auction House artwork library. Maximum upload size: 2 MB.</div>
+      </div>
+    </div>
+  )
+}
+
+export default function Marketplace({ ctx }) {
+  const { currentUser, supabase, addToast, allMembers } = ctx
+  const liveCurrentUser = allMembers?.find(
+    member => String(member.id) === String(currentUser?.id)
+  ) || currentUser
+  const role = liveCurrentUser?.role || currentUser?.role || 'Member'
+  const isStaff = [ROLES.ADMIN, ROLES.MASTER, ROLES.ELDER].includes(role)
+  const canReview = REVIEW_ROLES.includes(role)
+  const canDistribute = DISTRIBUTE_ROLES.includes(role)
+  const canManageListings = LISTING_CONTROL_ROLES.includes(role)
+  const canBulkRemoveListings = BULK_LISTING_REMOVE_ROLES.includes(role)
+  const canManageHistory = isStaff
+  const canBuy = Boolean(currentUser && role !== 'Guest')
+  // Marketplace submission controls are available only to staff.
+  // Regular Members keep the existing Marketplace experience unchanged.
+  const canSubmit = isStaff
+
+  const [items, setItems] = useState([])
+  const [purchases, setPurchases] = useState([])
+  const [displayCoins, setDisplayCoins] = useState(Number(liveCurrentUser?.coins || 0))
+  const [members, setMembers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState('shop')
+  const [staffTab, setStaffTab] = useState(canReview ? 'pending' : 'distribution')
+  const [buyItem, setBuyItem] = useState(null)
+  const [purchaseError, setPurchaseError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [showSubmit, setShowSubmit] = useState(false)
+  const [reviewItem, setReviewItem] = useState(null)
+  const [showEdit, setShowEdit] = useState(false)
+  const [distributionPurchase, setDistributionPurchase] = useState(null)
+  const [distributionNote, setDistributionNote] = useState('')
+  const [search, setSearch] = useState('')
+  const [rarityFilter, setRarityFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('newest')
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState([])
+  const [selectedListingIds, setSelectedListingIds] = useState([])
+  const [selectedSubmissionIds, setSelectedSubmissionIds] = useState([])
+
+  const emptyForm = { name: '', description: '', rarity: 'common', image_url: '', image_data: '', price: 100, stock: 1, duration_days: 7 }
+  const [form, setForm] = useState(emptyForm)
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
+  const [pickedLibraryImg, setPickedLibraryImg] = useState(null)
+  const [libraryImages, setLibraryImages] = useState([])
+  const [libraryLoading, setLibraryLoading] = useState(false)
+  const [libraryError, setLibraryError] = useState(null)
+  const [deletingImageName, setDeletingImageName] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef(null)
+
+  const load = async ({ silent = false } = {}) => {
+    if (!supabase) return
+    try {
+      if (!silent) setLoading(true)
+      // Marketplace Sold Inventory needs the buyer name for sold listings.
+      // Purchase history remains read-only here; the listing itself is still controlled by the Marketplace RPCs.
+      const purchaseQuery = supabase.from('marketplace_purchases').select('*').order('purchased_at', { ascending: false })
+
+      const [{ data: itemData, error: itemError }, { data: purchaseData, error: purchaseError }] = await Promise.all([
+        supabase.from('marketplace_items').select('*').order('created_at', { ascending: false }),
+        purchaseQuery,
+      ])
+      if (itemError) throw itemError
+      if (purchaseError) throw purchaseError
+      setItems(itemData || [])
+      setPurchases(purchaseData || [])
+
+      // Staff needs the full member list for management controls.
+      // Regular members also need buyer names for sold-out Marketplace cards,
+      // in addition to the staff names shown on distributed purchases.
+      const relatedMemberIds = [...new Set(
+        (purchaseData || [])
+          .flatMap(p => [p.buyer_id, p.distributed_by])
+          .filter(id => id !== null && id !== undefined)
+          .map(id => Number(id))
+          .filter(Number.isFinite)
+      )]
+
+      if (isStaff || relatedMemberIds.length > 0) {
+        let memberQuery = supabase
+          .from('members')
+          .select('id,name,role')
+          .order('name')
+
+        if (!isStaff) {
+          memberQuery = memberQuery.in('id', relatedMemberIds)
+        }
+
+        const { data: memberData, error: memberError } = await memberQuery
+        if (!memberError) setMembers(memberData || [])
+      } else if (!isStaff) {
+        setMembers([])
+      }
+    } catch (error) {
+      console.error('[Marketplace] load failed:', error)
+      addToast(error?.message || 'Could not load Marketplace.', 'red', 'Marketplace Error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [currentUser?.id, role])
+
+  // Keep the Marketplace balance synced from the shared member context.
+  // This updates the UI immediately when Coins change elsewhere without polling
+  // or forcing a Marketplace reload.
+  useEffect(() => {
+    // Sync from the shared member context when it changes.
+    // Supabase Realtime below can update displayCoins directly between context syncs.
+    if (liveCurrentUser?.id) {
+      setDisplayCoins(Number(liveCurrentUser?.coins || 0))
+    }
+  }, [liveCurrentUser?.id, liveCurrentUser?.coins])
+
+  // Listen only for this player's member-row updates. This is event-driven
+  // (no interval/polling), so the balance changes as soon as Supabase sends
+  // the database update without making the Marketplace feel like it refreshes.
+  useEffect(() => {
+    if (!supabase || !currentUser?.id) return undefined
+
+    const memberId = Number(currentUser.id)
+    const channel = supabase
+      .channel(`marketplace-member-balance-${memberId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'members',
+          filter: `id=eq.${memberId}`,
+        },
+        payload => {
+          const nextCoins = Number(payload?.new?.coins)
+          if (Number.isFinite(nextCoins)) {
+            setDisplayCoins(nextCoins)
+          }
+        }
+      )
+      .subscribe(status => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn(`[Marketplace] Member balance realtime ${status.toLowerCase()}.`)
+        }
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [supabase, currentUser?.id])
+
+  // Keep Marketplace data in sync in the background. Realtime updates are
+  // intentionally silent so the page never looks like it is reloading.
+  useEffect(() => {
+    if (!supabase) return undefined
+
+    let refreshTimer = null
+    let disposed = false
+
+    const schedulePurchaseRefresh = () => {
+      if (disposed) return
+      if (refreshTimer) window.clearTimeout(refreshTimer)
+      refreshTimer = window.setTimeout(() => {
+        if (!disposed) load({ silent: true })
+      }, 400)
+    }
+
+    const applyItemRealtimeChange = payload => {
+      if (disposed || !payload) return
+
+      const eventType = payload.eventType
+      const record = payload.new
+      const oldRecord = payload.old
+
+      setItems(prev => {
+        if (eventType === 'INSERT') {
+          if (!record?.id || prev.some(item => item.id === record.id)) return prev
+          return [record, ...prev]
+        }
+
+        if (eventType === 'UPDATE') {
+          if (!record?.id) return prev
+          const exists = prev.some(item => item.id === record.id)
+          return exists
+            ? prev.map(item => item.id === record.id ? record : item)
+            : [record, ...prev]
+        }
+
+        if (eventType === 'DELETE') {
+          const deletedId = oldRecord?.id
+          if (!deletedId) return prev
+          return prev.filter(item => item.id !== deletedId)
+        }
+
+        return prev
+      })
+    }
+
+    const channel = supabase
+      .channel(`marketplace-realtime-${currentUser?.id || 'guest'}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'marketplace_items' },
+        applyItemRealtimeChange
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'marketplace_purchases' },
+        schedulePurchaseRefresh
+      )
+      .subscribe(status => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn(`[Marketplace] Realtime subscription ${status.toLowerCase()}. Manual refresh remains available.`)
+        }
+      })
+
+    return () => {
+      disposed = true
+      if (refreshTimer) window.clearTimeout(refreshTimer)
+      supabase.removeChannel(channel)
+    }
+  }, [supabase, currentUser?.id, role])
+
+  const loadLibrary = async () => {
+    if (!supabase) return
+    setLibraryLoading(true)
+    setLibraryError(null)
+    try {
+      const { data, error } = await supabase.storage.from(IMAGE_BUCKET).list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } })
+      if (error) throw error
+      const library = (data || []).filter(file => file?.name && !file.name.startsWith('.')).map(file => {
+        const { data: urlData } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(file.name)
+        return { name: file.name, displayName: displayNameForLibraryImage({ name: file.name }), url: urlData?.publicUrl || '', createdAt: file.created_at || file.updated_at || null }
+      }).filter(file => file.url)
+      setLibraryImages(library)
+    } catch (error) {
+      console.error('[Marketplace] image library load failed:', error)
+      setLibraryError(error?.message || 'Failed to load image library')
+    } finally {
+      setLibraryLoading(false)
+    }
+  }
+
+  const clearImage = () => {
+    if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
+    setImageFile(null)
+    setPickedLibraryImg(null)
+    setImagePreview(null)
+    setForm(prev => ({ ...prev, image_url: '', image_data: '' }))
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const deleteLibraryImage = async image => {
+    if (!isStaff || !supabase || !image?.name || deletingImageName) return
+
+    const title = image.displayName || displayNameForLibraryImage(image)
+    if (!window.confirm(
+      `Delete this image permanently?\n\n${title}\n\nThis removes it from the shared Auction House artwork library. Any existing listing that already uses this image will keep its stored URL.`
+    )) {
+      return
+    }
+
+    const fileName = image.name
+    setDeletingImageName(fileName)
+
+    try {
+      const { error } = await supabase.storage.from(IMAGE_BUCKET).remove([fileName])
+      if (error) throw error
+
+      setLibraryImages(prev => prev.filter(item => item.name !== fileName))
+
+      if (pickedLibraryImg?.name === fileName || imagePreview === image.url) {
+        clearImage()
+      }
+
+      addToast('Image deleted from the artwork library.', 'red', 'Image Deleted')
+    } catch (error) {
+      console.error('[Marketplace] delete image failed:', error)
+      addToast(error?.message || 'Could not delete image.', 'red', 'Delete Failed')
+    } finally {
+      setDeletingImageName(null)
+    }
+  }
+
+  const handleImageChange = event => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) { addToast('Please choose an image file.', 'red', 'Invalid File'); return }
+    if (file.size > 2 * 1024 * 1024) { addToast('Image must be under 2 MB.', 'red', 'Too Large'); return }
+    if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
+    setPickedLibraryImg(null)
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+    setForm(prev => ({ ...prev, image_url: '', image_data: '' }))
+  }
+
+  const pickFromLibrary = image => {
+    if (!image?.url) return
+    if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
+    setImageFile(null)
+    setPickedLibraryImg(image)
+    setImagePreview(image.url)
+    setForm(prev => ({ ...prev, image_url: image.url, image_data: '' }))
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const uploadImage = async () => {
+    if (pickedLibraryImg?.url) return pickedLibraryImg.url
+    if (!imageFile) return form.image_url?.trim() || null
+    setUploading(true)
+    try {
+      const ext = imageFile.type === 'image/png' ? 'png' : (imageFile.name.split('.').pop()?.toLowerCase() || 'png')
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+      const { error } = await supabase.storage.from(IMAGE_BUCKET).upload(path, imageFile, { cacheControl: '3600', upsert: false, contentType: imageFile.type || 'image/png' })
+      if (error) throw error
+      const { data } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(path)
+      const url = data?.publicUrl || null
+      if (!url) throw new Error('The uploaded image URL could not be created.')
+      setLibraryImages(prev => [{ name: path, displayName: imageFile.name, url, createdAt: new Date().toISOString() }, ...prev.filter(image => image.url !== url)])
+      setForm(prev => ({ ...prev, image_url: url, image_data: '' }))
+      return url
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (showSubmit || showEdit) loadLibrary()
+  }, [showSubmit, showEdit])
+
+  const activeItems = useMemo(() => items.filter(item => item.status === 'active' && new Date(item.available_until).getTime() > Date.now() && Number(item.stock) > 0), [items])
+  const soldItems = useMemo(() => items.filter(item => item.status === 'sold_out'), [items])
+
+  const filteredActiveItems = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const filtered = activeItems.filter(item => {
+      const matchesSearch = !q || [item.name, item.description, item.rarity].some(value => String(value || '').toLowerCase().includes(q))
+      const matchesRarity = rarityFilter === 'all' || String(item.rarity || 'common').toLowerCase() === rarityFilter
+      return matchesSearch && matchesRarity
+    })
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'price_low') return Number(a.price) - Number(b.price)
+      if (sortBy === 'price_high') return Number(b.price) - Number(a.price)
+      if (sortBy === 'stock') return Number(b.stock) - Number(a.stock)
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    })
+  }, [activeItems, search, rarityFilter, sortBy])
+
+  const filteredSoldItems = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const filtered = soldItems.filter(item => {
+      const matchesSearch = !q || [item.name, item.description, item.rarity].some(value => String(value || '').toLowerCase().includes(q))
+      const matchesRarity = rarityFilter === 'all' || String(item.rarity || 'common').toLowerCase() === rarityFilter
+      return matchesSearch && matchesRarity
+    })
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'price_low') return Number(a.price) - Number(b.price)
+      if (sortBy === 'price_high') return Number(b.price) - Number(a.price)
+      return new Date(b.purchased_at || b.updated_at || b.created_at || 0).getTime() - new Date(a.purchased_at || a.updated_at || a.created_at || 0).getTime()
+    })
+  }, [soldItems, search, rarityFilter, sortBy])
+
+  const myPurchases = useMemo(() => purchases.filter(p => Number(p.buyer_id) === Number(currentUser?.id)), [purchases, currentUser?.id])
+  const pendingItems = useMemo(() => items.filter(item => item.status === 'pending_review'), [items])
+  const mySubmissions = useMemo(() => items.filter(item => Number(item.submitted_by) === Number(currentUser?.id)), [items, currentUser?.id])
+  const distributionQueue = useMemo(() => purchases.filter(p => p.status === 'purchased'), [purchases])
+  const activeListings = useMemo(() => items.filter(item => item.status === 'active' || item.status === 'sold_out'), [items])
+
+  const memberName = id => members.find(m => Number(m.id) === Number(id))?.name || `Member #${id}`
+  const itemName = id => items.find(item => item.id === id)?.name || 'Marketplace Item'
+  const itemPackageQuantity = id => {
+    const item = items.find(entry => entry.id === id)
+    return Math.max(1, Number(item?.bundle_quantity ?? item?.stock) || 1)
+  }
+
+  const buyerForItem = itemId => {
+    const purchase = purchases.find(p => p.item_id === itemId && p.status !== 'cancelled')
+    return purchase ? memberName(purchase.buyer_id) : null
+  }
+
+  const purchasedAtForItem = itemId => {
+    const purchase = purchases.find(p => p.item_id === itemId && p.status !== 'cancelled')
+    return purchase?.purchased_at || null
+  }
+
+  const openBuy = item => {
+    setPurchaseError('')
+    setBuyItem(item)
+  }
+
+  const openSubmit = () => {
+    clearImage()
+    setForm({ ...emptyForm })
+    setShowSubmit(true)
+  }
+
+  const submitItem = async e => {
+    e.preventDefault()
+    if (!canSubmit || busy) return
+    setBusy(true)
+    try {
+      const imageUrl = await uploadImage()
+      const { data: createdItem, error } = await supabase.rpc('marketplace_submit_item', {
+        p_actor_id: currentUser.id,
+        p_name: form.name.trim(),
+        p_description: form.description.trim() || '',
+        p_rarity: form.rarity,
+        p_image_url: imageUrl,
+        p_image_data: null,
+        p_price: Number(form.price),
+        p_stock: Number(form.stock),
+        p_duration_days: Number(form.duration_days),
+      })
+      if (error) throw error
+
+      // The RPC returns the new row, so update the local list instead of
+      // downloading the entire Marketplace again.
+      if (createdItem) {
+        const created = Array.isArray(createdItem) ? createdItem[0] : createdItem
+        if (created?.id) {
+          setItems(prev => [created, ...prev.filter(item => item.id !== created.id)])
+        }
+      }
+
+      setShowSubmit(false)
+      addToast('Clan item submitted for Master review.', 'gold', 'Marketplace Submitted')
+    } catch (error) {
+      addToast(error?.message || 'Failed to submit Marketplace item.', 'red', 'Submit Failed')
+    } finally { setBusy(false) }
+  }
+
+  const confirmDirectList = async e => {
+    e?.preventDefault?.()
+    if (!canSubmit || busy || showEdit) return
+
+    const itemName = String(form.name || '').trim()
+    const price = Number(form.price)
+    const stock = Number(form.stock)
+    const durationDays = Number(form.duration_days)
+
+    if (!itemName) {
+      addToast('Enter an item name before listing.', 'red', 'Cannot List')
+      return
+    }
+
+    if (!Number.isFinite(price) || price < 0) {
+      addToast('Enter a valid price.', 'red', 'Cannot List')
+      return
+    }
+
+    if (!Number.isInteger(stock) || stock < 1) {
+      addToast('Quantity must be at least 1.', 'red', 'Cannot List')
+      return
+    }
+
+    if (!Number.isInteger(durationDays) || durationDays < 1) {
+      addToast('Duration must be at least 1 day.', 'red', 'Cannot List')
+      return
+    }
+
+    if (!window.confirm(
+      `Confirm direct listing?\n\n"${itemName}" will be published to the Clan Marketplace immediately.\n\nThis bypasses the review queue.`
+    )) {
+      return
+    }
+
+    setBusy(true)
+    try {
+      const imageUrl = await uploadImage()
+      const { data: createdItem, error } = await supabase.rpc('marketplace_staff_list_item', {
+        p_actor_id: Number(currentUser.id),
+        p_name: itemName,
+        p_description: String(form.description || '').trim(),
+        p_rarity: form.rarity || 'common',
+        p_image_url: imageUrl || null,
+        p_image_data: null,
+        p_price: Math.round(price),
+        p_stock: stock,
+        p_duration_days: durationDays,
+      })
+
+      if (error) throw error
+
+      // The RPC returns the new row, so add it directly to the current list.
+      // This avoids refetching every Marketplace item after each listing.
+      if (createdItem) {
+        const created = Array.isArray(createdItem) ? createdItem[0] : createdItem
+        if (created?.id) {
+          setItems(prev => [created, ...prev.filter(item => item.id !== created.id)])
+        }
+      }
+
+      setShowSubmit(false)
+      clearImage()
+      addToast(`"${itemName}" is now live on the Marketplace.`, 'gold', 'Listing Confirmed')
+    } catch (error) {
+      const message = String(error?.message || 'Failed to list Marketplace item.')
+      if (/PGRST202|Could not find the function|schema cache/i.test(message)) {
+        addToast(
+          'Run the Marketplace staff-listing SQL once in Supabase, then try Confirm & List again.',
+          'red',
+          'Database Setup Required'
+        )
+      } else {
+        addToast(message, 'red', 'Listing Failed')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const confirmBuy = async () => {
+    if (!buyItem) return
+
+    setPurchaseError('')
+    setBusy(true)
+
+    try {
+      const total = Number(buyItem.price)
+      const availableCoins = Number(liveCurrentUser?.coins ?? displayCoins ?? 0)
+
+      if (availableCoins < total) {
+        setPurchaseError(
+          `You need ${formatCoins(total)} Coins to purchase this item.`
+        )
+        return
+      }
+
+      const { error } = await supabase.rpc('marketplace_purchase_item', {
+        p_buyer_id: currentUser.id,
+        p_item_id: buyItem.id,
+        p_quantity: 1,
+      })
+      if (error) throw error
+
+      // Update the balance shown by Marketplace immediately after the RPC succeeds.
+      // The global member context may refresh asynchronously, so do not wait for it
+      // before updating the balance at the top of this page.
+      setDisplayCoins(prev => Math.max(0, Number(prev || 0) - total))
+
+      setBuyItem(null)
+      addToast(`Purchased ${buyItem.name} for ${formatCoins(total)} coins.`, 'gold', 'Purchase Complete')
+    } catch (error) {
+      // Keep all non-balance purchase errors on the existing toast behavior.
+      addToast(error?.message || 'Purchase failed.', 'red', 'Purchase Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const approve = async () => {
+    if (!reviewItem || !canReview) return
+    setBusy(true)
+    try {
+      const { error } = await supabase.rpc('marketplace_master_review_item', { p_actor_id: currentUser.id, p_item_id: reviewItem.id, p_action: 'approve', p_rejection_reason: null })
+      if (error) throw error
+      setReviewItem(null)
+      addToast(`"${reviewItem.name}" is now active.`, 'gold', 'Marketplace Approved')
+      await load()
+    } catch (error) { addToast(error?.message || 'Approval failed.', 'red', 'Review Failed') } finally { setBusy(false) }
+  }
+
+  const reject = async () => {
+    if (!reviewItem || !canReview) return
+    const reason = window.prompt('Rejection reason (optional):', '')
+    if (reason === null) return
+    setBusy(true)
+    try {
+      const { error } = await supabase.rpc('marketplace_master_review_item', { p_actor_id: currentUser.id, p_item_id: reviewItem.id, p_action: 'reject', p_rejection_reason: reason.trim() || null })
+      if (error) throw error
+      setReviewItem(null)
+      addToast(`"${reviewItem.name}" was rejected.`, 'blue', 'Marketplace Review')
+      await load()
+    } catch (error) { addToast(error?.message || 'Rejection failed.', 'red', 'Review Failed') } finally { setBusy(false) }
+  }
+
+  const openEdit = item => {
+    if (!item?.id || !canReview) return
+    if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
+
+    const imageUrl = item.image_url || item.image_data || ''
+    const matchingLibraryImage = libraryImages.find(image => image.url === imageUrl) || null
+    const fromMs = new Date(item.available_from || item.created_at || Date.now()).getTime()
+    const untilMs = new Date(item.available_until || '').getTime()
+    const calculatedDays = Number.isFinite(fromMs) && Number.isFinite(untilMs) && untilMs > fromMs
+      ? Math.max(1, Math.ceil((untilMs - fromMs) / 86400000))
+      : 7
+
+    setImageFile(null)
+    setPickedLibraryImg(matchingLibraryImage)
+    setImagePreview(imageUrl || null)
+    setForm({
+      name: item.name || '',
+      description: item.description || '',
+      rarity: item.rarity || 'common',
+      image_url: item.image_url || '',
+      image_data: item.image_data || '',
+      price: Number.isFinite(Number(item.price)) ? Number(item.price) : 0,
+      stock: Math.max(1, Number(item.bundle_quantity ?? item.stock) || 1),
+      duration_days: calculatedDays,
+    })
+    setShowEdit(true)
+  }
+
+  const saveEdit = async (e, approveAfterSave = false) => {
+    e.preventDefault()
+    if (!reviewItem || !canReview || busy) return
+
+    const name = String(form.name || '').trim()
+    const price = Number(form.price)
+    const packageQuantity = Number(form.stock)
+    const durationDays = Number(form.duration_days)
+
+    if (!name) {
+      addToast('Item name is required.', 'red', 'Cannot Save')
+      return
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      addToast('Enter a valid price.', 'red', 'Cannot Save')
+      return
+    }
+    if (!Number.isInteger(packageQuantity) || packageQuantity < 1) {
+      addToast('Package quantity must be at least 1.', 'red', 'Cannot Save')
+      return
+    }
+    if (!Number.isInteger(durationDays) || durationDays < 1) {
+      addToast('Duration must be at least 1 day.', 'red', 'Cannot Save')
+      return
+    }
+
+    setBusy(true)
+    try {
+      const imageUrl = await uploadImage()
+      const itemId = reviewItem.id
+      const itemName = name
+      const { error } = await supabase.rpc('marketplace_master_edit_item', {
+        p_actor_id: Number(currentUser.id),
+        p_item_id: itemId,
+        p_name: itemName,
+        p_description: String(form.description || '').trim(),
+        p_rarity: form.rarity || 'common',
+        p_image_url: imageUrl || null,
+        p_image_data: null,
+        p_price: Math.round(price),
+        p_stock: packageQuantity,
+        p_duration_days: durationDays,
+      })
+      if (error) throw error
+
+      if (approveAfterSave) {
+        const { error: approveError } = await supabase.rpc('marketplace_master_review_item', {
+          p_actor_id: Number(currentUser.id),
+          p_item_id: itemId,
+          p_action: 'approve',
+          p_rejection_reason: null,
+        })
+        if (approveError) throw approveError
+
+        setShowEdit(false)
+        setReviewItem(null)
+        addToast(`"${itemName}" was saved and is now active.`, 'gold', 'Listing Saved & Approved')
+      } else {
+        setShowEdit(false)
+        setReviewItem(null)
+        addToast('Marketplace submission updated.', 'gold', 'Changes Saved')
+      }
+      await load()
+    } catch (error) {
+      const message = String(error?.message || 'Edit failed.')
+      if (/PGRST202|Could not find the function|schema cache/i.test(message)) {
+        addToast('The Marketplace edit RPC is missing in Supabase. Run the Marketplace edit repair SQL.', 'red', 'Database Setup Required')
+      } else {
+        addToast(message, 'red', 'Edit Failed')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const distribute = async () => {
+    if (!distributionPurchase || !canDistribute) return
+    setBusy(true)
+    try {
+      const { error } = await supabase.rpc('marketplace_distribute_purchase', { p_staff_id: currentUser.id, p_purchase_id: distributionPurchase.id, p_distribution_note: distributionNote.trim() || null })
+      if (error) throw error
+      setDistributionPurchase(null)
+      setDistributionNote('')
+      addToast('Purchase marked as distributed.', 'gold', 'Distribution Complete')
+      await load()
+    } catch (error) {
+      const message = String(error?.message || '')
+      if (/PGRST202|Could not find the function|schema cache/i.test(message)) addToast('The Marketplace distribution RPC is not installed in Supabase yet. Run the Marketplace Step 3 Repair SQL.', 'red', 'Database Setup Required')
+      else addToast(message || 'Distribution failed.', 'red', 'Distribution Failed')
+    } finally { setBusy(false) }
+  }
+
+  const closeListing = async item => {
+    if (!canManageListings) return
+    if (!window.confirm(`Close "${item.name}"? Existing purchase history will remain unchanged.`)) return
+    setBusy(true)
+    try {
+      const { error } = await supabase.rpc('marketplace_close_item', { p_staff_id: currentUser.id, p_item_id: item.id })
+      if (error) throw error
+      addToast(`"${item.name}" has been closed.`, 'blue', 'Listing Closed')
+      await load()
+    } catch (error) { addToast(error?.message || 'Could not close listing.', 'red', 'Close Failed') } finally { setBusy(false) }
+  }
+
+  const removeListing = async item => {
+    if (!canManageListings) return
+
+    const isOwnElderActiveListing = role === ROLES.ELDER && Number(item?.submitted_by) === Number(currentUser?.id) && item?.status === 'active'
+    const canRemoveCompletedListing = ['sold_out', 'closed', 'expired', 'rejected'].includes(item?.status)
+
+    if (!isOwnElderActiveListing && !canRemoveCompletedListing) return
+
+    const confirmation = isOwnElderActiveListing
+      ? `Remove "${item.name}" from the Clan Marketplace?\n\nThis is your active listing. It will be closed and removed from the purchasable Marketplace. Existing purchase history, if any, will remain unchanged.`
+      : `Remove "${item.name}" from the Clan Marketplace? Purchase history will remain unchanged.`
+
+    if (!window.confirm(confirmation)) return
+    setBusy(true)
+    try {
+      const { error } = await supabase.rpc('marketplace_remove_listing', {
+        p_staff_id: currentUser.id,
+        p_item_id: item.id,
+      })
+      if (error) throw error
+      addToast(`"${item.name}" was removed from the Clan Marketplace.`, 'blue', 'Listing Removed')
+      await load()
+    } catch (error) {
+      addToast(error?.message || 'Could not remove listing.', 'red', 'Remove Failed')
+    } finally { setBusy(false) }
+  }
+
+  const deletableSubmissionStatuses = ['pending_review', 'rejected', 'expired', 'closed']
+
+  const submissionsWithPurchaseHistory = useMemo(
+    () => new Set((purchases || []).map(purchase => String(purchase.item_id))),
+    [purchases]
+  )
+
+  const deletableSubmissions = useMemo(
+    () => mySubmissions.filter(item =>
+      deletableSubmissionStatuses.includes(item.status) &&
+      !submissionsWithPurchaseHistory.has(String(item.id))
+    ),
+    [mySubmissions, submissionsWithPurchaseHistory]
+  )
+
+  const toggleSubmissionSelection = itemId => {
+    const id = String(itemId)
+    setSelectedSubmissionIds(prev => prev.includes(id) ? prev.filter(value => value !== id) : [...prev, id])
+  }
+
+  const selectAllSubmissions = checked => {
+    setSelectedSubmissionIds(checked ? deletableSubmissions.map(item => String(item.id)) : [])
+  }
+
+  const deleteSelectedSubmissions = async ids => {
+    if (!canSubmit || busy) return
+
+    const normalizedIds = [...new Set((ids || []).map(id => String(id)).filter(Boolean))]
+    if (normalizedIds.length === 0) return
+
+    if (!window.confirm(
+      `Delete ${normalizedIds.length} selected Marketplace submission${normalizedIds.length === 1 ? '' : 's'}?\\n\\nThis permanently removes the selected submission records from your My Submissions list. Active or sold listings are not included.`
+    )) {
+      return
+    }
+
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.rpc('marketplace_delete_my_submissions_bulk', {
+        p_actor_id: Number(currentUser.id),
+        p_item_ids: normalizedIds,
+      })
+
+      if (error) throw error
+
+      const deletedCount = Number(data) || normalizedIds.length
+      setSelectedSubmissionIds([])
+      addToast(
+        `${deletedCount} Marketplace submission${deletedCount === 1 ? '' : 's'} deleted.`,
+        'blue',
+        'Submissions Deleted'
+      )
+      await load()
+    } catch (error) {
+      const message = String(error?.message || 'Could not delete Marketplace submissions.')
+      if (/PGRST202|Could not find the function|schema cache/i.test(message)) {
+        addToast(
+          'The Marketplace submission-delete RPC is missing in Supabase. Run the submission delete SQL once, then try again.',
+          'red',
+          'Database Setup Required'
+        )
+      } else {
+        addToast(message, 'red', 'Delete Failed')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const toggleListingSelection = itemId => {
+    const id = String(itemId)
+    setSelectedListingIds(prev => prev.includes(id) ? prev.filter(value => value !== id) : [...prev, id])
+  }
+
+  const selectAllListings = checked => {
+    setSelectedListingIds(checked ? activeListings.map(item => String(item.id)) : [])
+  }
+
+  const removeSelectedListings = async ids => {
+    if (!canBulkRemoveListings || busy) return
+    const normalizedIds = [...new Set((ids || []).map(id => String(id)).filter(Boolean))]
+    if (normalizedIds.length === 0) return
+
+    const message = `Remove ${normalizedIds.length} selected Marketplace listing${normalizedIds.length === 1 ? '' : 's'}?\n\nThe listing${normalizedIds.length === 1 ? '' : 's'} will be removed from active Marketplace management and marked closed. Existing purchase history will remain unchanged.`
+    if (!window.confirm(message)) return
+
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.rpc('marketplace_remove_listings_bulk', {
+        p_staff_id: currentUser.id,
+        p_item_ids: normalizedIds,
+      })
+      if (error) throw error
+      const removedCount = Number(data) || normalizedIds.length
+      setSelectedListingIds([])
+      addToast(`${removedCount} Marketplace listing${removedCount === 1 ? '' : 's'} removed. Purchase history was preserved.`, 'blue', 'Listings Removed')
+      await load()
+    } catch (error) {
+      addToast(error?.message || 'Could not remove Marketplace listings.', 'red', 'Listing Removal Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const toggleHistorySelection = purchaseId => {
+    const id = String(purchaseId)
+    setSelectedHistoryIds(prev => prev.includes(id) ? prev.filter(value => value !== id) : [...prev, id])
+  }
+
+  const selectAllHistory = checked => {
+    setSelectedHistoryIds(checked ? purchases.map(p => String(p.id)) : [])
+  }
+
+  const deletePurchaseHistory = async ids => {
+    if (!canManageHistory || busy) return
+    const normalizedIds = [...new Set((ids || []).map(id => String(id)).filter(Boolean))]
+    if (normalizedIds.length === 0) return
+
+    const isAll = normalizedIds.length === purchases.length && purchases.length > 0
+    const message = isAll
+      ? `Delete ALL ${normalizedIds.length} Marketplace purchase history records?\n\nThis only removes purchase history records. Marketplace listings and member coin balances will not be changed.`
+      : `Delete ${normalizedIds.length} selected Marketplace purchase history record${normalizedIds.length === 1 ? '' : 's'}?\n\nThis only removes purchase history records. Marketplace listings and member coin balances will not be changed.`
+
+    if (!window.confirm(message)) return
+
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.rpc('marketplace_delete_purchase_history_bulk', {
+        p_staff_id: currentUser.id,
+        p_purchase_ids: normalizedIds,
+      })
+      if (error) throw error
+      const deletedCount = Number(data) || normalizedIds.length
+      setSelectedHistoryIds([])
+      addToast(`${deletedCount} Marketplace purchase history record${deletedCount === 1 ? '' : 's'} deleted.`, 'blue', 'History Deleted')
+      await load()
+    } catch (error) {
+      addToast(error?.message || 'Could not delete Marketplace purchase history.', 'red', 'History Delete Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const shopTabs = [
+    { id: 'shop', label: 'Shop' },
+    { id: 'orders', label: 'My Purchases' },
+    { id: 'history', label: 'Marketplace History', count: purchases.length },
+    ...(canSubmit ? [{ id: 'listings', label: 'My Submissions' }] : []),
+    ...(isStaff ? [{ id: 'management', label: role === ROLES.ELDER ? 'Distribution' : 'Management' }] : []),
+  ]
+
+  const staffTabs = canReview
+    ? [
+        { id: 'pending', label: 'Pending Review', count: pendingItems.length },
+        { id: 'active', label: 'Active Listings', count: activeListings.length },
+        { id: 'history', label: 'Purchase History', count: purchases.length },
+        { id: 'distribution', label: 'Distribution', count: distributionQueue.length },
+      ]
+    : [
+        { id: 'history', label: 'Purchase History', count: purchases.length },
+        { id: 'distribution', label: 'Distribution Queue', count: distributionQueue.length },
+      ]
+
+  return (
+    <>
+      <style>{`
+        @media (min-width: 1024px) {
+          .marketplace-orders-grid {
+            grid-template-columns: minmax(0, 1fr) 150px 180px 220px !important;
+          }
+
+          .marketplace-orders-grid > :nth-child(2),
+          .marketplace-orders-grid > :nth-child(3) {
+            justify-self: center;
+            width: 100%;
+            text-align: center;
+          }
+
+          .marketplace-orders-grid > :nth-child(4) {
+            justify-self: end;
+            width: 100%;
+            text-align: right;
+          }
+        }
+      `}</style>
+
+      <div className="space-y-4 pb-10">
+      {/* MEMBER MARKETPLACE */}
+      <section className="relative overflow-hidden rounded-[18px] border border-gold/15 bg-[#090807]/95 shadow-[0_18px_70px_rgba(0,0,0,.24)]">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_0%,rgba(242,204,96,.08),transparent_28%),linear-gradient(110deg,rgba(255,255,255,.018),transparent_45%)]" />
+        <div className="relative flex flex-col gap-5 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.24em] text-gold-dim"><span className="h-px w-5 bg-gold/50" /> Clan Trade Hall</div>
+            <h1 className="mt-1.5 font-spectral text-3xl font-bold uppercase tracking-[.02em] text-gold-light sm:text-[34px]">Marketplace</h1>
+            <p className="mt-1 text-[12px] text-text-dim">Browse items supplied by the PeakyBlinder Clan. Listings are clan-owned.</p>
+          </div>
+          <div className="flex items-stretch gap-2">
+            <div className="min-w-[145px] rounded-xl border border-gold/15 bg-gold/[.035] px-4 py-3">
+              <div className="text-[9px] font-bold uppercase tracking-[.16em] text-text-dim">Your Coins</div>
+              <div className="mt-1 font-mono text-xl font-bold text-gold-bright">{formatCoins(displayCoins)}</div>
+              <div className="mt-0.5 text-[9px] uppercase tracking-[.12em] text-gold-dim">Clan Balance</div>
+            </div>
+            {canSubmit && <button type="button" onClick={openSubmit} className="min-w-[145px] rounded-xl border border-gold/30 bg-gold/[.07] px-4 py-3 text-left transition hover:border-gold/50 hover:bg-gold/[.12]"><div className="text-[9px] font-bold uppercase tracking-[.16em] text-gold-dim">Staff Tools</div><div className="mt-1 text-[12px] font-bold uppercase tracking-[.08em] text-gold-light">Submit Item</div><div className="mt-1 text-[9px] text-text-dim">Submit a clan inventory item for review</div></button>}
           </div>
         </div>
       </section>
 
-      {/* Record Attendance modal */}
-      {isElder && showRecordModal && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/75 p-3 backdrop-blur-[3px]" role="dialog" aria-modal="true">
-          <div className="flex w-full max-w-3xl max-h-[88vh] flex-col overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
-            <div className="flex items-start justify-between gap-3 border-b border-white/[.07] px-4 py-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-bold text-text-bright">Record Attendance</h3>
-                  {selectedSession && <span className="rounded-md border border-gold/20 bg-gold/[.04] px-2 py-0.5 text-[11px] font-bold text-gold-light">{getRunLabel(selectedSession)}</span>}
-                </div>
-                <p className="mt-0.5 text-[12px] text-text-dim">Pick the exact event and run first. Players will see exactly which session they are being recorded for.</p>
-              </div>
-              <button type="button" onClick={() => !submitting && setShowRecordModal(false)} disabled={submitting} className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light disabled:opacity-40">×</button>
-            </div>
-
-            <div className="min-h-0 overflow-y-auto p-4">
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Event</span>
-                  <select className="input h-9 w-full text-[13px]" value={selectedEvent} onChange={e => setSelectedEvent(e.target.value)}>
-                    {eventTypes.map(e => <option key={e}>{e}</option>)}
-                  </select>
-                </label>
-                <div>
-                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Run / Session</span>
-                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                    {eventSessions.map(session => {
-                      const active = selectedSessionId === session.id
-                      const times = formatSessionTimes(session, now)
-                      return (
-                        <button
-                          key={session.id}
-                          type="button"
-                          onClick={() => setSelectedSessionId(session.id)}
-                          className={`min-h-[58px] rounded-lg border px-3 py-2 text-left transition-colors ${active ? 'border-gold/40 bg-gold/[.07]' : 'border-white/[.08] bg-black/15 hover:border-gold/20'}`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className={`text-[13px] font-bold ${active ? 'text-gold-bright' : 'text-text-bright'}`}>{getRunLabel(session)}</span>
-                            {active && <span className="text-[11px] text-gold-bright">✓</span>}
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                            <span className="truncate text-[11px] text-text-dim">{session.displayName}</span>
-                            <span className="font-sans text-[10px] text-text-dim">{times.serverTime} · Local {times.localTime}</span>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 rounded-xl border border-gold/15 bg-gold/[.025] px-3 py-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim">Selected Session</div>
-                    <div className="mt-0.5 text-[14px] font-semibold text-text-bright">{selectedSession?.displayName || 'Choose a session'}</div>
-                    <div className="mt-0.5 text-[11px] text-text-dim">{selectedSession ? `${getRunLabel(selectedSession)} · ${formatSessionTimes(selectedSession, now).serverTime} GMT+8` : 'No session selected'}</div>
-                  </div>
-                  <div className="text-right"><div className="text-[11px] text-text-dim">Selected</div><div className="font-sans text-[14px] font-bold text-gold-bright">{selectedCount} · {selectedTotalCoins.toLocaleString()} Coins</div></div>
-                </div>
-              </div>
-
-              {selectedSession && (
-                <div className="mt-2.5 rounded-lg border border-white/[.07] bg-black/15 px-3 py-2.5">
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
-                    <span className="font-semibold text-text-bright">
-                      Reward: <span className="text-gold-light">+{ATTENDANCE_REWARDS[selectedEvent]?.base || 0} base</span>
-                    </span>
-                    <span className="text-text-dim">
-                      GP bonus: <span className="font-sans font-semibold text-gold-light">+{getAttendanceGpBonus(0, selectedEvent)}</span> to <span className="font-sans font-semibold text-gold-light">+{ATTENDANCE_REWARDS[selectedEvent]?.bonuses?.[3] || 0}</span>
-                    </span>
-                    <span className="text-text-dim">
-                      Exact bonus is shown beside each selected player.
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-3 flex gap-1.5">
-                <div className="relative min-w-0 flex-1">
-                  <input className="input h-8 w-full pl-8 text-[12px]" placeholder="Search member..." value={search} onChange={e => setSearch(e.target.value)} />
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim text-[13px]">⌕</span>
-                </div>
-                <button type="button" onClick={toggleAllFiltered} className="rounded-lg border border-white/[.08] px-2.5 text-[11px] font-semibold text-text-dim hover:border-gold/25 hover:text-gold-light">{allFilteredSelected ? 'Clear Visible' : 'Select Visible'}</button>
-                {selectedCount > 0 && <button type="button" onClick={clearSelection} className="rounded-lg border border-white/[.08] px-2.5 text-[11px] text-text-dim hover:text-red-300">Clear</button>}
-              </div>
-
-              <div className="mt-2.5 overflow-hidden rounded-xl border border-white/[.07]">
-                <div className="grid grid-cols-[28px_minmax(0,1fr)_72px_125px] items-center gap-2 border-b border-white/[.06] bg-black/20 px-3 py-2 text-[10px] font-bold uppercase tracking-[.12em] text-text-dim">
-                  <span />
-                  <span>Member</span>
-                  <span className="text-right">GP</span>
-                  <span className="text-right">Reward</span>
-                </div>
-                <div className="max-h-[390px] overflow-y-auto divide-y divide-white/[.045]">
-                  {filtered.map(m => {
-                    const checked = !!selectedMembers[m.id]
-                    const reward = getAttendanceReward(m.power, selectedEvent)
-                    return (
-                      <button key={m.id} type="button" onClick={() => toggleMember(m.id)} aria-pressed={checked} className={`grid w-full grid-cols-[28px_minmax(0,1fr)_72px_125px] items-center gap-2 px-3 py-2.5 text-left ${checked ? 'bg-gold/[.055]' : 'hover:bg-white/[.02]'}`}>
-                        <span className={`flex h-5 w-5 items-center justify-center rounded-md border text-[13px] ${checked ? 'border-gold bg-gold text-black' : 'border-white/15 bg-black/20 text-transparent'}`}>✓</span>
-                        <span className="min-w-0"><span className={`block truncate text-[13px] font-semibold ${checked ? 'text-gold-light' : 'text-text-bright'}`}>{m.name}</span><span className="block truncate text-[10px] text-text-dim">{m.cls || 'Member'}</span></span>
-                        <span className="text-right font-sans text-[11px] text-text-dim">{formatGp(m.power)}</span>
-                        <span className="text-right">
-                          <span className="block font-sans text-[13px] font-bold text-green-300">+{reward}</span>
-                          <span className="block mt-0.5 text-[10px] text-text-dim">Base +{ATTENDANCE_REWARDS[selectedEvent]?.base || 0} · GP +{getAttendanceGpBonus(m.power, selectedEvent)}</span>
-                        </span>
-                      </button>
-                    )
-                  })}
-                  {filtered.length === 0 && <div className="px-4 py-10 text-center text-[12px] text-text-dim">No members found.</div>}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-2 border-t border-white/[.07] px-4 py-3">
-              <div className="min-w-0"><div className="text-[12px] font-semibold text-text-bright">{selectedCount ? `${selectedCount} members ready` : 'No members selected'}</div><div className="truncate text-[11px] text-text-dim">{selectedSession?.displayName || 'Select a session'}</div></div>
-              <div className="flex gap-1.5">
-                <button type="button" onClick={() => setShowRecordModal(false)} disabled={submitting} className="rounded-lg border border-white/[.08] px-3 py-1.5 text-[12px] text-text-dim disabled:opacity-40">Cancel</button>
-                <button type="button" onClick={async () => { const ok = await recordAttendance(); if (ok) setShowRecordModal(false) }} disabled={submitting || selectedCount === 0 || !selectedSession} className="btn-gold min-h-8 px-3 text-[12px] font-bold disabled:opacity-40">
-                  {submitting ? 'Saving…' : selectedCount ? `Record ${selectedCount}` : 'Select Members'}
-                </button>
-              </div>
-            </div>
-          </div>
+      <section className="mt-3 rounded-xl border border-white/[.07] bg-black/25 p-1.5">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap gap-1">{shopTabs.map(t => <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`rounded-lg px-4 py-2.5 text-[10px] font-bold uppercase tracking-[.12em] transition ${tab === t.id ? 'border border-gold/25 bg-gold/[.09] text-gold-bright' : 'border border-transparent text-text-dim hover:bg-white/[.025] hover:text-gold-light'}`}>{t.label}</button>)}</div>
+          <button type="button" onClick={load} disabled={loading} className="rounded-lg border border-white/[.08] px-3.5 py-2.5 text-[10px] font-bold uppercase tracking-[.12em] text-text-dim hover:border-gold/20 hover:text-gold-light disabled:opacity-40">{loading ? 'Refreshing…' : '↻ Refresh'}</button>
         </div>
+      </section>
+
+      {tab === 'shop' && (
+        <>
+          <section className="mt-3 rounded-xl border border-white/[.07] bg-black/20 p-3">
+            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_145px_145px]">
+              <label className="flex h-10 items-center gap-2 rounded-lg border border-white/[.08] bg-black/25 px-3"><span className="text-text-dim/50">⌕</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search items..." className="min-w-0 flex-1 bg-transparent text-[11px] text-text outline-none placeholder:text-text-dim/35" /></label>
+              <select value={rarityFilter} onChange={e => setRarityFilter(e.target.value)} className="h-10 rounded-lg border border-white/[.08] bg-[#0b0908] px-3 text-[11px] text-text-dim outline-none"><option value="all">All Rarities</option>{RARITIES.map(r => <option key={r} value={r}>{r[0].toUpperCase() + r.slice(1)}</option>)}</select>
+              <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="h-10 rounded-lg border border-white/[.08] bg-[#0b0908] px-3 text-[11px] text-text-dim outline-none"><option value="newest">Newest</option><option value="price_low">Price: Low</option><option value="price_high">Price: High</option><option value="stock">Stock</option></select>
+            </div>
+          </section>
+
+          <section className="mt-5">
+            {loading ? null : filteredActiveItems.length > 0 ? (
+              <>
+                <SectionTitle title="Available Now" />
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{filteredActiveItems.map(item => <MemoizedItemCard key={item.id} item={item} onBuy={openBuy} canBuy={canBuy} />)}</div>
+              </>
+            ) : activeItems.length === 0 ? (
+              <div className="relative overflow-hidden rounded-[20px] border border-gold/15 bg-[#080706]/95 shadow-[0_18px_70px_rgba(0,0,0,.28)]">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(242,204,96,.095),transparent_30%),linear-gradient(135deg,rgba(255,255,255,.018),transparent_42%,rgba(242,204,96,.018))]" />
+                <div className="pointer-events-none absolute inset-x-[8%] top-0 h-px bg-gradient-to-r from-transparent via-gold/35 to-transparent" />
+                <div className="pointer-events-none absolute inset-x-[18%] bottom-0 h-px bg-gradient-to-r from-transparent via-gold/12 to-transparent" />
+                <div className="relative px-5 py-9 sm:px-10 sm:py-10">
+                  <div className="mx-auto max-w-3xl">
+                    <div className="flex flex-col items-center text-center">
+                      <div className="inline-flex items-center gap-2.5 rounded-full border border-gold/15 bg-gold/[.035] px-3.5 py-1.5 text-[8px] font-bold uppercase tracking-[.24em] text-gold-dim">
+                        <span className="h-1.5 w-1.5 rounded-full bg-gold/65 shadow-[0_0_10px_rgba(242,204,96,.5)]" />
+                        Marketplace Status
+                        <span className="text-gold/25">•</span>
+                        Standby
+                      </div>
+                      <div className="relative mt-5 flex h-[68px] w-[68px] items-center justify-center rounded-[20px] border border-gold/20 bg-black/25 shadow-[0_0_55px_rgba(242,204,96,.07)]">
+                        <div className="absolute inset-2 rounded-[15px] border border-gold/10" />
+                        <span className="relative font-spectral text-[27px] text-gold/70">◇</span>
+                      </div>
+                      <h3 className="mt-4 font-spectral text-[27px] font-bold tracking-[-.01em] text-gold-light sm:text-[30px]">The Shelves Are Empty</h3>
+                      <p className="mx-auto mt-2 max-w-xl text-[11px] leading-5 text-text-dim sm:text-[12px]">No clan packages are available for purchase right now. Approved inventory will appear here automatically when it is ready for members.</p>
+                      <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
+                        <div className="flex items-center gap-2 rounded-lg border border-white/[.07] bg-white/[.018] px-3.5 py-2.5">
+                          <span className="font-mono text-sm font-bold text-text-bright">0</span>
+                          <span className="text-[8px] font-bold uppercase tracking-[.15em] text-text-dim/55">Active Packages</span>
+                        </div>
+                        <span className="hidden h-4 w-px bg-white/[.08] sm:block" />
+                        <div className="flex items-center gap-2 rounded-lg border border-gold/10 bg-gold/[.025] px-3.5 py-2.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-gold/60" />
+                          <span className="text-[8px] font-bold uppercase tracking-[.15em] text-gold-dim/70">Awaiting New Stock</span>
+                        </div>
+                      </div>
+                      <button type="button" onClick={load} disabled={loading} className="mt-6 rounded-lg border border-gold/25 bg-gold/[.07] px-5 py-2.5 text-[11px] font-bold uppercase tracking-[.14em] text-gold-light transition hover:border-gold/45 hover:bg-gold/[.12] disabled:opacity-40">↻ Refresh Inventory</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="relative mt-3 overflow-hidden rounded-2xl border border-white/[.08] bg-[#080706]/90 px-5 py-12">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(242,204,96,.045),transparent_34%)]" />
+                <div className="relative mx-auto max-w-lg text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/[.09] bg-white/[.025] text-2xl text-gold-dim/60">⌕</div>
+                  <h3 className="mt-4 font-spectral text-xl font-bold text-text-bright">No Matching Listings</h3>
+                  <p className="mt-1.5 text-[11px] leading-5 text-text-dim">No active package matches your current search or rarity filter.</p>
+                  <button type="button" onClick={() => { setSearch(''); setRarityFilter('all'); setSortBy('newest') }} className="mt-5 rounded-lg border border-white/[.1] px-4 py-2.5 text-[10px] font-bold uppercase tracking-[.12em] text-text-dim transition hover:border-gold/25 hover:text-gold-light">Clear Filters</button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {filteredSoldItems.length > 0 && (
+            <section className="mt-8">
+              <div className="flex flex-col gap-1 border-b border-white/[.06] pb-3 sm:flex-row sm:items-end sm:justify-between">
+                <SectionTitle eyebrow="Marketplace History" title="Sold Inventory" description="Previously sold Clan Marketplace packages remain visible here with the member who purchased each package. They cannot be purchased again." />
+                <div className="text-[11px] font-bold uppercase tracking-[.14em] text-text-dim/55">{filteredSoldItems.length} sold</div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                {filteredSoldItems.map(item => (
+                  <MemoizedItemCard
+                    key={item.id}
+                    item={item}
+                    sold
+                    onBuy={setBuyItem}
+                    canBuy={canBuy}
+                    buyerName={buyerForItem(item.id)}
+                    purchasedAt={purchasedAtForItem(item.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+        </>
       )}
 
-      {/* Full weekly event schedule */}
-      {showEventSchedule && (
-        <div
-          className="fixed inset-0 z-[220] flex items-center justify-center bg-black/75 p-3 sm:p-5 backdrop-blur-[3px]"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Weekly Event Schedule"
-          onMouseDown={e => {
-            if (e.target === e.currentTarget) setShowEventSchedule(false)
-          }}
-        >
-          <div className="flex w-full max-w-3xl max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
-            <div className="flex items-center justify-between gap-3 border-b border-white/[.07] px-4 py-4 sm:px-5">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md border border-gold/20 bg-gold/[.05] px-2 py-1 text-[12px] font-bold uppercase tracking-[.12em] text-gold-dim">Weekly Schedule</span>
-                  <span className="text-[13px] font-sans text-text-dim">{currentWeekLabel}</span>
-                </div>
-                <h3 className="mt-1.5 text-lg font-bold text-text-bright">Event Schedule</h3>
-                <p className="mt-0.5 text-[13px] text-text-dim">Server Time GMT+8 · Local time is shown for reference</p>
+      {tab === 'orders' && (
+        <section className="mt-5 overflow-hidden rounded-[18px] border border-gold/10 bg-[#090807]/95 shadow-[0_18px_60px_rgba(0,0,0,.22)]">
+          <div className="border-b border-white/[.07] px-5 py-5">
+            <SectionTitle eyebrow="Member History" title="My Purchases" description="Every purchase keeps its original price snapshot." />
+          </div>
+
+          {myPurchases.length === 0 ? (
+            <div className="px-5 py-14 text-center text-[12px] text-text-dim">No purchases yet.</div>
+          ) : (
+            <div>
+              <div className="marketplace-orders-grid hidden border-b border-white/[.06] bg-white/[.018] px-5 py-3 text-[12px] font-bold uppercase tracking-[.16em] text-gold-dim lg:grid lg:gap-3">
+                <div>Item</div>
+                <div className="text-center">Price</div>
+                <div className="text-center">Status</div>
+                <div className="text-right">Distributed By</div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowEventSchedule(false)}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light"
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
-              <div className="space-y-4">
-                {[2, 4, 6].map(day => {
-                  const daySessions = WEEKLY_EVENT_SESSIONS.filter(session => session.day === day)
-                  const dayLabel = daySessions[0]?.dayLabel || ''
+              <div className="divide-y divide-white/[.055]">
+                {myPurchases.map(p => {
+                  const purchaseItem = items.find(item => item.id === p.item_id)
+                  const purchaseRarity = purchaseItem?.rarity
+
                   return (
-                    <div key={day} className="overflow-hidden rounded-xl border border-white/[.08] bg-[#10100e]">
-                      <div className="flex items-center justify-between border-b border-white/[.07] bg-white/[.02] px-3.5 py-2.5 sm:px-4">
-                        <div>
-                          <div className="text-[15px] font-bold uppercase tracking-[.12em] text-gold-light">{dayLabel}</div>
-                          <div className="mt-0.5 text-[12px] text-text-dim">{daySessions.length} scheduled {daySessions.length === 1 ? 'session' : 'sessions'}</div>
-                        </div>
-                        <span className="rounded-md border border-gold/15 bg-gold/[.035] px-2 py-1 text-[12px] font-sans font-bold text-gold-light">{daySessions.length}</span>
-                      </div>
-
-                      <div className="divide-y divide-white/[.05]">
-                        {daySessions.map((session, index) => {
-                          const times = formatSessionTimes(session, now)
-                          const run = getRunLabel(session)
-                          return (
-                            <div key={session.id} className="px-3.5 py-3 sm:px-4">
-                              <div className="flex items-start gap-3">
-                                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[.045] text-[12px] font-sans font-bold text-gold-light">{String(index + 1).padStart(2, '0')}</span>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-[15px] sm:text-[15px] font-semibold leading-5 text-text-bright">{session.displayName}</span>
-                                    {run !== 'Single Run' && (
-                                      <span className="rounded-md border border-gold/20 bg-gold/[.04] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[.08em] text-gold-light">{run}</span>
-                                    )}
-                                  </div>
-                                  <div className="mt-2 flex flex-wrap gap-1.5">
-                                    <span className="rounded-md border border-gold/15 bg-gold/[.035] px-2.5 py-1.5 text-[12px] font-sans font-bold text-gold-light">Server {times.serverTime} · GMT+8</span>
-                                    <span className="rounded-md border border-white/[.08] bg-black/20 px-2.5 py-1.5 text-[12px] font-sans font-semibold text-text-bright">Local {times.localTime}</span>
-                                  </div>
-                                </div>
-                              </div>
+                    <div key={p.id} className="group px-4 py-[18px] transition-colors duration-150 hover:bg-white/[.018] sm:px-5">
+                      <div className="marketplace-orders-grid grid gap-3 lg:items-center lg:gap-3">
+                        <div className="flex min-w-0 items-center gap-3.5">
+                          <div className="shrink-0">
+                            <ItemArtwork item={purchaseItem} size="table" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className={`truncate text-[15px] font-semibold leading-5 tracking-[.005em] ${rarityTextClass(purchaseRarity)}`}>
+                              {itemName(p.item_id)}
                             </div>
-                          )
-                        })}
+                            <div className="mt-1.5 text-[12px] leading-5 text-text-dim">
+                              Quantity {itemPackageQuantity(p.item_id)}×
+                              <span className="mx-1.5 text-white/15">•</span>
+                              Purchased {formatDate(p.purchased_at)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 lg:block lg:text-center">
+                          <span className="text-[10px] font-bold uppercase tracking-[.12em] text-text-dim/50 lg:hidden">Price</span>
+                          <div className="inline-flex flex-col items-center rounded-lg border border-gold/10 bg-gold/[.035] px-3 py-2">
+                            <span className="font-mono text-[14px] font-bold leading-5 text-gold-light">{formatCoins(p.total_price)}</span>
+                            <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-[.12em] text-gold-dim">Coins</span>
+                          </div>
+                        </div>
+
+                        <div className="flex min-w-0 items-center justify-between gap-3 lg:block lg:text-center">
+                          <span className="text-[10px] font-bold uppercase tracking-[.12em] text-text-dim/50 lg:hidden">Status</span>
+                          <div>
+                            <span className={`inline-flex rounded-full border px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[.09em] ${statusClass(p.status)}`}>
+                              {statusLabel(p.status)}
+                            </span>
+                            <div className="mt-1.5 text-[12px] leading-4 text-text-dim">
+                              {p.status === 'purchased' ? 'Awaiting distribution' : 'Item successfully distributed'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="min-w-0 flex items-center justify-between gap-3 lg:block lg:text-right">
+                          <span className="text-[10px] font-bold uppercase tracking-[.12em] text-text-dim/50 lg:hidden">Distributed By</span>
+                          <div>
+                            {p.distributed_by ? (
+                              <>
+                                <div className="truncate text-[13px] font-semibold leading-5 text-text-bright">{memberName(p.distributed_by)}</div>
+                                <div className="mt-1 text-[11px] leading-4 text-text-dim">Marketplace staff</div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="text-[13px] font-medium leading-5 text-text-dim">Not distributed yet</div>
+                                <div className="mt-1 text-[11px] leading-4 text-text-dim">Awaiting fulfillment</div>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )
                 })}
               </div>
+            </div>
+          )}
+        </section>
+      )}
 
-              <div className="mt-4 rounded-xl border border-gold/15 bg-gold/[.025] p-3.5">
-                <div className="text-[12px] font-bold uppercase tracking-[.12em] text-gold-dim">Reward Information</div>
-                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="rounded-lg border border-white/[.06] bg-black/15 px-3 py-2.5 text-[12px] text-text-dim">
-                    <span className="font-semibold text-text-bright">Attendance:</span> Base reward + GP bonus according to the member's GP tier.
-                  </div>
-                  <div className="rounded-lg border border-gold/15 bg-gold/[.025] px-3 py-2.5 text-[12px] text-text-dim">
-                    <span className="font-semibold text-gold-light">Perfect Attendance:</span> Attend all 8 weekly sessions → <span className="font-sans font-bold text-gold-bright">+150 Coins</span>.
-                  </div>
-                </div>
+      {tab === 'history' && (
+        <section className="mt-5 overflow-hidden rounded-[18px] border border-gold/10 bg-[#090807]/95 shadow-[0_18px_60px_rgba(0,0,0,.22)]">
+          <div className="relative border-b border-white/[.07] px-5 py-5">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_0%,rgba(242,204,96,.055),transparent_34%)]" />
+            <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <SectionTitle
+                eyebrow="Clan Activity"
+                title="Marketplace History"
+                description="Recent Marketplace purchases across the clan. This view is read-only for members."
+              />
+              <div className="shrink-0 rounded-lg border border-gold/10 bg-gold/[.035] px-3 py-2 text-center">
+                <div className="font-mono text-[14px] font-bold text-gold-light">{formatCoins(purchases.length)}</div>
+                <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-[.12em] text-gold-dim">Transactions</div>
               </div>
             </div>
           </div>
-        </div>
+
+          {purchases.length === 0 ? (
+            <div className="px-5 py-14 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/[.08] bg-white/[.02] text-2xl text-gold-dim/55">◈</div>
+              <h3 className="mt-4 font-spectral text-xl font-bold text-text-bright">No Marketplace Activity</h3>
+              <p className="mt-1.5 text-[11px] leading-5 text-text-dim">Purchase transactions will appear here once members start trading in the Clan Marketplace.</p>
+            </div>
+          ) : (
+            <div>
+              <div className="marketplace-history-grid hidden border-b border-white/[.06] bg-white/[.018] px-5 py-3 text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim lg:grid lg:grid-cols-[minmax(0,1fr)_160px_90px_150px_150px_220px] lg:gap-3">
+                <div>Item</div>
+                <div className="text-center">Buyer</div>
+                <div className="text-center">Qty</div>
+                <div className="text-center">Total</div>
+                <div className="text-center">Status</div>
+                <div className="text-right">Purchased</div>
+              </div>
+
+              <div className="divide-y divide-white/[.055]">
+                {purchases.map(p => {
+                  const purchaseItem = items.find(item => item.id === p.item_id)
+                  const purchaseRarity = purchaseItem?.rarity
+
+                  return (
+                    <div key={p.id} className="group px-4 py-4 transition-colors duration-150 hover:bg-white/[.018] sm:px-5">
+                      <div className="marketplace-history-grid grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px_90px_150px_150px_220px] lg:items-center lg:gap-3">
+                        <div className="flex min-w-0 items-center gap-3.5">
+                          <div className="shrink-0">
+                            <ItemArtwork item={purchaseItem} size="table" />
+                          </div>
+                          <div className="min-w-0 flex items-center gap-2">
+                            <div className={`min-w-0 truncate text-[16px] font-semibold leading-5 ${rarityTextClass(purchaseRarity)}`}>
+                              {itemName(p.item_id)}
+                            </div>
+                            <span className="shrink-0 text-[12px] font-medium capitalize leading-5 text-text-dim/80">
+                              {purchaseRarity || 'Common'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 lg:flex lg:h-full lg:items-center lg:justify-center lg:text-center">
+                          <span className="text-[9px] font-bold uppercase tracking-[.12em] text-text-dim/50 lg:hidden">Buyer</span>
+                          <span className="inline-block max-w-full truncate text-[13px] font-semibold text-text-bright lg:max-w-full">{memberName(p.buyer_id)}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 lg:flex lg:h-full lg:items-center lg:justify-center lg:text-center">
+                          <span className="text-[9px] font-bold uppercase tracking-[.12em] text-text-dim/50 lg:hidden">Quantity</span>
+                          <span className="font-mono text-[13px] text-text-dim">{itemPackageQuantity(p.item_id)}×</span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 lg:flex lg:h-full lg:items-center lg:justify-center lg:text-center">
+                          <span className="text-[9px] font-bold uppercase tracking-[.12em] text-text-dim/50 lg:hidden">Total</span>
+                          <div>
+                            <span className="font-mono text-[14px] font-bold text-gold-light">{formatCoins(p.total_price)}</span>
+                            <span className="ml-1 text-[10px] font-semibold uppercase tracking-[.08em] text-gold-dim">Coins</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 lg:flex lg:h-full lg:items-center lg:justify-center lg:text-center">
+                          <span className="text-[9px] font-bold uppercase tracking-[.12em] text-text-dim/50 lg:hidden">Status</span>
+                          <span className={`inline-flex rounded-full border px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] ${statusClass(p.status)}`}>
+                            {statusLabel(p.status)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 lg:flex lg:h-full lg:items-center lg:justify-end lg:text-right">
+                          <span className="text-[9px] font-bold uppercase tracking-[.12em] text-text-dim/50 lg:hidden">Purchased</span>
+                          <div>
+                            <div className="text-[13px] text-text-dim">{formatDate(p.purchased_at)}</div>
+                            {p.distributed_by && (
+                              <div className="mt-1 text-[10px] text-text-dim/55">
+                                Distributed by {memberName(p.distributed_by)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </section>
       )}
 
-      {/* Reward Guide modal */}
-      {showRewardGuide && (
-        <div
-          className="fixed inset-0 z-[225] flex items-center justify-center bg-black/75 p-3 sm:p-5 backdrop-blur-[3px]"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Attendance reward guide"
-          onMouseDown={e => {
-            if (e.target === e.currentTarget) setShowRewardGuide(false)
-          }}
-        >
-          <div className="w-full max-w-3xl max-h-[88vh] overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-white/[.07] px-4 py-4 sm:px-5">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[.16em] text-gold-dim">Attendance Rewards</div>
-                <h3 className="mt-1 text-lg font-bold text-text-bright">Reward & GP Bonus Criteria</h3>
-                <p className="mt-1 text-[12px] leading-5 text-text-dim">
-                  Each attendance gives a base reward. Your GP determines the additional bonus.
-                </p>
+      {tab === 'listings' && canSubmit && <section className="mt-5 rounded-xl border border-white/[.08] bg-[#090807]/90">
+        <div className="border-b border-white/[.06] px-4 py-4">
+          <SectionTitle
+            eyebrow="Staff Submissions"
+            title="My Submissions"
+            description="Track clan inventory items you submitted for review."
+            action={
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {deletableSubmissions.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => selectAllSubmissions(selectedSubmissionIds.length !== deletableSubmissions.length)}
+                      className="rounded-lg border border-white/[.09] px-3 py-2 text-[10px] font-bold uppercase tracking-[.1em] text-text-dim transition hover:border-gold/25 hover:text-gold-light disabled:opacity-40"
+                    >
+                      {selectedSubmissionIds.length === deletableSubmissions.length && deletableSubmissions.length > 0 ? 'Clear All' : 'Select All'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || selectedSubmissionIds.length === 0}
+                      onClick={() => deleteSelectedSubmissions(selectedSubmissionIds)}
+                      className="rounded-lg border border-red-400/20 bg-red-400/[.045] px-3 py-2 text-[10px] font-bold uppercase tracking-[.1em] text-red-300 transition hover:bg-red-400/[.08] disabled:opacity-40"
+                    >
+                      Delete Selected{selectedSubmissionIds.length > 0 ? ` (${selectedSubmissionIds.length})` : ''}
+                    </button>
+                  </>
+                )}
+                <button type="button" onClick={openSubmit} className="rounded-lg border border-gold/30 bg-gold/[.07] px-3 py-2 text-[10px] font-bold uppercase tracking-[.1em] text-gold-light">
+                  ＋ New Item
+                </button>
               </div>
+            }
+          />
+        </div>
+
+        {selectedSubmissionIds.length > 0 && (
+          <div className="flex items-center justify-between border-b border-gold/10 bg-gold/[.025] px-4 py-2.5 text-[10px]">
+            <span className="font-semibold text-gold-light">
+              {selectedSubmissionIds.length} submission{selectedSubmissionIds.length === 1 ? '' : 's'} selected
+            </span>
+            <button type="button" onClick={() => setSelectedSubmissionIds([])} className="text-text-dim hover:text-text-bright">
+              Clear selection
+            </button>
+          </div>
+        )}
+
+        {mySubmissions.length === 0 ? (
+          <div className="px-4 py-12 text-center text-[11px] text-text-dim">You have not submitted any clan items.</div>
+        ) : (
+          <div className="divide-y divide-white/[.05]">
+            {mySubmissions.map(item => {
+              const hasPurchaseHistory = submissionsWithPurchaseHistory.has(String(item.id))
+              const canDeleteSubmission = deletableSubmissionStatuses.includes(item.status) && !hasPurchaseHistory
+              const selected = selectedSubmissionIds.includes(String(item.id))
+
+              return (
+                <div key={item.id} className={`px-4 py-4 ${selected ? 'bg-gold/[.035]' : ''}`}>
+                  <div className={`grid gap-3 md:items-center ${deletableSubmissions.length > 0 ? 'md:grid-cols-[32px_44px_minmax(0,1fr)_100px_110px_110px]' : 'md:grid-cols-[44px_minmax(0,1fr)_100px_110px_110px]'}`}>
+                    {deletableSubmissions.length > 0 && (
+                      <div className="flex justify-center">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          disabled={!canDeleteSubmission || busy}
+                          onChange={() => toggleSubmissionSelection(item.id)}
+                          aria-label={hasPurchaseHistory ? `${item.name} cannot be deleted because it has purchase history` : `Select ${item.name}`}
+                          title={hasPurchaseHistory ? 'Cannot permanently delete: this submission has purchase history.' : undefined}
+                          className="h-4 w-4 accent-[#d4af37] disabled:cursor-not-allowed disabled:opacity-25"
+                        />
+                      </div>
+                    )}
+
+                    <ItemArtwork item={item} size="table" />
+
+                    <div>
+                      <div className={`text-[11px] font-semibold ${rarityTextClass(item.rarity)}`}>{item.name}</div>
+                      <div className="mt-1 text-[10px] text-text-dim">Submitted {formatDate(item.submitted_at)}</div>
+                      {hasPurchaseHistory && (
+                        <div className="mt-1 text-[9px] font-semibold uppercase tracking-[.08em] text-amber-300/70">Purchase history • Cannot permanently delete</div>
+                      )}
+                    </div>
+
+                    <div className="font-mono text-[11px] font-bold text-gold-light">{formatCoins(item.price)}</div>
+                    <div className="text-[11px] text-text-dim">{Math.max(1, Number(item.bundle_quantity ?? item.stock) || 1)}× package</div>
+                    <div>
+                      <span className={`rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em] ${statusClass(item.status)}`}>
+                        {statusLabel(item.status)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {!canDeleteSubmission && (
+                    <div className="mt-2 pl-0 text-[9px] text-text-dim/45 md:pl-[76px]">
+                      {item.status === 'active' ? 'Active listings cannot be deleted while they are available for purchase.' : 'This listing is protected from deletion.'}
+                    </div>
+                  )}
+
+                  {item.status === 'rejected' && (
+                    <div className="mt-3 rounded-lg border border-red-400/20 bg-red-400/[.045] px-3 py-2.5">
+                      <div className="text-[9px] font-bold uppercase tracking-[.14em] text-red-300/75">Rejection Reason</div>
+                      <div className="mt-1 text-[11px] leading-5 text-red-100/80">{item.rejection_reason || 'No reason was provided by the reviewer.'}</div>
+                      {item.rejected_at && <div className="mt-1 text-[9px] text-red-200/40">Reviewed {formatDate(item.rejected_at)}</div>}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>}
+
+
+      {tab === 'management' && isStaff && (
+  <section className="mt-5">
+    <div className="relative overflow-hidden rounded-[18px] border border-gold/15 bg-[#090a0b]/95 shadow-[0_18px_60px_rgba(0,0,0,.22)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_75%_0%,rgba(242,204,96,.07),transparent_30%)]" />
+
+      <div className="relative flex flex-col gap-4 border-b border-white/[.07] px-5 py-5 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.22em] text-gold-dim">
+            <span className="h-px w-5 bg-gold/50" /> Staff Console
+          </div>
+          <h2 className="mt-1.5 font-spectral text-2xl font-bold uppercase text-gold-light">Marketplace Management</h2>
+          <p className="mt-1.5 text-[13px] leading-5 text-text-dim">Approvals, active listings, purchase history, and in-game distribution.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-white/[.08] bg-white/[.02] px-3 py-2 text-[11px] font-bold uppercase tracking-[.1em] text-text-dim">{role}</span>
+          {canSubmit && <button type="button" onClick={openSubmit} className="rounded-lg border border-gold/30 bg-gold/[.08] px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.1em] text-gold-light hover:bg-gold/[.12]">＋ Add Listing</button>}
+        </div>
+      </div>
+
+      <div className="relative border-b border-white/[.07] px-3 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          {staffTabs.map(t => (
+            <button key={t.id} type="button" onClick={() => setStaffTab(t.id)} className={`flex items-center gap-2 rounded-lg px-4 py-3 text-[11px] font-bold uppercase tracking-[.08em] transition-colors ${staffTab === t.id ? 'border border-gold/25 bg-gold/[.09] text-gold-bright' : 'border border-transparent text-text-dim hover:bg-white/[.025] hover:text-gold-light'}`}>
+              {t.label}
+              {Number(t.count) > 0 && <span className="rounded-full bg-white/[.08] px-2 py-0.5 text-[10px]">{t.count}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="relative p-4 sm:p-5">
+
+        {staffTab === 'pending' && canReview && (
+          <div className="overflow-hidden rounded-xl border border-white/[.07]">
+            <div className="hidden bg-white/[.035] px-4 py-3 text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim md:grid md:grid-cols-[56px_minmax(240px,1.7fr)_110px_80px_110px_150px_190px] md:items-center md:gap-3 md:text-center">
+              <span />
+              <span className="text-left">Item</span><span>Price</span><span>Qty</span><span>Duration</span><span>Submitted By</span><span>Actions</span>
+            </div>
+            {pendingItems.length === 0 ? (
+              <div className="px-5 py-14 text-center text-[12px] text-text-dim">No listings waiting for review.</div>
+            ) : pendingItems.map(item => (
+              <div key={item.id} className="grid gap-4 border-t border-white/[.055] px-4 py-4 md:grid-cols-[56px_minmax(240px,1.7fr)_110px_80px_110px_150px_190px] md:items-center md:gap-3 md:text-center">
+                <div className="flex justify-center"><ItemArtwork item={item} size="table" /></div>
+                <div className="min-w-0 text-left">
+                  <div className={`truncate text-[14px] font-semibold ${rarityTextClass(item.rarity)}`}>{item.name}</div>
+                  <div className="mt-1.5 text-[11px] text-text-dim">{item.rarity} <span className="mx-1 text-white/15">•</span> {formatShortDate(item.submitted_at)}</div>
+                </div>
+                <div className="font-mono text-[13px] font-bold text-gold-light">{formatCoins(item.price)}</div>
+                <div className="text-[12px] text-text-dim">{Math.max(1, Number(item.bundle_quantity ?? item.stock) || 1)}×</div>
+                <div className="text-[12px] text-text-dim">{Math.max(1, Math.ceil((new Date(item.available_until).getTime() - new Date(item.available_from).getTime()) / 86400000))} days</div>
+                <div className="text-[12px] text-text-dim">{memberName(item.submitted_by)}</div>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <button type="button" onClick={() => setReviewItem(item)} className="rounded-md border border-emerald-400/25 bg-emerald-400/[.06] px-3 py-2 text-[10px] font-bold uppercase text-emerald-300 hover:bg-emerald-400/[.1]">Review</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {staffTab === 'active' && canReview && (
+          <div className="overflow-hidden rounded-xl border border-white/[.07]">
+            {canBulkRemoveListings && (
+              <div className="flex flex-col gap-3 border-b border-white/[.07] bg-white/[.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim">Listing Management</div>
+                  <div className="mt-1 text-[11px] text-text-dim">Select multiple listings to remove them from Marketplace management. Purchase history stays intact.</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" disabled={busy || activeListings.length === 0} onClick={() => selectAllListings(selectedListingIds.length !== activeListings.length)} className="rounded-md border border-white/[.09] px-3 py-2 text-[9px] font-bold uppercase tracking-[.08em] text-text-dim hover:border-gold/25 hover:text-gold-light disabled:opacity-40">
+                    {selectedListingIds.length === activeListings.length && activeListings.length > 0 ? 'Clear All' : 'Select All'}
+                  </button>
+                  <button type="button" disabled={busy || selectedListingIds.length === 0} onClick={() => removeSelectedListings(selectedListingIds)} className="rounded-md border border-red-400/20 bg-red-400/[.045] px-3 py-2 text-[9px] font-bold uppercase tracking-[.08em] text-red-300 hover:bg-red-400/[.08] disabled:opacity-40">
+                    Remove Selected{selectedListingIds.length > 0 ? ` (${selectedListingIds.length})` : ''}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {selectedListingIds.length > 0 && canBulkRemoveListings && (
+              <div className="flex items-center justify-between border-b border-gold/10 bg-gold/[.025] px-4 py-2.5 text-[10px]">
+                <span className="font-semibold text-gold-light">{selectedListingIds.length} listing{selectedListingIds.length === 1 ? '' : 's'} selected</span>
+                <button type="button" onClick={() => setSelectedListingIds([])} className="text-text-dim hover:text-text-bright">Clear selection</button>
+              </div>
+            )}
+
+            <div className={`hidden bg-white/[.035] px-4 py-3 text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim md:grid md:items-center md:gap-3 md:text-center ${canBulkRemoveListings ? 'md:grid-cols-[36px_minmax(260px,1.8fr)_120px_100px_130px_110px]' : 'md:grid-cols-[minmax(260px,1.8fr)_120px_100px_130px_110px]'}`}>
+              {canBulkRemoveListings && <span />}
+              <span className="text-left">Item</span><span>Price</span><span>Quantity</span><span>Availability</span><span>Action</span>
+            </div>
+
+            {activeListings.length === 0 ? (
+              <div className="px-5 py-14 text-center text-[12px] text-text-dim">No active Marketplace listings.</div>
+            ) : activeListings.map(item => {
+              const selected = selectedListingIds.includes(String(item.id))
+              return (
+                <div key={item.id} className={`grid gap-4 border-t border-white/[.055] px-4 py-4 md:items-center md:gap-3 md:text-center ${canBulkRemoveListings ? 'md:grid-cols-[36px_minmax(260px,1.8fr)_120px_100px_130px_110px]' : 'md:grid-cols-[minmax(260px,1.8fr)_120px_100px_130px_110px]'} ${selected ? 'bg-gold/[.035]' : ''}`}>
+                  {canBulkRemoveListings && (
+                    <div className="flex justify-start md:justify-center">
+                      <input type="checkbox" checked={selected} onChange={() => toggleListingSelection(item.id)} disabled={busy} aria-label={`Select listing ${item.name}`} className="h-4 w-4 accent-gold" />
+                    </div>
+                  )}
+                  <div className="flex min-w-0 items-center gap-3 text-left">
+                    <ItemArtwork item={item} size="table" />
+                    <div className="min-w-0">
+                      <div className={`truncate text-[14px] font-semibold ${rarityTextClass(item.rarity)}`}>{item.name}</div>
+                      <div className="mt-1.5 text-[11px] text-text-dim">{item.rarity} · {statusLabel(item.status)}</div>
+                    </div>
+                  </div>
+                  <div className="font-mono text-[13px] font-bold text-gold-light">{formatCoins(item.price)}</div>
+                  <div className="text-[12px] text-text-dim">{Math.max(1, Number(item.bundle_quantity ?? item.stock) || 1)}×</div>
+                  <div className="text-[12px] text-text-dim">{timeRemaining(item.available_until)}</div>
+                  <div className="flex justify-center">{item.status === 'active' || item.status === 'sold_out' ? <button type="button" onClick={() => closeListing(item)} disabled={busy} className="rounded-md border border-red-400/20 px-3 py-2 text-[10px] font-bold uppercase text-red-300 hover:bg-red-400/[.06] disabled:opacity-40">Close</button> : null}</div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {staffTab === 'history' && canManageHistory && (
+          <div className="overflow-hidden rounded-xl border border-white/[.07]">
+            <div className="flex flex-col gap-3 border-b border-white/[.07] bg-white/[.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim">Marketplace History Management</div>
+                <div className="mt-1 text-[11px] text-text-dim">Select individual purchase records or manage the entire visible history.</div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" disabled={busy || purchases.length === 0} onClick={() => selectAllHistory(selectedHistoryIds.length !== purchases.length)} className="rounded-md border border-white/[.09] px-3 py-2 text-[9px] font-bold uppercase tracking-[.08em] text-text-dim hover:border-gold/25 hover:text-gold-light disabled:opacity-40">
+                  {selectedHistoryIds.length === purchases.length && purchases.length > 0 ? 'Clear All' : 'Select All'}
+                </button>
+                <button type="button" disabled={busy || selectedHistoryIds.length === 0} onClick={() => deletePurchaseHistory(selectedHistoryIds)} className="rounded-md border border-red-400/20 bg-red-400/[.045] px-3 py-2 text-[9px] font-bold uppercase tracking-[.08em] text-red-300 hover:bg-red-400/[.08] disabled:opacity-40">
+                  Delete Selected{selectedHistoryIds.length > 0 ? ` (${selectedHistoryIds.length})` : ''}
+                </button>
+                <button type="button" disabled={busy || purchases.length === 0} onClick={() => deletePurchaseHistory(purchases.map(p => p.id))} className="rounded-md border border-red-400/30 px-3 py-2 text-[9px] font-bold uppercase tracking-[.08em] text-red-200 hover:bg-red-400/[.08] disabled:opacity-40">
+                  Delete All History
+                </button>
+              </div>
+            </div>
+
+            {selectedHistoryIds.length > 0 && (
+              <div className="flex items-center justify-between border-b border-gold/10 bg-gold/[.025] px-4 py-2.5 text-[10px]">
+                <span className="font-semibold text-gold-light">{selectedHistoryIds.length} record{selectedHistoryIds.length === 1 ? '' : 's'} selected</span>
+                <button type="button" onClick={() => setSelectedHistoryIds([])} className="text-text-dim hover:text-text-bright">Clear selection</button>
+              </div>
+            )}
+
+            <div className="hidden bg-white/[.035] px-4 py-3 text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim md:grid md:grid-cols-[36px_minmax(240px,1.4fr)_130px_80px_120px_130px_160px] md:items-center md:gap-3 md:text-center">
+              <span />
+              <span className="text-left">Item</span><span>Buyer</span><span>Qty</span><span>Total</span><span>Status</span><span>Purchased</span>
+            </div>
+            {purchases.length === 0 ? (
+              <div className="px-5 py-14 text-center text-[12px] text-text-dim">No purchase history.</div>
+            ) : purchases.map(p => {
+              const purchaseItem = items.find(item => item.id === p.item_id)
+              const selected = selectedHistoryIds.includes(String(p.id))
+              return (
+                <div key={p.id} className={`grid gap-4 border-t border-white/[.055] px-4 py-4 md:grid-cols-[36px_minmax(240px,1.4fr)_130px_80px_120px_130px_160px] md:items-center md:gap-3 md:text-center ${selected ? 'bg-gold/[.035]' : ''}`}>
+                  <div className="flex justify-start md:justify-center">
+                    <input type="checkbox" checked={selected} onChange={() => toggleHistorySelection(p.id)} disabled={busy} aria-label={`Select purchase ${p.id}`} className="h-4 w-4 accent-gold" />
+                  </div>
+                  <div className="flex min-w-0 items-center gap-3 text-left">
+                    <ItemArtwork item={purchaseItem} size="table" />
+                    <div className={`truncate text-[14px] font-semibold ${rarityTextClass(purchaseItem?.rarity)}`}>{itemName(p.item_id)}</div>
+                  </div>
+                  <div className="text-[12px] text-text-dim">{memberName(p.buyer_id)}</div>
+                  <div className="text-[12px] text-text-dim">{p.quantity}</div>
+                  <div className="font-mono text-[13px] font-bold text-gold-light">{formatCoins(p.total_price)}</div>
+                  <div><span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.08em] ${statusClass(p.status)}`}>{statusLabel(p.status)}</span></div>
+                  <div className="text-[12px] text-text-dim">{formatDate(p.purchased_at)}</div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {staffTab === 'distribution' && canDistribute && (
+          <div className="overflow-hidden rounded-xl border border-white/[.07]">
+            <div className="hidden bg-white/[.035] px-4 py-3 text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim md:grid md:grid-cols-[minmax(280px,1.5fr)_150px_80px_130px_170px] md:items-center md:gap-3 md:text-center">
+              <span className="text-left">Item</span><span>Buyer</span><span>Qty</span><span>Coins Paid</span><span>Action</span>
+            </div>
+            {distributionQueue.length === 0 ? (
+              <div className="px-5 py-14 text-center text-[12px] text-text-dim">No purchases are waiting for distribution.</div>
+            ) : distributionQueue.map(p => {
+              const purchaseItem = items.find(item => item.id === p.item_id)
+              return (
+                <div key={p.id} className="grid gap-4 border-t border-white/[.055] px-4 py-4 md:grid-cols-[minmax(280px,1.5fr)_150px_80px_130px_170px] md:items-center md:gap-3 md:text-center">
+                  <div className="flex min-w-0 items-center gap-3 text-left">
+                    <ItemArtwork item={purchaseItem} size="table" />
+                    <div className="min-w-0">
+                      <div className={`truncate text-[14px] font-semibold ${rarityTextClass(purchaseItem?.rarity)}`}>{itemName(p.item_id)}</div>
+                      <div className="mt-1.5 text-[11px] text-text-dim">Purchased {formatDate(p.purchased_at)}</div>
+                    </div>
+                  </div>
+                  <div className="text-[12px] text-text-dim">{memberName(p.buyer_id)}</div>
+                  <div className="text-[12px] text-text-dim">{p.quantity}</div>
+                  <div className="font-mono text-[13px] font-bold text-gold-light">{formatCoins(p.total_price)}</div>
+                  <div className="flex justify-center"><button type="button" onClick={() => { setDistributionPurchase(p); setDistributionNote('') }} className="rounded-md border border-emerald-400/25 bg-emerald-400/[.06] px-3.5 py-2.5 text-[10px] font-bold uppercase text-emerald-300 hover:bg-emerald-400/[.1]">Distribute Item</button></div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {staffTab === 'listings' && canSubmit && (
+          <div className="overflow-hidden rounded-xl border border-white/[.07]">
+            <div className="hidden bg-white/[.035] px-4 py-3 text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim md:grid md:grid-cols-[56px_minmax(240px,1.7fr)_120px_100px_130px] md:items-center md:gap-3 md:text-center">
+              <span /><span className="text-left">Item</span><span>Price</span><span>Quantity</span><span>Status</span>
+            </div>
+            {mySubmissions.length === 0 ? (
+              <div className="px-5 py-14 text-center text-[12px] text-text-dim">No submissions yet.</div>
+            ) : mySubmissions.map(item => (
+              <div key={item.id} className="grid gap-4 border-t border-white/[.055] px-4 py-4 md:grid-cols-[56px_minmax(240px,1.7fr)_120px_100px_130px] md:items-center md:gap-3 md:text-center">
+                <div className="flex justify-center"><ItemArtwork item={item} size="table" /></div>
+                <div className="min-w-0 text-left">
+                  <div className={`truncate text-[14px] font-semibold ${rarityTextClass(item.rarity)}`}>{item.name}</div>
+                  <div className="mt-1.5 text-[11px] text-text-dim">{item.rarity}</div>
+                </div>
+                <div className="font-mono text-[13px] text-gold-light">{formatCoins(item.price)}</div>
+                <div className="text-[12px] text-text-dim">{item.stock}</div>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+  <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.08em] ${statusClass(item.status)}`}>{statusLabel(item.status)}</span>
+  {(
+    ['sold_out', 'closed', 'expired', 'rejected'].includes(item.status) ||
+    (role === ROLES.ELDER && Number(item.submitted_by) === Number(currentUser?.id) && item.status === 'active')
+  ) && (
+    <button type="button" disabled={busy} onClick={() => removeListing(item)} className="rounded-md border border-red-400/20 px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] text-red-300 hover:bg-red-400/[.06] disabled:opacity-40">Remove</button>
+  )}
+</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      </div>
+    </div>
+  </section>
+)}{buyItem && <Modal title="Confirm Purchase" narrow compact onClose={() => !busy && setBuyItem(null)}>
+        <div className="space-y-3.5">
+          <div className="rounded-lg border border-white/[.07] bg-white/[.018] px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-[.16em] text-text-dim/50">Confirm purchase</div>
+                <div className={`mt-1 truncate font-spectral text-[19px] font-bold ${rarityTextClass(buyItem.rarity)}`}>{buyItem.name}</div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="font-mono text-[19px] font-bold leading-none text-gold-bright">{formatCoins(Number(buyItem.price))}</div>
+                <div className="mt-1 text-[10px] font-semibold uppercase tracking-[.12em] text-gold-dim">Coins</div>
+              </div>
+            </div>
+          </div>
+
+          {purchaseError && (
+      <div
+        role="alert"
+        className="flex items-start gap-2.5 rounded-lg border border-red-400/25 bg-red-500/[.06] px-3 py-2.5 text-left"
+      >
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-red-400/35 bg-red-400/[.08] text-[11px] font-bold text-red-300">
+          !
+        </span>
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-[.14em] text-red-300">
+            Purchase Unavailable
+          </div>
+          <div className="mt-0.5 text-[11px] leading-4 text-red-200/80">
+            {purchaseError}
+          </div>
+        </div>
+      </div>
+    )}
+
+    <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-white/[.07] bg-white/[.018] px-3 py-2.5">
+              <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim/55">Your Balance</div>
+              <div className="mt-1 font-mono text-[20px] font-bold leading-none text-text-bright">
+                {formatCoins(Number(displayCoins || 0))}
+                <span className="ml-1 text-[10px] font-semibold tracking-[.08em] text-text-dim">COINS</span>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gold/15 bg-gold/[.035] px-3 py-2.5">
+              <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim/55">After Purchase</div>
+              <div className="mt-1 font-mono text-[20px] font-bold leading-none text-gold-light">
+                {formatCoins(Math.max(0, Number(displayCoins || 0) - Number(buyItem.price)))}
+                <span className="ml-1 text-[10px] font-semibold tracking-[.08em] text-gold-dim">COINS</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 border-t border-white/[.06] pt-3">
+            <button type="button" disabled={busy} onClick={() => { setPurchaseError(''); setBuyItem(null) }} className="rounded-lg border border-white/[.08] px-3.5 py-2 text-[12px] font-bold uppercase tracking-[.1em] text-text-dim transition hover:border-white/[.14] hover:text-text-bright">Cancel</button>
+            <button type="button" disabled={busy} onClick={confirmBuy} className="rounded-lg border border-gold/30 bg-gold/[.09] px-4 py-2 text-[12px] font-bold uppercase tracking-[.1em] text-gold-light transition hover:border-gold/45 hover:bg-gold/[.14] disabled:cursor-not-allowed disabled:opacity-50">{busy ? 'Processing…' : 'Confirm Purchase'}</button>
+          </div>
+        </div>
+      </Modal>}
+      {(showSubmit || showEdit) && (
+        <Modal
+          title={showEdit ? 'Edit Pending Listing' : 'Submit Marketplace Item'}
+          wide
+          onClose={() => !busy && (showEdit ? setShowEdit(false) : setShowSubmit(false))}
+        >
+          <form onSubmit={showEdit ? saveEdit : submitItem} className="space-y-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+              <div className="rounded-xl border border-white/[.07] bg-black/10 p-4">
+                <div className="mb-4">
+                  <div className="text-[10px] font-bold uppercase tracking-[.18em] text-gold-dim">Listing Details</div>
+                  <div className="mt-1 text-[11px] text-text-dim">Set the item, rarity, price, package size, and listing duration.</div>
+                </div>
+
+                <div className="space-y-4">
+                  <Field label="Item Name">
+                    <input
+                      className="w-full rounded-lg border border-white/[.09] bg-black/25 px-3 py-2.5 text-sm text-text outline-none focus:border-gold/35"
+                      required
+                      maxLength={120}
+                      value={form.name}
+                      onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="Kari Top"
+                    />
+                  </Field>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Rarity">
+                      <select
+                        className="w-full rounded-lg border border-white/[.09] bg-[#0b0908] px-3 py-2.5 text-sm text-text outline-none"
+                        value={form.rarity}
+                        onChange={e => setForm(f => ({ ...f, rarity: e.target.value }))}
+                      >
+                        {RARITIES.map(r => <option key={r} value={r}>{r[0].toUpperCase() + r.slice(1)}</option>)}
+                      </select>
+                    </Field>
+
+                    <Field label="Price · Coins">
+                      <input
+                        className="w-full rounded-lg border border-white/[.09] bg-black/25 px-3 py-2.5 text-sm text-text outline-none focus:border-gold/35"
+                        required
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={form.price}
+                        onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
+                      />
+                    </Field>
+
+                    <Field label="Quantity Items">
+                      <input
+                        className="w-full rounded-lg border border-white/[.09] bg-black/25 px-3 py-2.5 text-sm text-text outline-none focus:border-gold/35"
+                        required
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={form.stock}
+                        onChange={e => setForm(f => ({ ...f, stock: e.target.value }))}
+                      />
+                      <span className="mt-1 block text-[10px] leading-4 text-text-dim/60">
+                        Members receive all {form.stock || 1}× in one purchase. The package can be bought only once.
+                      </span>
+                    </Field>
+
+                    <Field label="Duration · Days">
+                      <input
+                        className="w-full rounded-lg border border-white/[.09] bg-black/25 px-3 py-2.5 text-sm text-text outline-none focus:border-gold/35"
+                        required
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={form.duration_days}
+                        onChange={e => setForm(f => ({ ...f, duration_days: e.target.value }))}
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </div>
+
+              <ImageManager
+                imageFile={imageFile}
+                imagePreview={imagePreview}
+                pickedLibraryImg={pickedLibraryImg}
+                libraryImages={libraryImages}
+                libraryLoading={libraryLoading}
+                libraryError={libraryError}
+                uploading={uploading}
+                deletingImageName={deletingImageName}
+                canDeleteImage={isStaff}
+                fileInputRef={fileInputRef}
+                onRefresh={loadLibrary}
+                onFileChange={handleImageChange}
+                onPick={pickFromLibrary}
+                onClear={clearImage}
+                onDeleteImage={deleteLibraryImage}
+              />
+            </div>
+
+            <div className="rounded-lg border border-amber-300/10 bg-amber-300/[.02] px-3 py-2.5 text-[10px] leading-4 text-text-dim">
+              {showEdit
+                ? 'Changes are limited to pending listings. Approval is still required before the item becomes active.'
+                : isStaff
+                  ? 'Submit for Review sends this item to the review queue. Confirm & List publishes it immediately.'
+                  : 'New listings enter Pending Review. A Master or Admin must approve them before members can purchase.'}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-white/[.06] pt-3">
               <button
                 type="button"
-                onClick={() => setShowRewardGuide(false)}
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light"
-                aria-label="Close reward guide"
+                disabled={busy}
+                onClick={() => showEdit ? setShowEdit(false) : setShowSubmit(false)}
+                className="rounded-lg border border-white/[.08] px-4 py-2.5 text-[10px] font-bold uppercase tracking-[.1em] text-text-dim transition hover:border-white/[.14] hover:bg-white/[.025]"
               >
-                ×
+                Cancel
               </button>
+
+              {showEdit ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={saveEdit}
+                  className="rounded-lg border border-gold/30 bg-gold/[.09] px-5 py-2.5 text-[10px] font-bold uppercase tracking-[.1em] text-gold-light transition hover:border-gold/45 hover:bg-gold/[.14] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busy ? 'Saving…' : 'Save Changes'}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="rounded-lg border border-gold/30 bg-gold/[.07] px-5 py-2.5 text-[10px] font-bold uppercase tracking-[.1em] text-gold-light transition hover:border-gold/45 hover:bg-gold/[.12] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {busy ? 'Submitting…' : 'Submit for Review'}
+                  </button>
+
+                  {isStaff && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={confirmDirectList}
+                      className="rounded-lg border border-emerald-400/25 bg-emerald-400/[.055] px-5 py-2.5 text-[10px] font-bold uppercase tracking-[.1em] text-emerald-300 transition hover:border-emerald-300/40 hover:bg-emerald-400/[.09] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {busy ? 'Publishing…' : 'Confirm & List'}
+                    </button>
+                  )}
+                </>
+              )}
             </div>
-
-            <div className="max-h-[68vh] overflow-y-auto p-4 sm:p-5">
-              <div className="overflow-x-auto rounded-xl border border-white/[.07]">
-                <div className="min-w-[680px]">
-                  <div className="grid grid-cols-[minmax(180px,1.5fr)_70px_repeat(4,minmax(88px,1fr))] items-center border-b border-white/[.07] bg-white/[.025] px-3 py-3 text-[10px] font-bold uppercase tracking-[.1em] text-text-dim sm:px-4">
-                    <span>Event</span>
-                    <span className="text-center">Base</span>
-                    <span className="text-center">100–150k</span>
-                    <span className="text-center">150–200k</span>
-                    <span className="text-center">200–250k</span>
-                    <span className="text-center">250k+</span>
-                  </div>
-
-                  {[
-                    ['Server Battle', 100, 5, 10, 15, 20],
-                    ['World Boss', 50, 3, 5, 10, 15],
-                    ['Clan Annihilation', 75, 5, 10, 15, 20],
-                    ["Sindri's Treasure Island", 75, 5, 10, 15, 20],
-                    ['Clan Sanctuary', 50, 3, 5, 10, 15],
-                  ].map(([event, base, b1, b2, b3, b4]) => (
-                    <div key={event} className="grid grid-cols-[minmax(180px,1.5fr)_70px_repeat(4,minmax(88px,1fr))] items-center border-b border-white/[.05] px-3 py-3 last:border-b-0 sm:px-4">
-                      <div>
-                        <div className="text-[12px] font-semibold text-text-bright">{event}</div>
-                        <div className="mt-0.5 text-[10px] text-text-dim">Per attendance</div>
-                      </div>
-                      <div className="text-center text-[12px] font-bold text-text-bright">+{base}</div>
-                      {[b1, b2, b3, b4].map((bonus, index) => (
-                        <div key={index} className="text-center text-[12px] font-semibold text-gold-light">+{bonus}</div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border border-white/[.07] bg-black/15 p-3">
-                  <div className="text-[11px] font-bold uppercase tracking-[.12em] text-text-dim">GP bonus</div>
-                  <p className="mt-1.5 text-[12px] leading-5 text-text-dim">
-                    The GP bonus is calculated when attendance is recorded. Higher GP tiers receive a larger bonus on top of the base reward.
-                  </p>
-                </div>
-                <div className="rounded-xl border border-gold/15 bg-gold/[.025] p-3">
-                  <div className="text-[11px] font-bold uppercase tracking-[.12em] text-gold-dim">Perfect Attendance</div>
-                  <p className="mt-1.5 text-[12px] leading-5 text-text-dim">
-                    Attend all <strong className="text-text-bright">8 scheduled sessions</strong> Tuesday–Saturday to qualify for the separate <strong className="text-gold-bright">+150 Coins</strong> weekly bonus.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-3 rounded-xl border border-white/[.07] bg-white/[.015] px-3 py-2.5 text-[11px] leading-5 text-text-dim">
-                <strong className="text-text-bright">Session reminder:</strong> Clan Annihilation and Sindri's Treasure Island each have a First Run and Second Run. Each run counts as its own scheduled attendance session.
-              </div>
-            </div>
-          </div>
-        </div>
+          </form>
+        </Modal>
       )}
 
-      {/* Perfect Attendance details modal — keeps the main page short even with 50 members */}
-      {showPerfectAttendance && (() => {
-        return (
-          <div
-            className="fixed inset-0 z-[230] flex items-center justify-center bg-black/75 p-3 sm:p-5 backdrop-blur-[3px]"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Weekly Perfect Attendance"
-            onMouseDown={e => {
-              if (e.target === e.currentTarget && !awardingPerfect) setShowPerfectAttendance(false)
-            }}
-          >
-            <div className="flex w-full max-w-4xl max-h-[88vh] flex-col overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
-              <div className="flex flex-col gap-3 border-b border-white/[.07] px-4 py-3.5 sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md border border-gold/20 bg-gold/[.05] px-2 py-1 text-[12px] font-bold uppercase tracking-[.14em] text-gold-dim">Weekly</span>
-                    <span className="text-[13px] font-sans text-text-dim">{currentWeekLabel}</span>
-                  </div>
-                  <h3 className="mt-1.5 text-lg font-bold text-text-bright">Perfect Attendance</h3>
-                  <p className="mt-0.5 text-[13px] text-text-dim">Players are qualified only when they attend all {PERFECT_ATTENDANCE_REQUIRED_SESSIONS} scheduled sessions.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="rounded-lg border border-gold/15 bg-gold/[.035] px-3 py-2 text-right">
-                    <div className="text-[11px] font-bold uppercase tracking-[.12em] text-text-dim">Reward</div>
-                    <div className="mt-0.5 font-sans text-sm font-bold text-gold-bright">+150 Coins</div>
-                  </div>
-                  <button type="button" onClick={() => setShowPerfectAttendance(false)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light" aria-label="Close">×</button>
-                </div>
-              </div>
 
-              <div className="flex flex-col gap-3 border-b border-white/[.06] bg-black/10 px-4 py-3 sm:flex-row sm:items-center">
-                <div className="relative min-w-0 flex-1">
-                  <input
-                    className="input h-10 w-full pl-9"
-                    placeholder="Search player..."
-                    value={perfectSearch}
-                    onChange={e => setPerfectSearch(e.target.value)}
-                  />
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim text-xs">⌕</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {[['qualified', 'Qualified'], ['ready', 'Ready'], ['awarded', 'Awarded'], ['all', 'All']].map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setPerfectFilter(value)}
-                      className={`rounded-lg border px-3 py-2 text-[12px] font-semibold transition-colors ${perfectFilter === value ? 'border-gold/35 bg-gold/[.07] text-gold-light' : 'border-white/[.08] bg-black/15 text-text-dim hover:text-text-bright'}`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+      {reviewItem && !showEdit && <Modal title="Marketplace Review" compact onClose={() => !busy && setReviewItem(null)}>
+        <div className="space-y-3.5">
+          <div className="grid gap-3 sm:grid-cols-[150px_minmax(0,1fr)]">
+            <ItemArtwork item={reviewItem} size="review" />
+            <div className="flex min-w-0 flex-col justify-center">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase ${rarityClass(reviewItem.rarity)}`}>{reviewItem.rarity}</span>
+                <span className="rounded-full border border-amber-300/25 bg-amber-300/[.05] px-2 py-0.5 text-[9px] font-bold uppercase text-amber-200">Pending Review</span>
               </div>
-
-              <div className="flex items-center justify-between gap-3 border-b border-white/[.06] px-4 py-2.5 text-[12px] text-text-dim">
-                <span>Showing <strong className="text-text-bright">{visiblePerfectRows.length}</strong> of {weeklyPerfectAttendance.length} players</span>
-                <span><strong className="text-gold-light">{qualifiedPerfectAttendance.length}</strong> qualified</span>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
-                {visiblePerfectRows.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-text-dim">No players match this filter.</div>
-                ) : (
-                  <div className="overflow-hidden rounded-xl border border-white/[.07]">
-                    <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_150px_125px_120px] items-center gap-3 border-b border-white/[.07] bg-white/[.02] px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">
-                      <span>Player</span><span>Attendance</span><span>Status</span><span className="text-right">Bonus</span>
-                    </div>
-                    <div className="divide-y divide-white/[.05]">
-                      {visiblePerfectRows.map(row => (
-                        <div key={row.member.id} className="px-3 py-3 sm:grid sm:grid-cols-[minmax(0,1fr)_150px_125px_120px] sm:items-center sm:gap-3 sm:px-4">
-                          <div className="min-w-0">
-                            <div className="truncate text-[15px] font-bold text-text-bright">{row.member.name}</div>
-                            <div className="mt-0.5 text-[12px] text-text-dim">{row.attendedCount}/{PERFECT_ATTENDANCE_REQUIRED_SESSIONS} sessions attended</div>
-                            <div className="mt-2 flex h-1.5 max-w-[260px] overflow-hidden rounded-full bg-white/[.06]">
-                              {WEEKLY_EVENT_SESSIONS.map(session => (
-                                <span key={session.id} className={`flex-1 border-r border-black/30 last:border-r-0 ${row.attendedSessionIds.has(session.id) ? 'bg-gold-bright' : 'bg-white/[.035]'}`} />
-                              ))}
-                            </div>
-                          </div>
-                          <div className="mt-2 text-[13px] font-sans text-text-dim sm:mt-0">
-                            <span className="text-text-bright">{row.attendedCount}</span> / {PERFECT_ATTENDANCE_REQUIRED_SESSIONS}
-                          </div>
-                          <div className="mt-2 sm:mt-0">
-                            {row.awarded ? (
-                              <span className="inline-flex rounded-md border border-green-500/15 bg-green-500/[.035] px-2 py-1 text-[12px] font-semibold text-green-300">✓ Awarded</span>
-                            ) : row.qualified ? (
-                              <span className="inline-flex rounded-md border border-gold/20 bg-gold/[.045] px-2 py-1 text-[12px] font-semibold text-gold-light">🏆 Qualified</span>
-                            ) : (
-                              <span className="inline-flex rounded-md border border-white/[.07] bg-black/15 px-2 py-1 text-[12px] text-text-dim">Not qualified</span>
-                            )}
-                          </div>
-                          <div className="mt-2 flex items-center justify-between gap-2 sm:mt-0 sm:justify-end">
-                            <span className="font-sans text-sm font-bold text-gold-bright">{row.qualified ? '+150' : '—'}</span>
-                            {isElder && row.qualified && !row.awarded && (
-                              <button
-                                type="button"
-                                onClick={() => awardPerfectAttendance([row])}
-                                disabled={awardingPerfect}
-                                className="rounded-lg border border-gold/20 bg-gold/[.035] px-2.5 py-1.5 text-[12px] font-semibold text-gold-light hover:border-gold/40 disabled:opacity-40"
-                              >
-                                Award
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2 border-t border-white/[.06] bg-black/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-[12px] text-text-dim">Attendance is calculated from the 8 scheduled sessions for this week.</div>
-                {isElder && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {unawardedPerfectAttendance.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => awardPerfectAttendance(unawardedPerfectAttendance)}
-                        disabled={awardingPerfect}
-                        className="btn-gold min-h-9 px-3.5 text-[13px] font-bold disabled:opacity-40"
-                      >
-                        {awardingPerfect ? 'Awarding…' : `Award +150 to All ${unawardedPerfectAttendance.length} Qualified`}
-                      </button>
-                    )}
-                    {weeklyPerfectAttendance.some(row => row.awarded) && (
-                      <button
-                        type="button"
-                        onClick={resetPerfectAttendanceAwards}
-                        disabled={awardingPerfect}
-                        className="min-h-9 rounded-lg border border-red-500/20 bg-red-500/[.035] px-3.5 text-[13px] font-bold text-red-300 hover:border-red-500/35 disabled:opacity-40"
-                      >
-                        {awardingPerfect ? 'Processing…' : 'Reset Awards'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+              <h3 className="mt-1.5 truncate font-spectral text-[22px] font-bold leading-tight text-text-bright">{reviewItem.name}</h3>
+              <p className="mt-1 text-[10px] text-text-dim">Listed by <span className="text-text-bright/80">{memberName(reviewItem.submitted_by)}</span> · {formatDate(reviewItem.submitted_at)}</p>
             </div>
           </div>
-        )
-      })()}
 
-      {/* Add missing attendance record — staff only */}
-      {showAddMissing && missingLog && (() => {
-        const alreadyRecorded = new Set((missingLog.attendees || []).map(a => String(a.name).trim().toLowerCase()))
-        const availableMissing = members.filter(m => {
-          if (alreadyRecorded.has(String(m.name).trim().toLowerCase())) return false
-          return String(m.name || '').toLowerCase().includes(missingSearch.toLowerCase())
-        })
-        const missingSelectedCount = Object.values(missingMembers).filter(Boolean).length
-        const baseRecordedCount = (missingLog.attendees || []).length
-
-        return (
-          <div
-            className="fixed inset-0 z-[210] flex items-center justify-center bg-black/75 p-4 backdrop-blur-[2px]"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Add missing attendance record"
-            onMouseDown={e => {
-              if (e.target === e.currentTarget && !addingMissing) setShowAddMissing(false)
-            }}
-          >
-            <div className="w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
-              <div className="flex items-start justify-between gap-3 border-b border-white/[.06] px-4 sm:px-5 py-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md border border-gold/20 bg-gold/[.05] px-2 py-1 text-[12px] font-bold uppercase tracking-[.14em] text-gold-dim">
-                      Staff Only
-                    </span>
-                    <span className="text-[13px] font-sans text-text-dim">
-                      {baseRecordedCount}/50 recorded
-                    </span>
-                  </div>
-                  <h3 className="mt-2 text-base font-bold text-text-bright">Add Missing Record</h3>
-                  <p className="mt-1 text-[13px] leading-4 text-text-dim">
-                    Add a member who was accidentally left out of an existing attendance event.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => !addingMissing && setShowAddMissing(false)}
-                  disabled={addingMissing}
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light disabled:opacity-40"
-                  aria-label="Close"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="max-h-[68vh] overflow-y-auto p-4 sm:p-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="mb-1.5 block text-[12px] font-bold uppercase tracking-[.16em] text-text-dim">Attendance Session</span>
-                    <select
-                      className="input w-full h-10"
-                      value={missingLog.id}
-                      onChange={e => {
-                        const next = attendanceLogs.find(log => String(log.id) === String(e.target.value))
-                        if (next) {
-                          setMissingLog(next)
-                          setMissingMembers({})
-                        }
-                      }}
-                    >
-                      {sortedLogs.map(log => (
-                        <option key={log.id} value={log.id}>
-                          {log.event} · {formatGMT8Short(log.ts || Number(log.id) || Date.now())} · {(log.attendees || []).length}/50
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <div className="block">
-                    <span className="mb-1.5 block text-[12px] font-bold uppercase tracking-[.16em] text-text-dim">Automatic Reward</span>
-                    <div className="h-10 flex items-center rounded-lg border border-gold/20 bg-gold/[.04] px-3 text-[13px] text-text-dim">
-                      GP-based reward · calculated per member
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 rounded-xl border border-gold/15 bg-gold/[.035] px-3.5 py-3">
-                  <div className="text-[13px] text-text-dim">
-                    Selected session: <strong className="text-gold-light">{missingLog.sessionDisplayName || missingLog.sessionLabel || missingLog.event}</strong>
-                  </div>
-                  <div className="mt-1 text-[13px] text-text-dim">
-                    Existing attendees: <strong className="font-sans text-text-bright">{baseRecordedCount}/50</strong>
-                    <span className="mx-1.5 text-white/20">·</span>
-                    Adding: <strong className="font-sans text-gold-light">{missingSelectedCount}</strong>
-                  </div>
-                  {missingSelectedCount > 0 && (
-                    <div className="mt-2 pt-2 border-t border-white/[.06] text-[12px] font-sans text-text-dim">
-                      {members.filter(m => missingMembers[m.id] && !alreadyRecorded.has(String(m.name).trim().toLowerCase())).map(m => (
-                        <span key={m.id} className="mr-3 inline-block">
-                          {m.name}: {formatGp(m.power)} GP → +{getAttendanceReward(m.power, missingLog.event)} coins
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="relative mt-4">
-                  <input
-                    className="input w-full h-10 pl-9"
-                    placeholder="Search missing member..."
-                    value={missingSearch}
-                    onChange={e => setMissingSearch(e.target.value)}
-                  />
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim text-xs">⌕</span>
-                </div>
-
-                <div className="mt-3 rounded-xl border border-white/[.07] overflow-hidden">
-                  <div className="flex items-center justify-between gap-2 border-b border-white/[.06] bg-black/20 px-3 py-2">
-                    <span className="text-[12px] font-bold uppercase tracking-[.14em] text-text-dim">Members not yet recorded</span>
-                    <span className="text-[12px] font-sans text-text-dim">{availableMissing.length} available</span>
-                  </div>
-
-                  <div className="max-h-[330px] overflow-y-auto divide-y divide-white/[.045]">
-                    {availableMissing.map(m => {
-                      const checked = !!missingMembers[m.id]
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => toggleMissingMember(m.id)}
-                          aria-pressed={checked}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${checked ? 'bg-gold/[.055]' : 'hover:bg-white/[.025]'}`}
-                        >
-                          <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border text-[14px] ${checked ? 'border-gold bg-gold text-black' : 'border-white/15 bg-black/20 text-transparent'}`}>
-                            ✓
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className={`block truncate text-xs font-semibold ${checked ? 'text-gold-light' : 'text-text-bright'}`}>{m.name}</span>
-                            <span className="block mt-0.5 truncate text-[12px] text-text-dim">{m.cls || 'Member'}</span>
-                          </span>
-                          <span className="text-[12px] font-sans text-text-dim">{m.attendance || 0} total</span>
-                        </button>
-                      )
-                    })}
-
-                    {availableMissing.length === 0 && (
-                      <div className="px-4 py-10 text-center text-xs text-text-dim">
-                        {baseRecordedCount >= 50 ? 'This record already has 50 attendees.' : 'No missing members found.'}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-white/[.06] bg-black/10 px-4 sm:px-5 py-3.5">
-                <div className="text-[13px] text-text-dim">
-                  {missingSelectedCount > 0
-                    ? `${missingSelectedCount} member${missingSelectedCount === 1 ? '' : 's'} selected · reward calculated from each member's GP automatically`
-                    : 'Select the missing member(s) first.'}
-                </div>
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddMissing(false)}
-                    disabled={addingMissing}
-                    className="rounded-lg border border-white/10 px-4 py-2 text-xs text-text-dim hover:text-text-bright disabled:opacity-40"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={addMissingRecord}
-                    disabled={addingMissing || missingSelectedCount === 0 || baseRecordedCount >= 50}
-                    className="btn-gold min-h-9 px-4 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {addingMissing ? 'Adding…' : `Add ${missingSelectedCount || ''} Missing Member${missingSelectedCount === 1 ? '' : 's'}`}
-                  </button>
-                </div>
-              </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-white/[.06] bg-white/[.012] px-3 py-2.5">
+              <div className="text-[8px] font-bold uppercase tracking-[.12em] text-text-dim">Price</div>
+              <div className="mt-0.5 font-mono text-[15px] font-bold text-gold-light">{formatCoins(reviewItem.price)}</div>
+            </div>
+            <div className="rounded-lg border border-white/[.06] bg-white/[.012] px-3 py-2.5">
+              <div className="text-[8px] font-bold uppercase tracking-[.12em] text-text-dim">Quantity</div>
+              <div className="mt-0.5 font-mono text-[15px] font-bold text-text-bright">{Math.max(1, Number(reviewItem.bundle_quantity ?? reviewItem.stock) || 1)}×</div>
+            </div>
+            <div className="rounded-lg border border-white/[.06] bg-white/[.012] px-3 py-2.5">
+              <div className="text-[8px] font-bold uppercase tracking-[.12em] text-text-dim">Expires</div>
+              <div className="mt-0.5 text-[10px] font-semibold text-text-bright">{formatShortDate(reviewItem.available_until)}</div>
             </div>
           </div>
-        )
-      })()}
 
-      {/* Attendee details — compact professional modal */}
-      {detailLog && (() => {
-        const attendees = detailLog.attendees || []
-        const logTs = detailLog.ts || Number(detailLog.id) || new Date(detailLog.date).getTime() || 0
-        const totalAwarded = attendees.reduce((sum, a) => sum + (Number(a.earned) || 0), 0)
-        const normalizedAttendeeSearch = attendeeSearch.trim().toLowerCase()
-        const filteredAttendees = normalizedAttendeeSearch
-          ? attendees.filter(a =>
-              String(a.name || '').toLowerCase().includes(normalizedAttendeeSearch) ||
-              String(a.cls || '').toLowerCase().includes(normalizedAttendeeSearch)
-            )
-          : attendees
-
-        return (
-          <div
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 p-3 sm:p-5 backdrop-blur-[3px]"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${detailLog.event} attendance`}
-            onMouseDown={e => {
-              if (e.target === e.currentTarget) setDetailLog(null)
-            }}
-          >
-            <div className="w-full max-w-3xl max-h-[84vh] overflow-hidden rounded-2xl border border-gold/20 bg-[#0d0c0b] shadow-2xl">
-              {/* Compact header */}
-              <div className="flex items-center justify-between gap-3 border-b border-white/[.07] px-4 sm:px-5 py-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="truncate text-sm sm:text-base font-bold text-text-bright">{getLogSession(detailLog)?.displayName || detailLog.sessionDisplayName || detailLog.event}</h3>
-                    <span className="rounded-md border border-white/[.08] bg-white/[.025] px-1.5 py-0.5 text-[12px] font-sans text-text-dim">
-                      {attendees.length}/50
-                    </span>
-                    <span className="rounded-md border border-green-500/15 bg-green-500/[.035] px-1.5 py-0.5 text-[12px] font-semibold text-green-400">
-                      {getRunLabel(getLogSession(detailLog))} · GP rewards
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-text-dim">
-                    <span className="font-sans tabular-nums">{formatGMT8Short(logTs)} · {SERVER_TZ_LABEL}</span>
-                    <span className="text-white/15">•</span>
-                    <span>by <strong className="text-gold-light">{detailLog.recorded_by || detailLog.recordedBy || 'System'}</strong></span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => { setAttendeeSearch(''); setDetailLog(null) }}
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light transition-colors"
-                  aria-label="Close attendee details"
-                >
-                  ×
-                </button>
-              </div>
-
-              {/* Summary bar */}
-              <div className="flex items-center justify-between gap-3 border-b border-white/[.06] bg-black/15 px-4 sm:px-5 py-3">
-                <div>
-                  <div className="text-[13px] font-bold uppercase tracking-[.16em] text-gold-light">Attendees</div>
-                  <div className="mt-0.5 text-[13px] text-text-dim">Individual GP-based rewards</div>
-                </div>
-                <div className="flex items-center gap-2.5 rounded-lg border border-gold/15 bg-gold/[.035] px-3 py-2">
-                  <span className="text-[12px] font-bold uppercase tracking-[.12em] text-text-dim">Total</span>
-                  <span className="font-sans text-sm font-bold tabular-nums text-gold-bright">{totalAwarded.toLocaleString()} Coins</span>
-                </div>
-              </div>
-
-              {/* Compact attendee list */}
-              <div className="border-b border-white/[.06] px-3.5 py-2.5 sm:px-4">
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-text-dim">⌕</span>
-                  <input
-                    type="search"
-                    value={attendeeSearch}
-                    onChange={e => setAttendeeSearch(e.target.value)}
-                    placeholder="Search player or class..."
-                    aria-label="Search attendees"
-                    className="w-full rounded-lg border border-white/[.08] bg-black/20 py-2 pl-9 pr-16 text-[12px] text-text-bright outline-none placeholder:text-text-dim focus:border-gold/30"
-                  />
-                  {attendeeSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setAttendeeSearch('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-[11px] text-text-dim hover:text-text-bright"
-                      aria-label="Clear attendee search"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="max-h-[60vh] overflow-y-auto p-3.5 sm:p-4">
-                {attendees.length === 0 ? (
-                  <div className="py-10 text-center text-xs text-text-dim italic">
-                    No attendee details saved for this log.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
-                    {filteredAttendees.map((a, idx) => (
-                      <div
-                        key={`${a.name}-${idx}`}
-                        className="min-w-0 rounded-lg border border-white/[.07] bg-[#12110f] px-3 py-2.5 transition-colors hover:border-gold/20"
-                      >
-                        <div className="flex items-start gap-2.5">
-                          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.05] text-[13px] font-sans font-bold text-gold-light">
-                            {idx + 1}
-                          </span>
-
-                          <div className="min-w-0 flex-1">
-                            <div className="whitespace-normal break-words text-[15px] font-bold leading-5 text-text-bright" title={a.name}>{a.name}</div>
-                            <div className="mt-0.5 whitespace-normal break-words text-[12px] leading-4 text-text-dim" title={a.cls || 'Member'}>{a.cls || 'Member'}</div>
-                          </div>
-
-                          {isElder && (
-                            <button
-                              type="button"
-                              onClick={() => removeAttendee(detailLog, a)}
-                              disabled={removingAttendeeKey === `${detailLog.id}-${a.memberId || a.name}`}
-                              title={`Remove ${a.name} from this attendance record`}
-                              aria-label={`Remove ${a.name} from this attendance record`}
-                              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-red-500/15 text-[13px] text-red-300/70 transition-colors hover:border-red-400/30 hover:bg-red-500/[.06] hover:text-red-300 disabled:opacity-40"
-                            >
-                              {removingAttendeeKey === `${detailLog.id}-${a.memberId || a.name}` ? '…' : '×'}
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="mt-2.5 grid grid-cols-3 gap-1.5 border-t border-white/[.06] pt-2">
-                          <div className="rounded-md bg-black/15 px-2 py-1.5">
-                            <div className="text-[9px] font-semibold uppercase tracking-[.1em] text-text-dim">GP</div>
-                            <div className="mt-0.5 whitespace-nowrap text-[11px] font-sans font-semibold text-text-bright">{a.gp != null ? formatGp(a.gp) : '—'}</div>
-                          </div>
-                          <div className="rounded-md bg-black/15 px-2 py-1.5">
-                            <div className="text-[9px] font-semibold uppercase tracking-[.1em] text-text-dim">Bonus</div>
-                            <div className="mt-0.5 whitespace-nowrap text-[11px] font-sans font-semibold text-gold-light">+{(a.gpBonus ?? 0).toLocaleString()}</div>
-                          </div>
-                          <div className="rounded-md bg-green-500/[.035] px-2 py-1.5">
-                            <div className="text-[9px] font-bold uppercase tracking-[.1em] text-green-400/80">Earned</div>
-                            <div className="mt-0.5 whitespace-nowrap text-[12px] font-sans font-bold tabular-nums text-green-300">+{(a.earned || 0).toLocaleString()}</div>
-                          </div>
-                        </div>
-
-                        <div className="mt-2 flex items-center gap-2 text-[11px] font-sans text-text-dim sm:hidden">
-                          <span>Base +{(a.baseCoins ?? 0).toLocaleString()}</span>
-                          <span className="text-white/15">•</span>
-                          <span>GP bonus +{(a.gpBonus ?? 0).toLocaleString()}</span>
-                        </div>
-                      </div>
-                    ))}
-                    {attendees.length > 0 && filteredAttendees.length === 0 && (
-                      <div className="py-10 text-center">
-                        <div className="text-[13px] font-semibold text-text-bright">No players found</div>
-                        <div className="mt-1 text-[11px] text-text-dim">Try a different player name or class.</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+          <div className="rounded-lg border border-white/[.06] bg-white/[.015] px-3 py-2.5 text-[10px] leading-4 text-text-dim">
+            {reviewItem.description || 'No description provided.'}
           </div>
-        )
-      })()}
 
+          {canReview && <div className="flex flex-col-reverse gap-2 border-t border-white/[.06] pt-3 sm:flex-row sm:justify-end">
+            <button type="button" disabled={busy} onClick={reject} className="rounded-lg border border-red-400/20 px-3.5 py-2.5 text-[9px] font-bold uppercase tracking-[.1em] text-red-300 transition hover:border-red-400/35 hover:bg-red-400/[.04]">Reject</button>
+            <button type="button" disabled={busy} onClick={() => openEdit(reviewItem)} className="rounded-lg border border-white/[.09] px-3.5 py-2.5 text-[9px] font-bold uppercase tracking-[.1em] text-text-dim transition hover:border-white/[.16] hover:text-text-bright">Edit</button>
+            <button type="button" disabled={busy} onClick={approve} className="rounded-lg border border-emerald-400/25 bg-emerald-400/[.06] px-4 py-2.5 text-[9px] font-bold uppercase tracking-[.1em] text-emerald-300 transition hover:border-emerald-400/40 hover:bg-emerald-400/[.1]">{busy ? 'Processing…' : 'Approve Listing'}</button>
+          </div>}
+        </div>
+      </Modal>}
+
+      {distributionPurchase && <Modal title="Complete Distribution" onClose={() => !busy && setDistributionPurchase(null)}><div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[.025] p-4"><div className="text-[9px] font-bold uppercase tracking-[.16em] text-emerald-300/70">Paid Purchase</div><div className="mt-1 font-spectral text-xl font-bold text-text-bright">{itemName(distributionPurchase.item_id)}</div><div className="mt-1 text-[11px] text-text-dim">Buyer: {memberName(distributionPurchase.buyer_id)} · Qty {itemPackageQuantity(distributionPurchase.item_id)}×</div><div className="mt-2 font-mono text-lg font-bold text-gold-bright">{formatCoins(distributionPurchase.total_price)} coins</div></div><div className="mt-4"><Field label="Distribution Note" hint="Optional delivery or character/account note."><textarea className="min-h-[95px] w-full resize-y rounded-lg border border-white/[.09] bg-black/25 px-3 py-2.5 text-sm text-text outline-none focus:border-gold/35" maxLength={500} value={distributionNote} onChange={e => setDistributionNote(e.target.value)} placeholder="Delivered in-game…" /></Field></div><div className="mt-5 flex justify-end gap-2"><button type="button" disabled={busy} onClick={() => setDistributionPurchase(null)} className="rounded-lg border border-white/[.08] px-4 py-2.5 text-[10px] font-bold uppercase text-text-dim">Cancel</button><button type="button" disabled={busy} onClick={distribute} className="rounded-lg border border-emerald-400/25 bg-emerald-400/[.06] px-5 py-2.5 text-[10px] font-bold uppercase text-emerald-300">{busy ? 'Updating…' : 'Mark as Distributed'}</button></div></Modal>}
     </div>
+    </>
   )
 }
