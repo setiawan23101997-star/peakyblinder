@@ -10,7 +10,7 @@ const navItems = [
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆' },
   { id: 'calendar', label: 'Calendar', icon: '📅' },
   { id: 'notice-board', label: 'Notice Board', icon: '📜' },
-  { id: 'admin-log', label: 'Admin', icon: '🛡' , staffOnly: true },
+  { id: 'admin-log', label: 'Admin CP', icon: '🛡' , staffOnly: true },
 ]
 
 const FALLBACK_REGIONS = [
@@ -864,8 +864,8 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
   return (
     <div className="min-h-screen bg-transparent text-text-bright">
       <nav className="fixed inset-x-0 top-0 z-50 border-b border-gold/15 bg-[#080706]/95 shadow-[0_8px_35px_rgba(0,0,0,.35)] backdrop-blur-xl">
-        <div className="mx-auto flex h-[72px] w-full max-w-[1900px] items-center gap-3 px-3 sm:px-5 lg:px-7 2xl:px-6">
-          <div className="flex w-[270px] min-w-[220px] shrink-0 items-center gap-2.5 xl:w-[285px]">
+        <div className="mx-auto flex h-[64px] w-full max-w-[1900px] items-center gap-2 overflow-hidden px-2 md:h-[72px] md:gap-3 md:overflow-visible md:px-5 lg:px-7 2xl:px-6">
+          <div className="flex w-auto min-w-0 shrink-0 items-center gap-2.5 md:w-[270px] md:min-w-[220px] xl:w-[285px]">
             <button
               type="button"
               onClick={() => setMobileOpen(value => !value)}
@@ -885,7 +885,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-gold/[0.07] text-xl shadow-[0_0_24px_rgba(212,175,55,.06)] transition group-hover:border-gold/50">
                 🪙
               </span>
-              <span className="hidden min-w-0 sm:block">
+              <span className="hidden min-w-0 md:block">
                 <span className="block font-spectral text-[18px] font-bold tracking-wide text-gold-light group-hover:text-gold-bright">PeakyBlinder</span>
                 <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim/75">Clan Command Center</span>
               </span>
@@ -931,8 +931,17 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
             </div>
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 lg:gap-2">
-            <div className="md:hidden">
+          <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
+            {currentUser && (
+              <div className="flex h-10 shrink-0 items-center gap-1 rounded-xl border border-gold/10 bg-gold/[0.025] px-2 md:hidden">
+                <span className="text-[13px]">🪙</span>
+                <span className="font-mono text-[12px] font-semibold text-gold-light">
+                  {Number(currentUser.coins || 0).toLocaleString()}
+                </span>
+              </div>
+            )}
+
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center md:hidden">
               <NotificationBell ctx={ctx} onNavigate={navigate} />
             </div>
 
@@ -967,23 +976,23 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                   <button
                     type="button"
                     onClick={() => setUserMenuOpen(value => !value)}
-                    className={`flex h-11 items-center gap-2 rounded-xl border px-2.5 transition ${
+                    className={`flex h-10 w-10 items-center justify-center gap-2 rounded-xl border px-0 transition lg:h-11 lg:w-auto lg:justify-start lg:px-2.5 ${
                       userMenuOpen ? 'border-gold/25 bg-gold/[0.07]' : 'border-white/[0.06] bg-black/15 hover:border-gold/20 hover:bg-white/[0.025]'
                     }`}
                     aria-expanded={userMenuOpen}
                   >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-gold/25 bg-gold/[0.08] text-[13px] font-bold text-gold-light">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gold/25 bg-gold/[0.08] text-[13px] font-bold text-gold-light">
                       {(currentUser.name || 'U').charAt(0).toUpperCase()}
                     </span>
                     <span className="hidden max-w-[125px] text-left lg:block">
                       <span className="block truncate text-[13px] font-semibold text-text-bright">{currentUser.name}</span>
                       <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-text-dim">{currentUser.role}</span>
                     </span>
-                    <span className="text-[11px] text-text-dim">▾</span>
+                    <span className="hidden text-[11px] text-text-dim lg:block">▾</span>
                   </button>
 
                   {userMenuOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-64 overflow-hidden rounded-xl border border-gold/20 bg-[#0b0908] shadow-[0_22px_65px_rgba(0,0,0,.85)]">
+                    <div className="absolute right-0 top-full mt-2 w-[min(16rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-gold/20 bg-[#0b0908] shadow-[0_22px_65px_rgba(0,0,0,.85)]">
                       <div className="border-b border-white/[0.07] bg-black/20 px-4 py-4">
                         <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-dim">Signed in as</div>
                         <div className="mt-1.5 truncate text-[15px] font-semibold text-text-bright">{currentUser.name}</div>
