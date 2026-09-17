@@ -94,6 +94,29 @@ function prettyDetails(details) {
     .join(' · ')
 }
 
+function targetChanges(details) {
+  const raw = details?.targets
+  if (!Array.isArray(raw)) return []
+
+  return raw.map(item => {
+    if (!item || typeof item !== 'object') return null
+
+    const before = Number(item.coins_before ?? item.before ?? 0)
+    const after = Number(item.coins_after ?? item.after ?? 0)
+    const delta = Number.isFinite(Number(item.coin_delta))
+      ? Number(item.coin_delta)
+      : after - before
+
+    return {
+      id: item.id ?? null,
+      name: item.name || item.member_name || item.username || 'Member',
+      before,
+      after,
+      delta,
+    }
+  }).filter(Boolean)
+}
+
 function getFieldChanges(details) {
   const raw = details?.field_changes
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
@@ -674,7 +697,7 @@ function ActivityLogPanel({
 
   const renderLog = log => {
     const changes = Array.isArray(getFieldChanges(log?.details)) ? getFieldChanges(log?.details) : []
-    const coinTargets = Array.isArray(targetChanges(log?.details)) ? targetChanges(log?.details) : []
+    const coinTargets = targetChanges(log?.details)
     let detailsText = ''
     try { detailsText = prettyDetails(log?.details) || '' } catch { detailsText = '' }
     const target = targetName(log, allMembers)
