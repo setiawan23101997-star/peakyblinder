@@ -40,7 +40,7 @@ const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 const URGENT_MS = 5 * 60 * 1000
 const RECENT_WIN_MS = 7 * 24 * 60 * 60 * 1000
-const JUST_ENDED_MS = 5 * 60 * 1000
+const EVENT_URGENT_MS = 60 * 60 * 1000
 const MAX_RECENT_WINS = 3
 const MAX_LIVE_AUCTIONS = 5
 const DEBUG_WINS = false
@@ -382,25 +382,9 @@ const SCHEDULE_BY_DAY = (() => {
 })()
 
 export default function Dashboard({ ctx, setPage }) {
-  const { members, auctions, currentUser, region } = ctx
-  const activeRegion = useMemo(() => {
-    if (!region) return DEFAULT_REGION
-    return {
-      ...region,
-      code: String(region.code || region.id || '').trim().toLowerCase(),
-      flag: region.flag || (String(region.code || region.id || '').trim().toLowerCase() === 'id' ? '🇮🇩' : ''),
-      name: region.name || region.label || region.id,
-      label: region.label || '',
-    }
-  }, [region])
-
+  const { members, auctions, currentUser } = ctx
   const isAdmin = currentUser?.role === 'Admin'
   const isElder = isAdmin || currentUser?.role === 'Elder' || currentUser?.role === 'Master'
-
-  const visibleMembers = useMemo(
-    () => isAdmin ? members : members.filter(m => m.role !== 'Admin'),
-    [members, isAdmin]
-  )
 
   const activeAuctions = useMemo(() => {
     return auctions
@@ -435,24 +419,16 @@ export default function Dashboard({ ctx, setPage }) {
     <div className="w-full min-w-0 max-w-full overflow-x-hidden space-y-5 sm:space-y-8 pb-8 sm:pb-12">
       <HeroSection
         currentUser={currentUser}
-        activeRegion={activeRegion}
-        setPage={setPage}
-        isElder={isElder}
-        goAttendance={goAttendance}
-        goAuctions={goAuctions}
-        goMembers={goMembers}
-        goCalendar={goCalendar}
       />
 
-      <ClanPulse
-        memberCount={visibleMembers.length}
-        activeAuctionCount={totalActiveAuctions}
-        onOpenMembers={goMembers}
-        onOpenAuctions={goAuctions}
-        onOpenCalendar={goCalendar}
-      />
+      <UpcomingEventPreview onOpenCalendar={goCalendar} />
 
-      <ClanNoticePreview ctx={ctx} onOpenAll={goNoticeBoard} />
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 min-w-0" aria-label="Quick actions">
+        <ActionTile icon="◷" label="Attendance" hint={isElder ? 'Record & Award Coins' : 'View Attendance'} onClick={goAttendance} />
+        <ActionTile icon="◇" label="Live Auctions" hint="Bid On Clan Items" onClick={goAuctions} />
+        <ActionTile icon="♙" label={isElder ? 'Manage Members' : 'View Members'} hint={isElder ? 'Add, Edit & Remove' : 'See Clan Roster'} onClick={goMembers} />
+        <ActionTile icon="▣" label="Event Calendar" hint="Check Upcoming Events" onClick={goCalendar} />
+      </section>
 
       <LiveAuctionsStrip
         auctions={activeAuctions}
@@ -467,7 +443,7 @@ export default function Dashboard({ ctx, setPage }) {
         currentUser={currentUser}
       />
 
-      <UpcomingEventPreview onOpenCalendar={goCalendar} />
+      <ClanNoticePreview ctx={ctx} onOpenAll={goNoticeBoard} />
 
 
     </div>
@@ -477,8 +453,7 @@ export default function Dashboard({ ctx, setPage }) {
 /* ── Hero ──────────────────────────────────────────────────────────── */
 
 const HeroSection = React.memo(function HeroSection({
-  currentUser, activeRegion, isElder,
-  goAttendance, goAuctions, goMembers, goCalendar,
+  currentUser,
 }) {
   const now = useNow()
 
@@ -511,33 +486,29 @@ const HeroSection = React.memo(function HeroSection({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 min-w-0 w-full xl:w-auto xl:min-w-[380px]">
-            <div className="min-w-0 rounded-xl border border-gold/15 bg-black/25 px-3 py-3 sm:px-4 sm:py-3.5">
-              <div className="text-[10px] sm:text-[11px] text-text-dim font-bold uppercase tracking-[0.12em] sm:tracking-[0.16em] truncate">
-                Server · {SERVER_TZ_LABEL}
+          <div className="min-w-0 w-full xl:w-auto xl:min-w-[390px]">
+            <div className="rounded-xl border border-gold/15 bg-black/25 px-3.5 py-3 sm:px-4 sm:py-3.5">
+              <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <div className="min-w-0 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.12em] sm:tracking-[0.16em] text-text-dim truncate">
+                  Server {SERVER_TZ_LABEL}
+                </div>
+                <div className="min-w-0 text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.12em] sm:tracking-wider text-gold-dim truncate">
+                  Your Time · {getLocalZoneLabel()}
+                </div>
               </div>
-              <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-1">
-                <span className="text-xl sm:text-2xl md:text-[1.7rem]">
-                  {serverClock.time}
-                </span>
-                <span className="text-[10px] sm:text-sm text-gold-light/60 ml-0.5">
-                  :{serverSec}
-                </span>
-              </div>
-              <div className="text-[10px] sm:text-[11px] text-text-dim mt-1.5 whitespace-nowrap">
-                {serverClock.day.slice(0, 3)} · {serverClock.date}
-              </div>
-            </div>
 
-            <div className="rounded-xl border border-gold/15 bg-black/25 px-3.5 py-3 min-w-0">
-              <div className="text-[10px] sm:text-[11px] text-gold-dim font-semibold uppercase tracking-[0.12em] sm:tracking-wider flex items-center gap-1.5 truncate">
-                <span>Your Time · {getLocalZoneLabel()}</span>
+              <div className="mt-1.5 flex min-w-0 items-baseline justify-between gap-3">
+                <div className="min-w-0 font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap">
+                  <span className="text-xl sm:text-2xl md:text-[1.65rem]">{serverClock.time}</span>
+                  <span className="ml-1 text-[9px] sm:text-[10px] text-gold-light/45">:{serverSec}</span>
+                </div>
+                <div className="min-w-0 font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap">
+                  <span className="text-xl sm:text-2xl md:text-[1.65rem]">{localClock.time}</span>
+                </div>
               </div>
-              <div className="font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap mt-1">
-                <span className="text-xl sm:text-2xl md:text-[1.7rem]">{localClock.time}</span>
-              </div>
-              <div className="text-[10px] sm:text-[11px] text-text-dim mt-1.5 whitespace-nowrap flex items-center gap-1.5">
-                <span className="text-gold-light">●</span>
+
+              <div className="mt-1.5 flex min-w-0 items-center justify-between gap-3 text-[10px] sm:text-[11px] text-text-dim whitespace-nowrap">
+                <span className="truncate">{serverClock.day.slice(0, 3)} · {serverClock.date}</span>
                 <span className="truncate">{AUTO_LOCAL_TZ}</span>
               </div>
             </div>
@@ -545,157 +516,7 @@ const HeroSection = React.memo(function HeroSection({
         </div>
       </section>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 min-w-0">
-        <ActionTile icon="◷" label="Attendance" hint={isElder ? 'Record & Award Coins' : 'View Attendance History'} onClick={goAttendance} />
-        <ActionTile icon="◇" label="Live Auctions" hint="Bid On Clan Items" onClick={goAuctions} />
-        <ActionTile icon="♙" label={isElder ? 'Manage Members' : 'View Members'} hint={isElder ? 'Add, Edit & Remove' : 'See Clan Roster'} onClick={goMembers} />
-        <ActionTile icon="▣" label="Event Calendar" hint="Check Upcoming Events" onClick={goCalendar} />
-      </section>
     </>
-  )
-})
-
-/* ── Clan Pulse ────────────────────────────────────────────────────── */
-
-const ClanPulse = React.memo(function ClanPulse({
-  memberCount, activeAuctionCount, onOpenMembers, onOpenAuctions, onOpenCalendar,
-}) {
-  const now = useNow()
-
-  const serverParts = useMemo(() => getZoneParts(now, SERVER_TZ), [now])
-  const todayEvents = SCHEDULE_BY_DAY[serverParts.dow] || []
-
-  const nextEvent = useMemo(() => {
-    let best = null
-
-    for (const ev of ALL_EVENTS) {
-      const ts = nextOccurrenceInZone(ev.dow, ev.time, now, SERVER_TZ)
-      if (!best || ts < best.ts) {
-        best = { ...ev, ts }
-      }
-    }
-
-    return best
-  }, [now])
-
-  const nextEventTimes = useMemo(() => {
-    if (!nextEvent) return null
-    const server = formatInZone(nextEvent.ts, SERVER_TZ)
-    const local = formatInAutoLocalZone(nextEvent.ts)
-    return {
-      serverTime: server.time,
-      serverDay: server.day,
-      localTime: local.time,
-      localDay: local.day,
-      localZone: getLocalZoneLabel(),
-    }
-  }, [nextEvent])
-
-  return (
-    <section
-      aria-label="Clan Pulse"
-      className="relative overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/78 shadow-[0_12px_34px_rgba(0,0,0,0.18)]"
-    >
-      <div
-        className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/35 to-transparent"
-        aria-hidden="true"
-      />
-
-      <div className="flex min-w-0 flex-col lg:flex-row lg:items-stretch">
-        <div className="flex shrink-0 items-center gap-2.5 border-b border-white/[0.055] px-4 py-3 lg:w-[150px] lg:border-b-0 lg:border-r lg:px-4">
-          <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-bright shadow-[0_0_9px_rgba(242,204,96,0.7)]"
-            aria-hidden="true"
-          />
-          <div className="min-w-0">
-            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-gold-light">
-              Clan Pulse
-            </div>
-            <div className="mt-0.5 text-[10px] text-text-dim">
-              Live overview
-            </div>
-          </div>
-        </div>
-
-        <div className="grid min-w-0 flex-1 grid-cols-2 divide-x divide-y divide-white/[0.055] sm:grid-cols-3 sm:divide-y-0">
-          <button
-            type="button"
-            onClick={onOpenAuctions}
-            className="group flex min-w-0 items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-white/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[14px] text-gold-light">
-              ◇
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim">
-                Live Auctions
-              </span>
-              <span className="mt-0.5 block font-mono text-[18px] font-bold leading-none tabular-nums text-gold-bright group-hover:text-gold-light">
-                {activeAuctionCount}
-              </span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenMembers}
-            className="group flex min-w-0 items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-white/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[14px] text-gold-light">
-              ♟
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim">
-                Members
-              </span>
-              <span className="mt-0.5 block font-mono text-[18px] font-bold leading-none tabular-nums text-text-bright group-hover:text-gold-light">
-                {memberCount}
-              </span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenCalendar}
-            aria-label={`Open Clan Calendar — ${nextEvent?.name || 'Next Event'}`}
-            className="group flex min-w-0 flex-1 items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-gold/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 sm:px-4"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.045] text-[11px] text-gold-light transition-all group-hover:border-gold/35 group-hover:bg-gold/[0.07] group-hover:text-gold-bright">
-              →
-            </span>
-
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[10px] font-bold uppercase tracking-[0.14em] text-gold-dim">
-                Next Event
-              </span>
-
-              {nextEvent && nextEventTimes ? (
-                <>
-                  <span className="mt-0.5 block truncate text-[14px] font-semibold leading-tight text-text-bright group-hover:text-gold-light">
-                    {nextEvent.name}
-                  </span>
-
-                  <span className="mt-1 block truncate font-mono text-[10px] leading-none text-gold-light/85">
-                    {nextEventTimes.localTime} · {nextEventTimes.localDay}
-                  </span>
-                </>
-              ) : (
-                <span className="mt-0.5 block text-[10px] text-text-dim">
-                  No event scheduled
-                </span>
-              )}
-            </span>
-
-            <span
-              className="hidden shrink-0 pr-1 text-[13px] text-text-dim/40 transition-transform group-hover:translate-x-0.5 group-hover:text-gold-light sm:block"
-              aria-hidden="true"
-            >
-              →
-            </span>
-          </button>
-        </div>
-      </div>
-    </section>
   )
 })
 
@@ -718,7 +539,7 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
   const type = TYPE[next.type]
   const remaining = Math.max(0, next.nextTs - now)
   const localEq = formatInAutoLocalZone(next.nextTs)
-  const urgent = remaining > 0 && remaining < URGENT_MS
+  const urgent = remaining > 0 && remaining < EVENT_URGENT_MS
 
   return (
     <section aria-label="Upcoming clan event" className="relative">
@@ -968,17 +789,17 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
             <div className="min-w-0 rounded-lg border border-gold/10 bg-gold/[0.025] px-3 py-1.5 sm:px-3.5 sm:py-3">
               <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Starting Bid</div>
               <div className="mt-1 flex min-w-0 items-baseline gap-1 sm:mt-2 sm:gap-1.5">
-                <span className="truncate font-mono text-[1.15rem] font-bold leading-none tabular-nums text-gold-bright sm:text-[1.45rem]">
+                <span className="truncate font-mono text-[1.15rem] font-bold leading-none tabular-nums text-text-bright sm:text-[1.45rem]">
                   {startingBid.toLocaleString()}
                 </span>
-                <span className="shrink-0 text-[8px] font-semibold uppercase tracking-[0.06em] text-gold-light/55 sm:text-[9px] sm:tracking-[0.08em]">Coins</span>
+                <span className="shrink-0 text-[8px] font-semibold uppercase tracking-[0.06em] text-text-dim sm:text-[9px] sm:tracking-[0.08em]">Coins</span>
               </div>
             </div>
 
             <div className={`min-w-0 rounded-lg border px-3 py-1.5 text-right sm:px-3.5 sm:py-3 ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
               <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Ends In</div>
               <div className={`mt-1 truncate font-mono text-[1.05rem] font-bold leading-none tabular-nums sm:mt-1.5 sm:text-[1.25rem] lg:text-[1.35rem] ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
-                style={{ color: isEnding ? '#f87171' : rarity.color }}>
+                style={{ color: isEnding ? '#f87171' : '#9ca3af' }}>
                 {timeLabel}
               </div>
             </div>
@@ -1040,17 +861,17 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
             <div className="rounded-lg border border-gold/10 bg-gold/[0.025] px-3 py-2.5">
               <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Starting Bid</div>
               <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="font-mono text-[1.35rem] font-bold leading-none tabular-nums text-gold-bright">
+                <span className="font-mono text-[1.35rem] font-bold leading-none tabular-nums text-text-bright">
                   {startingBid.toLocaleString()}
                 </span>
-                <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-gold-light/55">Coins</span>
+                <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-text-dim">Coins</span>
               </div>
             </div>
 
             <div className={`rounded-lg border px-3 py-2.5 text-right ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
               <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Ends In</div>
               <div className={`mt-1 font-mono text-[1.25rem] font-bold leading-none tabular-nums ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
-                style={{ color: isEnding ? '#f87171' : rarity.color }}>
+                style={{ color: isEnding ? '#f87171' : '#9ca3af' }}>
                 {timeLabel}
               </div>
             </div>
@@ -1142,7 +963,6 @@ const RecentWinRow = React.memo(function RecentWinRow({
   const { auction: a, name: winnerName, price, endedAt } = item
   const rarity = RARITY_COLORS[a.rarity] || RARITY_COLORS.epic
   const isMe = winnerName && currentUserName === winnerName
-  const justEnded = endedAt > 0 && (now - endedAt) < JUST_ENDED_MS
   const agoLabel = formatRelativePast(now - endedAt)
   const hasMultipleWins = totalWins > 1
 
@@ -1196,11 +1016,6 @@ const RecentWinRow = React.memo(function RecentWinRow({
               <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: rarity.color }}>
                 {a.rarity}
               </span>
-              {justEnded && (
-                <span className="rounded-full border border-gold/20 bg-gold/[0.06] px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-wider text-gold-light">
-                  Just ended
-                </span>
-              )}
             </div>
             <div className="mt-0.5 truncate text-[14px] font-semibold text-text-bright">{a.name}</div>
           </div>
@@ -1230,8 +1045,8 @@ const RecentWinRow = React.memo(function RecentWinRow({
         </div>
 
         <div className="text-right">
-          <div className={`text-[10px] font-semibold ${justEnded ? 'text-gold-light' : 'text-text-dim'}`}>
-            {justEnded ? 'Just ended' : agoLabel}
+          <div className="text-[10px] font-semibold text-text-dim">
+            {agoLabel}
           </div>
         </div>
       </div>
@@ -1283,8 +1098,8 @@ const RecentWinRow = React.memo(function RecentWinRow({
             <span className="text-[14px] text-gold-bright">{price.toLocaleString()}</span>
             <span className="text-[7px] font-semibold text-gold-light/55">coins</span>
           </div>
-          <div className={`mt-1 text-[8px] font-semibold ${justEnded ? 'text-gold-light' : 'text-text-dim'}`}>
-            {justEnded ? 'Just ended' : agoLabel}
+          <div className="mt-1 text-[8px] font-semibold text-text-dim">
+            {agoLabel}
           </div>
         </div>
       </div>
