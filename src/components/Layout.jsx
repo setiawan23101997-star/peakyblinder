@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import ChangePasswordModal from './ChangePasswordModal'
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: '⚔️' },
+  { id: 'dashboard', label: 'Dashboard', icon: '📊' },
   { id: 'members', label: 'Members', icon: '👥' },
   { id: 'attendance', label: 'Attendance', icon: '📋' },
   { id: 'auctions', label: 'Auctions', icon: '🔨' },
@@ -999,9 +999,15 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
 
           <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
             {currentUser && (
-              <div className="flex h-10 shrink-0 items-center gap-1 rounded-xl border border-gold/10 bg-gold/[0.025] px-2 md:hidden">
-                <span className="text-[13px]">🪙</span>
-                <span className="font-mono text-[12px] font-semibold text-gold-light">
+              <div className={`flex h-10 shrink-0 items-center gap-1 rounded-xl border px-2 md:hidden ${
+                Number(displayCoins || 0) > 0
+                  ? 'border-gold/10 bg-gold/[0.025]'
+                  : 'border-white/[0.06] bg-white/[0.015]'
+              }`}>
+                <span className={`text-[13px] ${Number(displayCoins || 0) > 0 ? '' : 'opacity-40 grayscale'}`}>🪙</span>
+                <span className={`font-mono text-[12px] font-semibold ${
+                  Number(displayCoins || 0) > 0 ? 'text-gold-light' : 'text-text-dim/60'
+                }`}>
                   {Number(displayCoins || 0).toLocaleString()}
                 </span>
               </div>
@@ -1028,11 +1034,17 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                   <NotificationBell ctx={ctx} onNavigate={navigate} />
                 </div>
 
-                <div className="hidden lg:flex shrink-0 items-center gap-2 rounded-xl border border-gold/10 bg-gold/[0.025] px-2.5 py-2">
-                  <span className="text-[13px]">🪙</span>
+                <div className={`hidden lg:flex shrink-0 items-center gap-2 rounded-xl border px-2.5 py-2 ${
+                  Number(displayCoins || 0) > 0
+                    ? 'border-gold/10 bg-gold/[0.025]'
+                    : 'border-white/[0.06] bg-white/[0.015]'
+                }`}>
+                  <span className={`text-[13px] ${Number(displayCoins || 0) > 0 ? '' : 'opacity-40 grayscale'}`}>🪙</span>
                   <div className="leading-tight">
                     <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim">Coins</div>
-                    <div className="mt-0.5 font-mono text-[12px] font-semibold text-gold-light">
+                    <div className={`mt-0.5 font-mono text-[12px] font-semibold ${
+                      Number(displayCoins || 0) > 0 ? 'text-gold-light' : 'text-text-dim/60'
+                    }`}>
                       {Number(displayCoins || 0).toLocaleString()}
                     </div>
                   </div>
