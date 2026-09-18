@@ -26,6 +26,7 @@ const WEEKLY_SCHEDULE = {
     { time: '13:00', type: 'treasure', name: "Sindri's Treasure Island", subtitle: '13:00 – 14:00' },
     { time: '19:00', type: 'boss', name: 'Glasir Forest', boss: 'Divine Beast of Void Ulnos' },
     { time: '20:00', type: 'treasure', name: "Sindri's Treasure Island", subtitle: '20:00 – 21:00' },
+    { time: '21:00', type: 'sanctuary', name: 'Clan Sanctuary', subtitle: '21:00 – 22:00' },
   ],
   0: [
     { time: '20:00', type: 'arena', name: 'Clan Arena Tournament', subtitle: 'See Announcement' },
@@ -49,6 +50,7 @@ const TYPE = {
   boss:     { color: '#ef4444', icon: '👾', label: 'World Boss' },
   battle:   { color: '#3b82f6', icon: '⚔️', label: 'Server Battle' },
   treasure: { color: '#eab308', icon: '🏝️', label: 'Sindri Island' },
+  sanctuary:{ color: '#22c55e', icon: '🛡️', label: 'Clan Sanctuary' },
   arena:    { color: '#a855f7', icon: '🏟️', label: 'Arena' },
 }
 
