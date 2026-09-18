@@ -31,6 +31,7 @@ const WEEKLY_SCHEDULE = {
     { time: '13:00', type: 'treasure', name: "Sindri's Treasure Island", subtitle: '13:00 – 14:00' },
     { time: '19:00', type: 'boss', name: 'Glasir Forest', boss: 'Divine Beast of Void Ulnos' },
     { time: '20:00', type: 'treasure', name: "Sindri's Treasure Island", subtitle: '20:00 – 21:00' },
+    { time: '21:00', type: 'battle', name: 'Clan Sanctuary', subtitle: '21:00 – 22:00' },
   ],
   0: [
     { time: '20:00', type: 'arena', name: 'Clan Arena Tournament', subtitle: 'See Announcement' },
@@ -393,7 +394,7 @@ const CalendarHeader = React.memo(function CalendarHeader({
               Server schedule is authoritative. Local times are converted automatically.
             </p>
 
-            <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[12px]">
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[9px]">
               <span className="font-semibold text-text-dim">
                 <span className="font-mono text-gold-light">{totalWeeklyEvents}</span>
                 <span className="ml-1.5">events this week</span>
