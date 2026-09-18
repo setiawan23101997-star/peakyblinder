@@ -715,7 +715,11 @@ function ActivityLogPanel({
               {safeText(log?.action) || 'Unknown Action'}
               <span className="ml-1 text-[13px] font-normal text-text-dim">· {safeText(log?.entityType) || 'System'}</span>
             </div>
-            {target && <div className="mt-1 text-[14px] text-text-bright">Target: <span className="font-bold text-gold-light">{safeText(target)}</span></div>}
+            {target && String(target).trim().toLowerCase() !== String(log?.actorName || '').trim().toLowerCase() && (
+              <div className="mt-1 text-[14px] text-text-bright">
+                Target: <span className="font-bold text-gold-light">{safeText(target)}</span>
+              </div>
+            )}
             {changes.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {changes.map((change, index) => (
@@ -737,7 +741,17 @@ function ActivityLogPanel({
                 </div>
               </div>
             )}
-            {detailsText && <div className="mt-2 break-words text-[13px] leading-6 text-text-dim">{detailsText}</div>}
+            {detailsText && (
+              <details className="mt-2 group">
+                <summary className="inline-flex cursor-pointer select-none items-center gap-1 rounded-md border border-white/[.06] bg-white/[.02] px-2 py-1 text-[11px] font-bold uppercase tracking-[.08em] text-text-dim hover:border-white/[.12] hover:text-text-bright">
+                  <span className="transition-transform group-open:rotate-90">›</span>
+                  Details
+                </summary>
+                <div className="mt-2 break-words rounded-lg border border-white/[.06] bg-black/10 px-3 py-2 text-[12px] leading-5 text-text-dim">
+                  {detailsText}
+                </div>
+              </details>
+            )}
           </div>
           {canDelete && (
             <button
@@ -749,9 +763,11 @@ function ActivityLogPanel({
                 setLogs(prev => prev.filter(item => String(item.id) !== String(log.id)))
                 await recordAdminActivity(supabase, currentUser, 'Delete Audit Log', 'Audit Log', log.id, { deleted_action: log.action, deleted_actor: log.actorName })
               }}
-              className="control-btn danger shrink-0"
+              aria-label="Delete this audit log"
+              title="Delete audit log"
+              className="group/delete flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-400/20 bg-red-400/[.035] text-red-300 transition hover:border-red-400/40 hover:bg-red-400/10 hover:text-red-200 focus:outline-none focus:ring-2 focus:ring-red-400/30"
             >
-              Delete
+              <span aria-hidden="true" className="text-sm transition-transform group-hover/delete:scale-110">🗑</span>
             </button>
           )}
         </div>
@@ -1020,7 +1036,18 @@ export default function AdminAuditLog({ ctx }) {
       {activeTab === 'members' && <section id="staff-member-list">
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><div className="text-[12px] font-black uppercase tracking-[.2em] text-text-dim">Member Management</div><div className="mt-1 text-[13px] text-text-dim">Search first. Open a focused control panel only when you need it.</div></div><div className="text-[14px] text-text-dim">{visibleMembers.length} shown</div></div>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row"><input className="input h-12 min-w-0 flex-1 px-4 text-[14px]" placeholder="🔍 Search member, username, class, or role..." value={search} onChange={e => setSearch(e.target.value)} /><button onClick={() => setShowAddMember(true)} className="btn-gold shrink-0 px-4 text-[14px]">＋ Add Member</button></div>
-        <div className="grid gap-2">{visibleMembers.slice(0, 50).map(member => <div key={member.id} className="flex flex-col gap-3 rounded-2xl border border-white/[.08] bg-[#0c0d10] p-4 sm:flex-row sm:items-center"><div className="flex min-w-0 flex-1 items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gold/10 bg-gold/[.035] text-sm">{member.cls === 'Archer' ? '🏹' : member.cls === 'Warlord' ? '🛡' : member.cls === 'Skald' ? '♫' : member.cls === 'Volva' ? '✦' : member.cls === 'Rune Fighter' ? 'ᚱ' : '⚔'}</div><div className="min-w-0"><div className="truncate text-[14px] font-bold text-white">{member.name}</div><div className="mt-0.5 truncate text-[14px] uppercase tracking-wider text-text-dim">{member.role} · {member.cls || '—'} · Lv. {member.character_level || member.level || 1}</div></div></div><div className="grid grid-cols-2 gap-2 text-right sm:flex sm:items-center"><div><div className="text-[13px] uppercase tracking-wider text-text-dim">Power</div><div className="font-mono text-[13px] font-bold text-gold-light">{formatNumber(member.power)}</div></div><div><div className="text-[13px] uppercase tracking-wider text-text-dim">Coins</div><div className="font-mono text-[13px] font-bold text-text-bright">{formatNumber(member.coins)}</div></div><button onClick={() => setSelectedMember(member)} className="col-span-2 rounded-lg border border-gold/20 bg-gold/[.04] px-4 py-2 text-[14px] font-bold uppercase tracking-wider text-gold-light hover:bg-gold/[.09] sm:col-span-1">Manage</button></div></div>)}{visibleMembers.length > 50 && <div className="py-3 text-center text-[14px] text-text-dim">Showing first 50 results. Use search to find a specific member.</div>}{visibleMembers.length === 0 && <div className="rounded-xl border border-white/[.07] bg-[#0b0c0f] py-10 text-center text-[13px] text-text-dim">No members found.</div>}</div>
+        <div className="grid gap-2">{visibleMembers.slice(0, 50).map(member => <div key={member.id} className="flex flex-col gap-3 rounded-2xl border border-white/[.08] bg-[#0c0d10] p-4 sm:flex-row sm:items-center"><div className="flex min-w-0 flex-1 items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gold/10 bg-gold/[.035] text-sm">{member.cls === 'Archer' ? '🏹' : member.cls === 'Warlord' ? '🛡' : member.cls === 'Skald' ? '♫' : member.cls === 'Volva' ? '✦' : member.cls === 'Rune Fighter' ? 'ᚱ' : '⚔'}</div><div className="min-w-0"><div className="truncate text-[14px] font-bold text-white">{member.name}</div><div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[14px] uppercase tracking-wider text-text-dim">
+  <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-bold tracking-[.08em] ${
+    member.role === 'Master'
+      ? 'border-gold/25 bg-gold/[.07] text-gold-light'
+      : member.role === 'Elder'
+        ? 'border-purple-400/20 bg-purple-400/[.06] text-purple-300'
+        : 'border-white/[.08] bg-white/[.025] text-text-dim'
+  }`}>{member.role}</span>
+  <span className="truncate">· {member.cls || '—'} · Lv. {member.character_level || member.level || 1}</span>
+</div></div></div><div className="grid grid-cols-2 gap-2 text-right sm:flex sm:items-center"><div><div className="text-[13px] uppercase tracking-wider text-text-dim">Power</div><div className="font-mono text-[13px] font-bold text-gold-light">{formatNumber(member.power)}</div></div><div><div className="text-[13px] uppercase tracking-wider text-text-dim">Coins</div><div className={`font-mono text-[13px] font-bold ${
+  Number(member.coins || 0) === 0 ? 'text-text-dim/45' : 'text-text-bright'
+}`}>{formatNumber(member.coins)}</div></div><button onClick={() => setSelectedMember(member)} className="col-span-2 rounded-lg border border-gold/20 bg-gold/[.04] px-4 py-2 text-[14px] font-bold uppercase tracking-wider text-gold-light hover:bg-gold/[.09] sm:col-span-1">Manage</button></div></div>)}{visibleMembers.length > 50 && <div className="py-3 text-center text-[14px] text-text-dim">Showing first 50 results. Use search to find a specific member.</div>}{visibleMembers.length === 0 && <div className="rounded-xl border border-white/[.07] bg-[#0b0c0f] py-10 text-center text-[13px] text-text-dim">No members found.</div>}</div>
       </section>}
 
       {activeTab === 'coins' && <section>
