@@ -54,10 +54,10 @@ const AUTO_LOCAL_TZ = (() => {
 })()
 
 const TYPE = {
-  boss:     { color: '#ef4444', icon: '👾', label: 'World Boss' },
-  battle:   { color: '#3b82f6', icon: '⚔️', label: 'Server Battle' },
-  treasure: { color: '#eab308', icon: '🏝️', label: 'Sindri Island' },
-  arena:    { color: '#a855f7', icon: '🏟️', label: 'Arena' },
+  boss:     { color: '#ef4444', tagColor: '#f2cc60', icon: '👾', label: 'World Boss' },
+  battle:   { color: '#3b82f6', tagColor: '#60a5fa', icon: '⚔️', label: 'Server Battle' },
+  treasure: { color: '#eab308', tagColor: '#f2cc60', icon: '🏝️', label: 'Sindri Island' },
+  arena:    { color: '#a855f7', tagColor: '#c084fc', icon: '🏟️', label: 'Arena' },
 }
 
 const _dtfCache = new Map()
@@ -259,20 +259,6 @@ function EventCalendar({ setPage }) {
   const activeDay = selectedDay ?? todayDow
   const events = SCHEDULE_BY_DAY[activeDay] || []
 
-  const nextEvent = useMemo(() => {
-    let best = null
-
-    for (const event of ALL_EVENTS) {
-      const nextTs = nextOccurrenceInZone(event.dow, event.time, now, SERVER_TZ)
-
-      if (!best || nextTs < best.nextTs) {
-        best = { ...event, nextTs }
-      }
-    }
-
-    return best
-  }, [now])
-
   const weekSummary = useMemo(() => {
     return DAY_ORDER.map(dow => ({
       dow,
@@ -297,13 +283,6 @@ function EventCalendar({ setPage }) {
         onBack={goBack}
       />
 
-      {nextEvent && (
-        <NextEventHero
-          event={nextEvent}
-          now={now}
-        />
-      )}
-
       <section aria-label="Weekly event calendar">
         <div className="mb-2.5 flex min-w-0 items-center justify-between gap-3 sm:mb-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -316,10 +295,10 @@ function EventCalendar({ setPage }) {
             </span>
           </div>
 
-          <div className="hidden items-center gap-2.5 md:flex">
+          <div className="hidden items-center gap-3 md:flex">
             {Object.entries(TYPE).map(([key, type]) => (
-              <div key={key} className="flex items-center gap-1 text-[9px] text-text-dim">
-                <span aria-hidden="true">{type.icon}</span>
+              <div key={key} className="flex items-center gap-1.5 text-[10px] font-medium text-text-dim">
+                <span className="text-sm leading-none" aria-hidden="true">{type.icon}</span>
                 <span>{type.label}</span>
               </div>
             ))}
@@ -332,7 +311,7 @@ function EventCalendar({ setPage }) {
               key={key}
               className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/[0.06] bg-white/[0.02] px-2 py-1 text-[8px] font-semibold text-text-dim"
             >
-              <span aria-hidden="true">{type.icon}</span>
+              <span className="text-sm leading-none" aria-hidden="true">{type.icon}</span>
               {type.label}
             </span>
           ))}
@@ -414,7 +393,7 @@ const CalendarHeader = React.memo(function CalendarHeader({
               Server schedule is authoritative. Local times are converted automatically.
             </p>
 
-            <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[9px]">
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[12px]">
               <span className="font-semibold text-text-dim">
                 <span className="font-mono text-gold-light">{totalWeeklyEvents}</span>
                 <span className="ml-1.5">events this week</span>
@@ -430,20 +409,10 @@ const CalendarHeader = React.memo(function CalendarHeader({
             </div>
           </div>
 
-          <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:gap-2.5 lg:w-[338px]">
-            <ClockBox
-              label="Server"
-              zone={SERVER_TZ_LABEL}
-              value={serverClock.time}
-              sub={`${serverClock.day.slice(0, 3)} · ${serverClock.date}`}
-              accent="server"
-            />
-            <ClockBox
-              label="Your Time"
-              zone={getLocalZoneLabel()}
-              value={localClock.time}
-              sub={AUTO_LOCAL_TZ}
-              accent="local"
+          <div className="w-full shrink-0 lg:w-[360px]">
+            <TimeConversionBar
+              serverClock={serverClock}
+              localClock={localClock}
             />
           </div>
         </div>
@@ -452,118 +421,41 @@ const CalendarHeader = React.memo(function CalendarHeader({
   )
 })
 
-const ClockBox = React.memo(function ClockBox({ label, zone, value, sub, accent }) {
+const TimeConversionBar = React.memo(function TimeConversionBar({ serverClock, localClock }) {
   return (
-    <div className={`relative min-w-0 overflow-hidden rounded-lg border px-3 py-2.5 ${
-      accent === 'local' ? 'border-gold/20 bg-gold/[0.035]' : 'border-white/[0.07] bg-black/20'
-    }`}>
-      <div
-        className={`absolute inset-y-2 left-0 w-px ${
-          accent === 'local' ? 'bg-gold-bright/70' : 'bg-white/15'
-        }`}
-        aria-hidden="true"
-      />
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate text-[8px] font-bold uppercase tracking-[0.15em] text-text-dim sm:text-[9px]">
-          {label}
-        </span>
-        <span className="shrink-0 rounded border border-white/[0.06] bg-black/20 px-1.5 py-0.5 font-mono text-[8px] font-semibold text-gold-light/80">
-          {zone}
-        </span>
-      </div>
-      <div className="mt-1.5 font-mono tabular-nums leading-none">
-        <span className={`text-[20px] font-bold sm:text-[22px] ${
-          accent === 'local' ? 'text-gold-bright' : 'text-text-bright'
-        }`}>
-          {value}
-        </span>
-      </div>
-      <div className="mt-1 truncate text-[8px] text-text-dim sm:text-[9px]">
-        {sub}
+    <div className="relative overflow-hidden rounded-lg border border-white/[0.07] bg-black/20 px-3 py-2.5">
+      <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[8px] font-bold uppercase tracking-[0.15em] text-text-dim sm:text-[9px]">
+              Server
+            </span>
+            <span className="font-mono text-[8px] font-semibold text-gold-light/80">
+              {SERVER_TZ_LABEL}
+            </span>
+            <span className="text-white/15">→</span>
+            <span className="text-[8px] font-bold uppercase tracking-[0.15em] text-text-dim sm:text-[9px]">
+              Your Time
+            </span>
+            <span className="font-mono text-[8px] font-semibold text-gold-light/80">
+              {getLocalZoneLabel()}
+            </span>
+          </div>
+          <div className="mt-1.5 flex min-w-0 items-baseline gap-2.5 font-mono tabular-nums leading-none">
+            <span className="truncate text-[19px] font-bold text-text-bright sm:text-[21px]">
+              {serverClock.time}
+            </span>
+            <span className="text-[11px] font-semibold text-text-dim">→</span>
+            <span className="truncate text-[19px] font-bold text-gold-bright sm:text-[21px]">
+              {localClock.time}
+            </span>
+          </div>
+          <div className="mt-1 truncate text-[8px] text-text-dim sm:text-[9px]">
+            {serverClock.day.slice(0, 3)} · {serverClock.date} · {AUTO_LOCAL_TZ}
+          </div>
+        </div>
       </div>
     </div>
-  )
-})
-
-const NextEventHero = React.memo(function NextEventHero({ event, now }) {
-  const type = TYPE[event.type]
-  const remaining = Math.max(0, event.nextTs - now)
-  const local = formatZone(event.nextTs, AUTO_LOCAL_TZ)
-  const urgent = remaining > 0 && remaining < 5 * 60 * 1000
-
-  return (
-    <section aria-label="Next clan event" className="relative">
-      <div className="mb-2 flex min-w-0 items-center justify-between gap-3 sm:mb-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-bright shadow-[0_0_8px_rgba(242,204,96,0.65)]" aria-hidden="true" />
-          <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-text-dim">
-            Next Event
-          </span>
-        </div>
-
-      </div>
-
-      <div className="relative overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/82 shadow-[0_10px_30px_rgba(0,0,0,0.15)]">
-        <div
-          className="absolute inset-y-0 left-0 w-[3px]"
-          style={{ background: type.color, boxShadow: `0 0 14px ${type.color}30` }}
-          aria-hidden="true"
-        />
-
-        <div className="grid min-w-0 gap-3 px-3.5 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-5 sm:px-4 sm:py-3.5">
-          <div className="flex min-w-0 items-center gap-3">
-            <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-base"
-              style={{ color: type.color, borderColor: `${type.color}30`, background: `${type.color}0b` }}
-              aria-hidden="true"
-            >
-              {type.icon}
-            </div>
-
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: type.color }}>
-                  {type.label}
-                </span>
-                <span className="text-[9px] text-text-dim">
-                  {DAY_NAMES[event.dow].slice(0, 3)} · {to12h(event.time)} server
-                </span>
-              </div>
-              <div className="mt-0.5 truncate text-[15px] font-semibold text-text-bright sm:text-[16px]">
-                {event.name}
-              </div>
-              <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-[9px] text-text-dim">
-                {event.boss && <span className="truncate">👾 {event.boss}</span>}
-                {event.subtitle && <span className="truncate">{event.subtitle}</span>}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex min-w-0 items-center justify-between gap-5 border-t border-white/[0.055] pt-2.5 sm:min-w-[285px] sm:border-t-0 sm:border-l sm:pl-5 sm:pt-0">
-            <div className="min-w-0">
-              <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim">
-                Your Time
-              </div>
-              <div className="mt-1 font-mono text-[12px] font-bold tabular-nums text-gold-light">
-                {local.day.slice(0, 3)} · {local.time}
-              </div>
-            </div>
-
-            <div className="shrink-0 text-right">
-              <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim">
-                Starts In
-              </div>
-              <div
-                className={`mt-1 whitespace-nowrap font-mono text-[17px] font-bold leading-none tabular-nums sm:text-[18px] ${urgent ? 'motion-safe:animate-pulse' : ''}`}
-                style={{ color: urgent ? '#f87171' : type.color }}
-              >
-                {formatCountdown(remaining)}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
   )
 })
 
@@ -693,8 +585,8 @@ const EventRow = React.memo(function EventRow({ event, dow, now }) {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
               <span
-                className="text-[9px] font-bold uppercase tracking-[0.15em]"
-                style={{ color: type.color }}
+                className="rounded-full border border-white/[0.08] bg-white/[0.025] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.15em]"
+                style={{ color: type.tagColor }}
               >
                 {type.label}
               </span>
@@ -717,36 +609,21 @@ const EventRow = React.memo(function EventRow({ event, dow, now }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 border-t border-white/[0.055] pt-2.5 sm:w-[310px] sm:shrink-0 sm:grid-cols-[1fr_1fr] sm:border-t-0 sm:border-l sm:pl-4 sm:pt-0">
-          <div className="min-w-0">
-            <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-dim">
-              Server Time
-            </div>
-            <div
-              className="mt-1 font-mono text-[13px] font-bold tabular-nums whitespace-nowrap"
-              style={{ color: type.color }}
-            >
-              {to12h(event.time)}
-            </div>
-          </div>
-
-          <div className="min-w-0 text-right sm:text-right">
-            <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-dim">
-              Your Time
-            </div>
-            <div className="mt-1 truncate font-mono text-[11px] font-semibold tabular-nums text-gold-light/85">
+        <div className="min-w-0 shrink-0 border-t border-white/[0.055] pt-2.5 sm:border-t-0 sm:border-l sm:pl-4 sm:pt-0">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] tabular-nums sm:justify-end sm:text-right">
+            <span className="font-bold text-text-bright">
+              {to12h(event.time)} server
+            </span>
+            <span className="text-white/20">→</span>
+            <span className="font-semibold text-gold-light/90">
               {local.day.slice(0, 3)} · {local.time}
-            </div>
-          </div>
-
-          <div className="col-span-2 flex items-center justify-between border-t border-white/[0.055] pt-2 sm:col-span-2">
-            <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-dim">
-              Starts In
+            </span>
+            <span className="text-white/20">·</span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-dim">
+              starts in
             </span>
             <span
-              className={`font-mono text-[13px] font-bold tabular-nums ${
-                soon ? 'motion-safe:animate-pulse' : ''
-              }`}
+              className={`font-mono text-[13px] font-bold tabular-nums ${soon ? 'motion-safe:animate-pulse' : ''}`}
               style={{ color: soon ? '#f87171' : '#f2cc60' }}
             >
               {countdown}
