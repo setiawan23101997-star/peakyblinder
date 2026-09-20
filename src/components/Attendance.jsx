@@ -430,8 +430,23 @@ export default function Attendance({ ctx }) {
     const attendedSessionIds = new Set()
     const perfectBonusEntries = []
 
+    // The member attendance ledger is the canonical source. It stores sessionId
+    // even for records added later through "Add Missing".
+    ;(member.attend_log || []).forEach(entry => {
+      if (!entry || entry.type === 'perfect_attendance_bonus') return
+      const entryTs = Number(entry.ts) || 0
+      if (!entryTs || getAttendanceWeekKey(entryTs) !== currentWeekKey) return
+      if (entry.sessionId && WEEKLY_EVENT_SESSIONS.some(session =>
+        session.id === entry.sessionId && session.event === entry.event
+      )) {
+        attendedSessionIds.add(entry.sessionId)
+      }
+    })
+
+    // Supplement the ledger from attendance logs for older data that may not
+    // have an attend_log entry, while avoiding duplicate session counts.
     ;(attendanceLogs || []).forEach(log => {
-      const logTs = log.ts || Number(log.id) || 0
+      const logTs = Number(log.ts) || Number(log.id) || 0
       if (!logTs || getAttendanceWeekKey(logTs) !== currentWeekKey) return
 
       const attendee = (log.attendees || []).find(a =>
@@ -440,40 +455,36 @@ export default function Attendance({ ctx }) {
       )
       if (!attendee) return
 
-      // Current records store the exact session inside attendee JSON.
-      if (attendee.sessionId) {
-        attendedSessionIds.add(attendee.sessionId)
+      const sessionId = attendee.sessionId || log.sessionId
+      if (sessionId && WEEKLY_EVENT_SESSIONS.some(session =>
+        session.id === sessionId && session.event === log.event
+      )) {
+        attendedSessionIds.add(sessionId)
         return
       }
 
-      // Legacy records: one log for a single event session.
-      // For duplicated events, legacy data cannot safely distinguish the run,
-      // so it counts only when an exact session can be inferred from the timestamp.
+      // Legacy records without session IDs: only infer a duplicated run when
+      // the recorded timestamp exactly matches its scheduled server time.
       const matchingSessions = WEEKLY_EVENT_SESSIONS.filter(session => session.event === log.event)
       if (matchingSessions.length === 1) {
         attendedSessionIds.add(matchingSessions[0].id)
       } else if (matchingSessions.length > 1) {
         const logDate = new Date(logTs)
         const hour = Number(new Intl.DateTimeFormat('en-US', {
-          timeZone: SERVER_TZ,
-          hour: '2-digit',
-          hour12: false,
+          timeZone: SERVER_TZ, hour: '2-digit', hour12: false,
         }).format(logDate))
         const minute = Number(new Intl.DateTimeFormat('en-US', {
-          timeZone: SERVER_TZ,
-          minute: '2-digit',
+          timeZone: SERVER_TZ, minute: '2-digit',
         }).format(logDate))
         const minutes = hour * 60 + minute
         const inferred = matchingSessions.find(session => {
-          const match = String(session.startTime || '').match(/(\d{1,2}):(\d{2})/)
-          if (!match) return false
-          return Number(match[1]) * 60 + Number(match[2]) === minutes
+          const match = String(session.time || '').match(/(\\d{1,2}):(\\d{2})/)
+          return match && Number(match[1]) * 60 + Number(match[2]) === minutes
         })
         if (inferred) attendedSessionIds.add(inferred.id)
       }
     })
 
-    // Perfect-award history is kept in the member's attend_log.
     ;(member.attend_log || []).forEach(entry => {
       if (entry?.type === 'perfect_attendance_bonus' && entry?.weekKey === currentWeekKey) {
         perfectBonusEntries.push(entry)
@@ -484,7 +495,7 @@ export default function Attendance({ ctx }) {
       member,
       attendedSessionIds,
       attendedCount: attendedSessionIds.size,
-      qualified: attendedSessionIds.size === PERFECT_ATTENDANCE_REQUIRED_SESSIONS,
+      qualified: attendedSessionIds.size >= PERFECT_ATTENDANCE_REQUIRED_SESSIONS,
       awarded: perfectBonusEntries.length > 0,
     }
   })
@@ -899,6 +910,9 @@ export default function Attendance({ ctx }) {
         name: m.name,
         cls: m.cls,
         qualifier: 'full',
+        sessionId: missingLog.sessionId || missingSession?.id || null,
+        sessionLabel: missingLog.sessionLabel || missingSession?.label || null,
+        sessionDisplayName: missingLog.sessionDisplayName || missingSession?.displayName || null,
         earned: reward,
         gp: Number(m.power) || 0,
         baseCoins: ATTENDANCE_REWARDS[missingLog.event].base,
