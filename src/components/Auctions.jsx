@@ -236,8 +236,17 @@ function getFinalBidEntries(auction) {
     .sort((a, b) => b.amount - a.amount || a.time - b.time)
 }
 
+function chooseAuctionWinner(finalBids) {
+  if (!Array.isArray(finalBids) || finalBids.length === 0) return null
+  const highestAmount = finalBids[0].amount
+  const tiedHighest = finalBids.filter(bid => bid.amount === highestAmount)
+  return tiedHighest[Math.floor(Math.random() * tiedHighest.length)] || null
+}
+
 function getAuctionWinner(auction) {
-  return getFinalBidEntries(auction)[0] || null
+  const finalBids = getFinalBidEntries(auction)
+  // The selected winner is saved on the final bid to keep the result consistent.
+  return finalBids.find(bid => bid.winner === true) || finalBids[0] || null
 }
 
 function getBidderCount(auction) {
@@ -644,8 +653,13 @@ export default function Auctions({ ctx }) {
 
     const endedAt = Date.now()
     const finalBids = getFinalBidEntries(auction)
-    const winner = finalBids[0] || null
-    const losers = finalBids.slice(1)
+    const winner = chooseAuctionWinner(finalBids)
+    const losers = winner ? finalBids.filter(bid => bid.bidder !== winner.bidder) : []
+    const settledBids = (Array.isArray(auction.bids) ? auction.bids : []).map(bid => ({
+      ...bid,
+      winner: !!winner && bid.bidder === winner.bidder &&
+        Number(bid.amount) === winner.amount && Number(bid.time) === winner.time && !bid.cancelled,
+    }))
 
     // Claim the auction transition first. The status guard prevents two
     // browsers from settling the same auction twice.
@@ -655,6 +669,7 @@ export default function Auctions({ ctx }) {
         status: 'ended',
         current_bid: winner?.amount || getStartingBid(auction),
         top_bidder: winner?.bidder || null,
+        bids: settledBids,
         is_featured: false,
       })
       .eq('id', auctionId)
@@ -698,6 +713,7 @@ export default function Auctions({ ctx }) {
       status: 'ended',
       currentBid: winner?.amount || getStartingBid(a),
       topBidder: winner?.bidder || null,
+      bids: settledBids,
       endedAt,
       isFeatured: false,
     } : a))
@@ -940,7 +956,7 @@ export default function Auctions({ ctx }) {
     const auction = auctions.find(a => a.id === auctionId)
     if (!auction) return
     if (window.confirm(
-      `End "${auction.name}" early?\n\nAll submitted blind bids will be revealed and the highest final bid will win.\nIf two final bids are tied, the earliest final bid wins.`
+      `End "${auction.name}" early?\n\nAll submitted blind bids will be revealed and the highest final bid will win.\nIf multiple players tie for the highest final bid, the winner is selected randomly.`
     )) {
       await settleAuction(auctionId, { early: true })
     }
