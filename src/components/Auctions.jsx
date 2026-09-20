@@ -237,7 +237,12 @@ function getFinalBidEntries(auction) {
 }
 
 function getAuctionWinner(auction) {
-  return getFinalBidEntries(auction)[0] || null
+  const entries = getFinalBidEntries(auction)
+  // After settlement, the server-selected topBidder is authoritative.
+  if (auction?.status === 'ended' && auction?.topBidder) {
+    return entries.find(entry => entry.bidder === auction.topBidder) || null
+  }
+  return entries[0] || null
 }
 
 function getBidderCount(auction) {
@@ -639,82 +644,64 @@ export default function Auctions({ ctx }) {
 
   const settleAuction = async (auctionId, { early = false } = {}) => {
     if (!supabase) return false
-    const auction = auctions.find(a => a.id === auctionId)
+    const auction = auctions.find(a => String(a.id) === String(auctionId))
     if (!auction || auction.status !== 'active') return false
 
-    const endedAt = Date.now()
-    const finalBids = getFinalBidEntries(auction)
-    const winner = finalBids[0] || null
-    const losers = finalBids.slice(1)
-
-    // Claim the auction transition first. The status guard prevents two
-    // browsers from settling the same auction twice.
-    const { data: claimed, error: claimErr } = await supabase
-      .from('auctions')
-      .update({
-        status: 'ended',
-        current_bid: winner?.amount || getStartingBid(auction),
-        top_bidder: winner?.bidder || null,
-        is_featured: false,
+    try {
+      // The database locks and settles this auction atomically. The random
+      // tie-break and loser refunds happen in PostgreSQL, never in the client.
+      const { data, error } = await supabase.rpc('auction_settle_random_tie', {
+        p_auction_id: String(auctionId),
+        p_actor_id: Number(currentUser?.id),
+        p_early: !!early,
       })
-      .eq('id', auctionId)
-      .eq('status', 'active')
-      .select('id')
-      .maybeSingle()
+      if (error) throw error
 
-    if (claimErr) {
-      console.error('Auction settlement claim failed:', claimErr)
-      if (early) addToast(`Couldn't end auction: ${claimErr.message}`, 'red', 'Save Failed')
-      return false
-    }
+      const result = Array.isArray(data) ? data[0] : data
+      if (!result || result.settled !== true) return false
 
-    if (!claimed) {
-      // Another browser already finalized it.
-      return false
-    }
+      const winnerName = result.winner_name || null
+      const winningAmount = Number(result.winning_amount) || getStartingBid(auction)
+      const endedAt = Number(result.ended_at) || Date.now()
 
-    let refundFailed = false
-    for (const loser of losers) {
-      const member = members.find(m => m.name === loser.bidder)
-      if (!member || loser.amount <= 0) continue
+      setAuctions(prev => prev.map(a => String(a.id) === String(auctionId) ? {
+        ...a,
+        status: 'ended',
+        currentBid: winningAmount,
+        topBidder: winnerName,
+        endedAt,
+        isFeatured: false,
+      } : a))
 
-      const { error: refundErr } = await supabase
+      // Pull balances after the atomic database settlement/refunds.
+      const { data: refreshedMembers, error: membersError } = await supabase
         .from('members')
-        .update({ coins: (Number(member.coins) || 0) + loser.amount })
-        .eq('id', member.id)
-
-      if (refundErr) {
-        refundFailed = true
-        console.error('Loser refund failed:', refundErr)
-      } else {
-        setMembers(prev => prev.map(m =>
-          m.id === member.id ? { ...m, coins: (Number(m.coins) || 0) + loser.amount } : m
-        ))
+        .select('id, name, coins')
+      if (!membersError && Array.isArray(refreshedMembers)) {
+        setMembers(prev => prev.map(member => {
+          const refreshed = refreshedMembers.find(row => String(row.id) === String(member.id))
+          return refreshed ? { ...member, coins: Number(refreshed.coins) || 0 } : member
+        }))
       }
+
+      if (winnerName) {
+        const tieCount = Number(result.tie_count) || 1
+        addToast(
+          tieCount > 1
+            ? `“${auction.name}” ended. ${tieCount} players tied at ${winningAmount.toLocaleString()} coins; ${winnerName} was randomly selected by the server.`
+            : `“${auction.name}” ended. Winner: ${winnerName} at ${winningAmount.toLocaleString()} coins.`,
+          'gold',
+          early ? 'Auction Ended' : 'Auction Complete'
+        )
+      } else {
+        addToast(`“${auction.name}” ended with no final bids.`, 'blue', 'Auction Complete')
+      }
+      return true
+    } catch (err) {
+      console.error('Auction settlement failed:', err)
+      if (early) addToast(`Couldn't end auction: ${err?.message || 'Unknown error'}`, 'red', 'Save Failed')
+      return false
     }
-
-    setAuctions(prev => prev.map(a => a.id === auctionId ? {
-      ...a,
-      status: 'ended',
-      currentBid: winner?.amount || getStartingBid(a),
-      topBidder: winner?.bidder || null,
-      endedAt,
-      isFeatured: false,
-    } : a))
-
-    if (refundFailed) {
-      addToast(`"${auction.name}" ended, but one or more losing-bid refunds need attention.`, 'red', 'Refund Warning')
-    } else if (winner) {
-      addToast(
-        `"${auction.name}" ended. Winner: ${winner.bidder} at ${winner.amount.toLocaleString()} coins.`,
-        'gold',
-        early ? 'Auction Ended' : 'Auction Complete'
-      )
-    } else {
-      addToast(`"${auction.name}" ended with no final bids.`, 'blue', 'Auction Complete')
-    }
-
-    return true
   }
 
   const placeBid = async (auctionId) => {
@@ -940,7 +927,7 @@ export default function Auctions({ ctx }) {
     const auction = auctions.find(a => a.id === auctionId)
     if (!auction) return
     if (window.confirm(
-      `End "${auction.name}" early?\n\nAll submitted blind bids will be revealed and the highest final bid will win.\nIf two final bids are tied, the earliest final bid wins.`
+      `End "${auction.name}" early?\n\nAll submitted blind bids will be revealed. The highest final bid wins. If multiple players tie at the highest amount, the server randomly selects the winner.`
     )) {
       await settleAuction(auctionId, { early: true })
     }
@@ -2307,7 +2294,7 @@ function EndedAuctionRow({
   isSelected = false, onToggleSelect,
 }) {
   const finalBids = getFinalBidEntries(a)
-  const winnerEntry = finalBids[0] || null
+  const winnerEntry = getAuctionWinner(a)
   const winner = winnerEntry?.bidder || a.topBidder || ''
   const finalAmount = winnerEntry?.amount || Number(a.currentBid) || 0
   const isMe = !!winner && currentUser?.name === winner
@@ -2444,7 +2431,7 @@ function EndedAuctionRow({
           <div className="mt-2.5 overflow-hidden rounded-lg border border-white/[.06] bg-black/15">
             <div className="divide-y divide-white/[.04]">
               {finalBids.map((b, idx) => {
-                const isWinner = idx === 0
+                const isWinner = !!winner && b.bidder === winner
                 return (
                   <div
                     key={`${b.bidder}-${b.time}-${idx}`}
