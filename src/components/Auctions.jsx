@@ -236,36 +236,8 @@ function getFinalBidEntries(auction) {
     .sort((a, b) => b.amount - a.amount || a.time - b.time)
 }
 
-function chooseAuctionWinner(finalBids, priorAuctions = []) {
-  if (!Array.isArray(finalBids) || finalBids.length === 0) return null
-  const highestAmount = finalBids[0].amount
-  const tiedHighest = finalBids.filter(bid => bid.amount === highestAmount)
-  if (tiedHighest.length <= 1) return tiedHighest[0] || null
-
-  // Balance tie-breaks: among equally high bidders, prefer members with
-  // fewer previously recorded tie-break wins; randomize only among equal counts.
-  const tieWins = new Map()
-  for (const auction of (Array.isArray(priorAuctions) ? priorAuctions : [])) {
-    if (!auction || auction.status !== 'ended') continue
-    const entries = getFinalBidEntries(auction)
-    const topAmount = entries[0]?.amount
-    const topTies = entries.filter(entry => entry.amount === topAmount)
-    if (topTies.length < 2) continue
-    const recordedWinner = entries.find(entry => entry.winner === true)
-    if (recordedWinner?.bidder) {
-      tieWins.set(recordedWinner.bidder, (tieWins.get(recordedWinner.bidder) || 0) + 1)
-    }
-  }
-
-  const fewestWins = Math.min(...tiedHighest.map(bid => tieWins.get(bid.bidder) || 0))
-  const balancedPool = tiedHighest.filter(bid => (tieWins.get(bid.bidder) || 0) === fewestWins)
-  return balancedPool[Math.floor(Math.random() * balancedPool.length)] || null
-}
-
 function getAuctionWinner(auction) {
-  const finalBids = getFinalBidEntries(auction)
-  // The selected winner is saved on the final bid to keep the result consistent.
-  return finalBids.find(bid => bid.winner === true) || finalBids[0] || null
+  return getFinalBidEntries(auction)[0] || null
 }
 
 function getBidderCount(auction) {
@@ -672,13 +644,8 @@ export default function Auctions({ ctx }) {
 
     const endedAt = Date.now()
     const finalBids = getFinalBidEntries(auction)
-    const winner = chooseAuctionWinner(finalBids, auctions)
-    const losers = winner ? finalBids.filter(bid => bid.bidder !== winner.bidder) : []
-    const settledBids = (Array.isArray(auction.bids) ? auction.bids : []).map(bid => ({
-      ...bid,
-      winner: !!winner && bid.bidder === winner.bidder &&
-        Number(bid.amount) === winner.amount && Number(bid.time) === winner.time && !bid.cancelled,
-    }))
+    const winner = finalBids[0] || null
+    const losers = finalBids.slice(1)
 
     // Claim the auction transition first. The status guard prevents two
     // browsers from settling the same auction twice.
@@ -688,7 +655,6 @@ export default function Auctions({ ctx }) {
         status: 'ended',
         current_bid: winner?.amount || getStartingBid(auction),
         top_bidder: winner?.bidder || null,
-        bids: settledBids,
         is_featured: false,
       })
       .eq('id', auctionId)
@@ -732,7 +698,6 @@ export default function Auctions({ ctx }) {
       status: 'ended',
       currentBid: winner?.amount || getStartingBid(a),
       topBidder: winner?.bidder || null,
-      bids: settledBids,
       endedAt,
       isFeatured: false,
     } : a))
@@ -975,7 +940,7 @@ export default function Auctions({ ctx }) {
     const auction = auctions.find(a => a.id === auctionId)
     if (!auction) return
     if (window.confirm(
-      `End "${auction.name}" early?\n\nAll submitted blind bids will be revealed and the highest final bid will win.\nIf multiple players tie for the highest final bid, the winner is selected randomly.`
+      `End "${auction.name}" early?\n\nAll submitted blind bids will be revealed and the highest final bid will win.\nIf two final bids are tied, the earliest final bid wins.`
     )) {
       await settleAuction(auctionId, { early: true })
     }
