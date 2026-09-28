@@ -1179,6 +1179,48 @@ export default function Attendance({ ctx }) {
     return tb - ta
   })
 
+  // Attendance timestamps have existed in a few formats over time.
+  // Normalize them before applying the export date filter so a selected
+  // server-date range can never accidentally include unrelated records.
+  const getExportTimestamp = (log) => {
+    const candidates = [log?.ts, log?.id]
+
+    for (const value of candidates) {
+      if (value == null || value === '') continue
+
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value < 100000000000 ? value * 1000 : value
+      }
+
+      const text = String(value).trim()
+      if (!text) continue
+
+      const numeric = Number(text)
+      if (Number.isFinite(numeric) && numeric > 0) {
+        return numeric < 100000000000 ? numeric * 1000 : numeric
+      }
+
+      const parsed = Date.parse(text)
+      if (Number.isFinite(parsed)) return parsed
+    }
+
+    // Legacy records may only have a date string. This fallback is only used
+    // when no timestamp/id exists at all.
+    if (log?.date) {
+      const parsed = Date.parse(String(log.date))
+      if (Number.isFinite(parsed)) return parsed
+    }
+
+    return 0
+  }
+
+  const getExportServerDateKey = (log) => {
+    const ts = getExportTimestamp(log)
+    if (!ts) return ''
+    const parts = getServerDateParts(ts)
+    return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
+  }
+
   const exportAttendanceCsv = () => {
     if (!isElder) {
       addToast('Only Admin, Master, and Elder can export attendance.', 'red', 'Not Allowed')
@@ -1196,20 +1238,18 @@ export default function Attendance({ ctx }) {
     }
 
     const inRangeLogs = sortedLogs.filter(log => {
-      const ts = Number(log.ts) || Number(log.id) || new Date(log.date).getTime() || 0
-      if (!ts) return false
-      const parts = getServerDateParts(ts)
-      const dateKey = `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
-      return dateKey >= exportFromDate && dateKey <= exportToDate
+      const dateKey = getExportServerDateKey(log)
+      return Boolean(dateKey) && dateKey >= exportFromDate && dateKey <= exportToDate
     })
 
     const rows = []
     inRangeLogs.forEach(log => {
-      const ts = Number(log.ts) || Number(log.id) || new Date(log.date).getTime() || 0
+      const ts = getExportTimestamp(log)
+      if (!ts) return
+
       const attendees = Array.isArray(log.attendees) ? log.attendees : []
       const session = getLogSession(log)
-      const dateParts = getServerDateParts(ts)
-      const dateKey = `${dateParts.year}-${String(dateParts.month).padStart(2, '0')}-${String(dateParts.day).padStart(2, '0')}`
+      const dateKey = getExportServerDateKey(log)
       const time = new Intl.DateTimeFormat('en-GB', {
         timeZone: SERVER_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
       }).format(new Date(ts))
