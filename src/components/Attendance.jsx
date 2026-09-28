@@ -383,6 +383,15 @@ export default function Attendance({ ctx }) {
   const [showRecordModal, setShowRecordModal] = useState(false)
   const [historyPage, setHistoryPage] = useState(1)
   const [historySearch, setHistorySearch] = useState('')
+  const [showAttendanceExport, setShowAttendanceExport] = useState(false)
+  const [exportFromDate, setExportFromDate] = useState(() => {
+    const parts = getServerDateParts(Date.now())
+    return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
+  })
+  const [exportToDate, setExportToDate] = useState(() => {
+    const parts = getServerDateParts(Date.now())
+    return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
+  })
   const HISTORY_PAGE_SIZE = 8
 
   const toggleSection = (key) => {
@@ -1170,6 +1179,88 @@ export default function Attendance({ ctx }) {
     return tb - ta
   })
 
+  const exportAttendanceCsv = () => {
+    if (!isElder) {
+      addToast('Only Admin, Master, and Elder can export attendance.', 'red', 'Not Allowed')
+      return
+    }
+
+    if (!exportFromDate || !exportToDate) {
+      addToast('Please select both From and To dates.', 'red', 'Date Required')
+      return
+    }
+
+    if (exportFromDate > exportToDate) {
+      addToast('The From date cannot be later than the To date.', 'red', 'Invalid Date Range')
+      return
+    }
+
+    const inRangeLogs = sortedLogs.filter(log => {
+      const ts = Number(log.ts) || Number(log.id) || new Date(log.date).getTime() || 0
+      if (!ts) return false
+      const parts = getServerDateParts(ts)
+      const dateKey = `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
+      return dateKey >= exportFromDate && dateKey <= exportToDate
+    })
+
+    const rows = []
+    inRangeLogs.forEach(log => {
+      const ts = Number(log.ts) || Number(log.id) || new Date(log.date).getTime() || 0
+      const attendees = Array.isArray(log.attendees) ? log.attendees : []
+      const session = getLogSession(log)
+      const dateParts = getServerDateParts(ts)
+      const dateKey = `${dateParts.year}-${String(dateParts.month).padStart(2, '0')}-${String(dateParts.day).padStart(2, '0')}`
+      const time = new Intl.DateTimeFormat('en-GB', {
+        timeZone: SERVER_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).format(new Date(ts))
+
+      attendees.forEach(attendee => {
+        rows.push({
+          Date: dateKey,
+          Time: time,
+          Event: log.event || '',
+          Session: attendee.sessionDisplayName || attendee.sessionLabel || session?.displayName || '',
+          Player: attendee.name || '',
+          GP: Number(attendee.gp || 0),
+          BaseCoins: Number(attendee.baseCoins || 0),
+          GPBonus: Number(attendee.gpBonus || 0),
+          EarnedCoins: Number(attendee.earned ?? attendee.coins ?? 0),
+          Qualifier: attendee.qualifier || '',
+          RecordedBy: log.recorded_by || log.recordedBy || '',
+        })
+      })
+    })
+
+    if (rows.length === 0) {
+      addToast(`No attendance records found from ${exportFromDate} to ${exportToDate}.`, 'red', 'Nothing to Export')
+      return
+    }
+
+    const headers = ['Date', 'Time', 'Event', 'Session', 'Player', 'GP', 'Base Coins', 'GP Bonus', 'Earned Coins', 'Qualifier', 'Recorded By']
+    const csvEscape = value => {
+      const text = value == null ? '' : String(value)
+      return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+    }
+    const csv = [
+      headers.join(','),
+      ...rows.map(row => headers.map(header => csvEscape(row[header.replace(' ', '')] ?? row[header])).join(',')),
+    ].join('\r\n')
+
+    // UTF-8 BOM helps Excel correctly recognize the CSV encoding.
+    const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `attendance-${exportFromDate}-to-${exportToDate}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+
+    addToast(`Exported ${rows.length} attendance record${rows.length === 1 ? '' : 's'} to CSV.`, 'gold', 'Attendance Exported')
+    setShowAttendanceExport(false)
+  }
+
   const selectedCount = Object.values(selectedMembers).filter(Boolean).length
   const allFilteredSelected = filtered.length > 0 && filtered.every(m => selectedMembers[m.id])
 
@@ -1354,8 +1445,13 @@ export default function Attendance({ ctx }) {
             <h2 className="text-base font-bold text-text-bright">Recent Attendance</h2>
             <p className="mt-0.5 text-[12px] text-text-dim">Showing the latest 8 records · use search to find older sessions</p>
           </div>
-          <div className="flex items-center gap-1.5">
-            {isElder && sortedLogs.length > 0 && <button type="button" onClick={() => openAddMissing()} className="rounded-lg border border-gold/20 bg-gold/[.035] px-2.5 py-1.5 text-[11px] font-bold text-gold-light hover:border-gold/40">+ Add Missing</button>}
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {isElder && sortedLogs.length > 0 && (
+              <>
+                <button type="button" onClick={() => setShowAttendanceExport(true)} className="rounded-lg border border-gold/25 bg-gold/[.05] px-2.5 py-1.5 text-[11px] font-bold text-gold-light hover:border-gold/45">↧ Export CSV</button>
+                <button type="button" onClick={() => openAddMissing()} className="rounded-lg border border-gold/20 bg-gold/[.035] px-2.5 py-1.5 text-[11px] font-bold text-gold-light hover:border-gold/40">+ Add Missing</button>
+              </>
+            )}
             <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-1 text-[11px] font-sans text-text-dim">{sortedLogs.length} logs</span>
           </div>
         </div>
@@ -1739,6 +1835,58 @@ export default function Attendance({ ctx }) {
 
               <div className="mt-3 rounded-xl border border-white/[.07] bg-white/[.015] px-3 py-2.5 text-[11px] leading-5 text-text-dim">
                 <strong className="text-text-bright">Session reminder:</strong> Clan Annihilation and Sindri's Treasure Island each have a First Run and Second Run. Each run counts as its own scheduled attendance session.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attendance CSV Export — Admin / Master / Elder only */}
+      {isElder && showAttendanceExport && (
+        <div
+          className="fixed inset-0 z-[235] flex items-center justify-center bg-black/75 p-3 sm:p-5 backdrop-blur-[3px]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Export Attendance CSV"
+          onMouseDown={e => {
+            if (e.target === e.currentTarget) setShowAttendanceExport(false)
+          }}
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-white/[.07] px-4 py-4 sm:px-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-md border border-gold/20 bg-gold/[.05] px-2 py-1 text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim">Staff Only</span>
+                  <span className="text-[11px] text-text-dim">Admin · Master · Elder</span>
+                </div>
+                <h3 className="mt-2 text-lg font-bold text-text-bright">Export Attendance CSV</h3>
+                <p className="mt-1 text-[12px] leading-5 text-text-dim">Choose the server-date range to export. This export contains attendance records only — no lottery data.</p>
+              </div>
+              <button type="button" onClick={() => setShowAttendanceExport(false)} className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light" aria-label="Close">×</button>
+            </div>
+
+            <div className="p-4 sm:p-5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">From Date</span>
+                  <input type="date" className="input h-10 w-full" value={exportFromDate} onChange={e => setExportFromDate(e.target.value)} />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">To Date</span>
+                  <input type="date" className="input h-10 w-full" value={exportToDate} onChange={e => setExportToDate(e.target.value)} />
+                </label>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-gold/15 bg-gold/[.035] px-3.5 py-3">
+                <div className="text-[12px] text-text-dim">
+                  Date range uses <strong className="text-gold-light">Server Time (GMT+8)</strong>. Both dates are inclusive.
+                </div>
+                <div className="mt-1 text-[11px] text-text-dim">Each attendee becomes one CSV row, including event, session, GP, reward, and recorder.</div>
+              </div>
+
+              <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button type="button" onClick={() => setShowAttendanceExport(false)} className="min-h-10 rounded-lg border border-white/[.08] px-4 text-[12px] font-semibold text-text-dim hover:text-text-bright">Cancel</button>
+                <button type="button" onClick={exportAttendanceCsv} className="btn-gold min-h-10 px-4 text-[12px] font-bold">Export CSV</button>
               </div>
             </div>
           </div>
