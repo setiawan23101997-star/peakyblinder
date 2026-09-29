@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import ChangePasswordModal from './ChangePasswordModal'
 
 const navItems = [
@@ -6,12 +6,19 @@ const navItems = [
   { id: 'members', label: 'Members', icon: '👥' },
   { id: 'attendance', label: 'Attendance', icon: '📋' },
   { id: 'auctions', label: 'Auctions', icon: '🔨' },
+  { id: 'loot-roulette', label: 'Loot Roulette', icon: '🎰' },
   { id: 'marketplace', label: 'Marketplace', icon: '🛒' },
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆' },
   { id: 'calendar', label: 'Calendar', icon: '📅' },
   { id: 'notice-board', label: 'Notice Board', icon: '📜' },
   { id: 'admin-log', label: 'Admin CP', icon: '🛡' , staffOnly: true },
 ]
+
+// Desktop nav sizing. NAV_ITEM_BASE is shared by real buttons and the hidden
+// measuring row so the measured widths always match what is rendered.
+const NAV_ITEM_BASE = 'flex h-10 items-center gap-2 rounded-lg px-3 text-[13px] font-semibold'
+const NAV_GAP = 2            // gap-0.5
+const NAV_PILL_CHROME = 16   // pill padding + border + small safety margin
 
 const FALLBACK_REGIONS = [
   { id: 'ph', code: 'ph', flag: '🇵🇭', name: 'Philippines', tz: 'Asia/Manila',       label: 'GMT+8' },
@@ -768,11 +775,53 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
   const visibleNavItems = navItems.filter(
     item => !item.staffOnly || ['Admin', 'Master', 'Elder'].includes(currentUser?.role)
   )
-  // Desktop navigation adapts by screen size:
-  // md-xl stays compact; 2xl+ has enough room for every section.
-  const compactPrimaryNavItems = visibleNavItems.slice(0, 5)
-  const compactSecondaryNavItems = visibleNavItems.slice(5)
-  const activeSecondary = compactSecondaryNavItems.some(item => item.id === page)
+  // Desktop navigation is measured, not guessed: it shows as many items as
+  // physically fit next to the account controls and moves the rest into "More".
+  const [visibleCount, setVisibleCount] = useState(visibleNavItems.length)
+  const navWrapRef = useRef(null)
+  const navMeasureRef = useRef(null)
+  const primaryNavItems = visibleNavItems.slice(0, visibleCount)
+  const overflowNavItems = visibleNavItems.slice(visibleCount)
+  const activeOverflow = overflowNavItems.some(item => item.id === page)
+
+  useLayoutEffect(() => {
+    const wrap = navWrapRef.current
+    const measure = navMeasureRef.current
+    if (!wrap || !measure) return undefined
+
+    let cancelled = false
+    const recalc = () => {
+      if (cancelled) return
+      const available = wrap.clientWidth - NAV_PILL_CHROME
+      if (available <= 0) return // mobile layout: desktop nav is hidden
+
+      const cells = Array.from(measure.children)
+      const moreWidth = cells.pop()?.offsetWidth || 0
+      const widths = cells.map(cell => cell.offsetWidth)
+      const total = widths.length
+
+      let fit = 0
+      let used = 0
+      for (let n = 1; n <= total; n += 1) {
+        used += widths[n - 1] + (n > 1 ? NAV_GAP : 0)
+        const needed = n === total ? used : used + NAV_GAP + moreWidth
+        if (needed <= available) fit = n
+      }
+      setVisibleCount(prev => (prev === fit ? prev : fit))
+    }
+
+    recalc()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(recalc) : null
+    observer?.observe(wrap)
+    window.addEventListener('resize', recalc)
+    document.fonts?.ready?.then(recalc)
+
+    return () => {
+      cancelled = true
+      observer?.disconnect()
+      window.removeEventListener('resize', recalc)
+    }
+  }, [visibleNavItems.length])
 
   // Prefer the live member record from App.jsx. When staff changes Coins,
   // updateMember/reloadMembers can update allMembers and Layout re-renders
@@ -900,7 +949,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                 ? 'border-gold/30 bg-gold/[0.09] text-gold-bright shadow-[0_8px_25px_rgba(212,175,55,.06)]'
                 : 'border-transparent text-text-dim hover:border-white/[0.07] hover:bg-white/[0.03] hover:text-text-bright'
             }`
-          : `group relative flex h-10 items-center gap-2 rounded-lg px-3 text-[13px] font-semibold transition-all ${
+          : `group relative transition-all ${NAV_ITEM_BASE} ${
               active
                 ? 'bg-gold/[0.09] text-gold-bright'
                 : 'text-text-dim hover:bg-white/[0.035] hover:text-gold-light'
@@ -931,7 +980,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
     <div className="min-h-screen bg-transparent text-text-bright">
       <nav className="fixed inset-x-0 top-0 z-50 border-b border-gold/15 bg-[#080706]/95 shadow-[0_8px_35px_rgba(0,0,0,.35)] backdrop-blur-xl">
         <div className="mx-auto flex h-[64px] w-full max-w-[1900px] items-center gap-2 overflow-hidden px-2 md:h-[72px] md:gap-3 md:overflow-visible md:px-5 lg:px-7 2xl:px-6">
-          <div className="flex w-auto min-w-0 shrink-0 items-center gap-2.5 md:w-[270px] md:min-w-[220px] xl:w-[285px]">
+          <div className="flex w-auto min-w-0 shrink-0 items-center gap-2.5">
             <button
               type="button"
               onClick={() => setMobileOpen(value => !value)}
@@ -953,25 +1002,43 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               </span>
               <span className="hidden min-w-0 md:block">
                 <span className="block font-spectral text-[18px] font-bold tracking-wide text-gold-light group-hover:text-gold-bright">PeakyBlinder</span>
-                <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim/75">Clan Command Center</span>
+                <span className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim/75 xl:block">Clan Command Center</span>
               </span>
             </button>
           </div>
 
           <div className="hidden h-8 w-px bg-white/[0.07] md:block" />
 
-          <div className="hidden min-w-0 flex-1 items-center md:flex">
-            {/* Normal desktop: compact navigation prevents collisions with account controls. */}
-            <div className="flex min-w-0 items-center gap-0.5 rounded-2xl border border-white/[0.055] bg-white/[0.018] p-1 min-[1800px]:hidden">
-              {compactPrimaryNavItems.map(item => <NavButton key={item.id} item={item} />)}
+          <div ref={navWrapRef} className="relative hidden min-w-0 flex-1 items-center md:flex">
+            {/* Invisible row used only to measure each item's natural width. */}
+            <div
+              ref={navMeasureRef}
+              aria-hidden="true"
+              className="pointer-events-none invisible absolute left-0 top-0 flex w-max gap-0.5 whitespace-nowrap"
+            >
+              {visibleNavItems.map(item => (
+                <span key={item.id} className={NAV_ITEM_BASE}>
+                  <span className="text-[14px] leading-none">{item.icon}</span>
+                  <span>{item.label}</span>
+                </span>
+              ))}
+              <span className={NAV_ITEM_BASE}>
+                <span className="text-[14px]">•••</span>
+                <span>More</span>
+                <span className="text-[10px]">▾</span>
+              </span>
+            </div>
 
-              {compactSecondaryNavItems.length > 0 && (
+            <div className="flex min-w-0 items-center gap-0.5 rounded-2xl border border-white/[0.055] bg-white/[0.018] p-1">
+              {primaryNavItems.map(item => <NavButton key={item.id} item={item} />)}
+
+              {overflowNavItems.length > 0 && (
                 <div ref={moreMenuRef} className="relative shrink-0">
                   <button
                     type="button"
                     onClick={() => setMoreOpen(value => !value)}
-                    className={`flex h-10 items-center gap-2 rounded-lg px-3 text-[13px] font-semibold transition ${
-                      activeSecondary || moreOpen
+                    className={`transition ${NAV_ITEM_BASE} ${
+                      activeOverflow || moreOpen
                         ? 'bg-gold/[0.09] text-gold-bright'
                         : 'text-text-dim hover:bg-white/[0.035] hover:text-gold-light'
                     }`}
@@ -984,16 +1051,11 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
 
                   {moreOpen && (
                     <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-xl border border-gold/20 bg-[#0b0908] p-1.5 shadow-[0_20px_60px_rgba(0,0,0,.8)]">
-                      {compactSecondaryNavItems.map(item => <NavButton key={item.id} item={item} mobile />)}
+                      {overflowNavItems.map(item => <NavButton key={item.id} item={item} mobile />)}
                     </div>
                   )}
                 </div>
               )}
-            </div>
-
-            {/* Very wide desktop: all sections are visible, with no overlap. */}
-            <div className="hidden min-w-0 items-center gap-0.5 min-[1800px]:flex">
-              {visibleNavItems.map(item => <NavButton key={item.id} item={item} />)}
             </div>
           </div>
 
@@ -1017,14 +1079,14 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               <NotificationBell ctx={ctx} onNavigate={navigate} />
             </div>
 
-            <div className="hidden xl:flex shrink-0 items-center gap-2 rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-gold/10 bg-gold/[0.04] text-sm">◷</span>
+            <div
+              className="hidden h-11 shrink-0 items-center gap-2 rounded-xl border border-white/[0.06] bg-black/20 px-2.5 xl:flex"
+              title={`Your time zone: ${AUTO_LOCAL_TZ}`}
+            >
+              <span className="text-sm text-gold-light/70">◷</span>
               <div className="leading-tight">
                 <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-text-dim">Your Time</div>
-                <div className="mt-0.5 flex items-center gap-1.5">
-                  <span className="max-w-[92px] truncate text-[11px] font-semibold text-text-bright">{AUTO_LOCAL_TZ}</span>
-                  <span className="font-mono text-[10px] text-gold-light/85">{getLocalZoneLabel()}</span>
-                </div>
+                <div className="mt-0.5 font-mono text-[11px] text-gold-light/90">{getLocalZoneLabel()}</div>
               </div>
             </div>
 
@@ -1054,7 +1116,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                   <button
                     type="button"
                     onClick={() => setUserMenuOpen(value => !value)}
-                    className={`flex h-10 w-10 items-center justify-center gap-2 rounded-xl border px-0 transition lg:h-11 lg:w-auto lg:justify-start lg:px-2.5 ${
+                    className={`flex h-11 w-11 items-center justify-center gap-2 rounded-xl border px-0 transition xl:w-auto xl:justify-start xl:px-2.5 ${
                       userMenuOpen ? 'border-gold/25 bg-gold/[0.07]' : 'border-white/[0.06] bg-black/15 hover:border-gold/20 hover:bg-white/[0.025]'
                     }`}
                     aria-expanded={userMenuOpen}
@@ -1062,11 +1124,11 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gold/25 bg-gold/[0.08] text-[13px] font-bold text-gold-light">
                       {(currentUser.name || 'U').charAt(0).toUpperCase()}
                     </span>
-                    <span className="hidden max-w-[125px] text-left lg:block">
+                    <span className="hidden max-w-[125px] text-left xl:block">
                       <span className="block truncate text-[13px] font-semibold text-text-bright">{currentUser.name}</span>
                       <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-text-dim">{currentUser.role}</span>
                     </span>
-                    <span className="hidden text-[11px] text-text-dim lg:block">▾</span>
+                    <span className="hidden text-[11px] text-text-dim xl:block">▾</span>
                   </button>
 
                   {userMenuOpen && (
