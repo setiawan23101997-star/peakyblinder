@@ -861,7 +861,7 @@ export default function LootRoulette({ ctx }) {
               <span className="h-1.5 w-1.5 rounded-full bg-gold-bright" /> Clan Rewards
             </div>
             <h1 className="mt-1 font-spectral text-2xl font-bold text-text-bright sm:text-3xl">Loot Roulette</h1>
-            <p className="mt-1 max-w-2xl text-[13px] leading-5 text-text-dim">Attendance decides who can roll. Staff starts one server-side distribution; the animation only reveals the saved results.</p>
+            <p className="mt-1 max-w-2xl text-[13px] leading-5 text-text-dim">Attendance determines eligibility. Staff starts the roll, and the server securely decides every result.</p>
           </div>
 
           <div className="relative flex shrink-0 items-center gap-2">
