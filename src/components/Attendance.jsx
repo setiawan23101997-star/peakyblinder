@@ -569,6 +569,8 @@ export default function Attendance({ ctx }) {
         p_attendance_delta: 1,
         p_attend_entry: attendEntry,
         p_bonus_tx_entries: [],
+        p_actor_id: Number(currentUser?.id) || null,
+        p_actor_password: currentUser?.password || null,
       })
       if (error) {
         console.error(`Failed to save ${m.name}:`, error)
