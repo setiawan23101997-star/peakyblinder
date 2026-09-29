@@ -17,6 +17,24 @@ function formatDate(value) {
   }).format(parsed)
 }
 
+// Attendance dates are plain calendar dates (e.g. "9/29/2026"), so format them without timezone shifting.
+function formatCalendarDate(value) {
+  const text = String(value || '').trim()
+  if (!text) return 'Unknown date'
+  let y, m, d
+  let match = text.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (match) {
+    [, y, m, d] = match
+  } else if ((match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) {
+    [, m, d, y] = match
+    if (Number(m) > 12) [m, d] = [d, m]
+  }
+  if (!y) return formatDate(value)
+  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)))
+  if (Number.isNaN(date.getTime())) return text
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }).format(date)
+}
+
 function formatDateTime(value) {
   if (!value) return 'Unknown'
   const parsed = new Date(value)
@@ -73,7 +91,7 @@ function normalizeAttendanceLog(log) {
     ...log,
     _sessionId: session?.sessionId || log?.sessionId || null,
     _sessionName: session?.sessionDisplayName || session?.sessionLabel || log?.event || 'Event Run',
-    _date: log?.date || (log?.ts ? formatDate(log.ts) : 'Unknown date'),
+    _date: log?.date ? formatCalendarDate(log.date) : (log?.ts ? formatDate(log.ts) : 'Unknown date'),
     _participants: attendees.filter(a => a?.memberId != null && a?.name),
   }
 }
@@ -388,7 +406,7 @@ export default function LootRoulette({ ctx }) {
   }
 
   const getCreatePayload = () => items
-    .map(item => ({ name: String(item.name || '').trim(), quantity: 1 }))
+    .map(item => parseLootInput(item.name))
     .filter(item => item.name)
 
   const requestCreateRoulette = () => {
@@ -835,7 +853,23 @@ export default function LootRoulette({ ctx }) {
   } : null
 
   const createPayload = getCreatePayload()
-  const createUnitCount = createPayload.length
+  const createUnitCount = createPayload.reduce((sum, item) => sum + item.quantity, 0)
+  const createPlayerCount = selectedSummary?.participants || 0
+  const createBlockedReason = !selectedAttendance
+    ? 'Select an attendance event.'
+    : selectedSummary?.used
+      ? 'This event already has a roulette. Void it first to create a replacement.'
+      : !createPlayerCount
+        ? 'This event has no players.'
+        : !createUnitCount
+          ? 'Add at least one loot item to continue.'
+          : ''
+  const createBalanceText = createUnitCount < createPlayerCount
+    ? `${createPlayerCount - createUnitCount} ${createPlayerCount - createUnitCount === 1 ? 'player' : 'players'} will get Nothing`
+    : createUnitCount > createPlayerCount
+      ? `${createUnitCount - createPlayerCount} ${createUnitCount - createPlayerCount === 1 ? 'item' : 'items'} will stay undistributed`
+      : 'Every player gets exactly one item'
+  const hasExportableResults = history.some(r => (r.results || []).length > 0)
   const currentUserResult = results.find(r => String(r.winner_member_id) === String(currentUser?.id))
   const lootResultsByItem = useMemo(() => {
     const map = new Map()
@@ -850,6 +884,8 @@ export default function LootRoulette({ ctx }) {
   const selectClass = 'min-h-[44px] w-full rounded-xl border border-gold/15 bg-[#151210] px-3 py-2.5 text-sm text-white outline-none transition focus:border-gold/40 focus:ring-2 focus:ring-gold/10 [color-scheme:dark]'
   const inputClass = 'min-h-[44px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-text-bright placeholder:text-text-dim/60 outline-none transition focus:border-gold/40 focus:ring-2 focus:ring-gold/10'
 
+  const textareaClass = 'w-full resize-y rounded-xl border border-white/10 bg-black/30 px-3 py-3 text-[14px] leading-6 text-text-bright placeholder:text-text-dim/40 outline-none transition focus:border-gold/40 focus:ring-2 focus:ring-gold/10'
+
   const statusLabel = roulette?.status === 'completed' ? 'Completed' : roulette?.status === 'void' ? 'Void' : 'Ready'
 
   return (
@@ -857,76 +893,68 @@ export default function LootRoulette({ ctx }) {
       <header className="rounded-2xl border border-gold/15 bg-[#0c0a09]/95 p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.18em] text-gold-dim">
-              <span className="h-1.5 w-1.5 rounded-full bg-gold-bright" /> Clan Rewards
-            </div>
-            <h1 className="mt-1 font-spectral text-2xl font-bold text-text-bright sm:text-3xl">Loot Roulette</h1>
-            <p className="mt-1 max-w-2xl text-[13px] leading-5 text-text-dim">Attendance determines eligibility. Staff starts the roll, and the server securely decides every result.</p>
+            <h1 className="font-spectral text-2xl font-bold text-text-bright sm:text-3xl">Loot Roulette</h1>
+            <p className="mt-1 max-w-2xl text-[14px] leading-6 text-text/80">Loot is rolled among the players who attended the event. The server decides every result.</p>
           </div>
 
-          <div className="relative flex shrink-0 items-center gap-2">
-            {isStaff && (
-              <button type="button" onClick={() => setCreateOpen(v => !v)} className="btn-gold min-h-10 px-3 text-xs font-bold">
-                {createOpen ? 'Close New Roulette' : '+ New Roulette'}
-              </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {isStaff && !createOpen && (
+              <button type="button" onClick={() => setCreateOpen(true)} className="btn-gold min-h-10 px-4 text-xs font-bold">+ New Roulette</button>
             )}
             <button type="button" onClick={() => loadHistory()} className="min-h-10 rounded-xl border border-white/[.08] bg-white/[.02] px-3 text-xs font-bold text-text-dim transition hover:border-gold/20 hover:text-text-bright">↻ Refresh</button>
-            <button type="button" onClick={exportAllCsv} className="min-h-10 rounded-xl border border-gold/20 bg-gold/[.05] px-3 text-xs font-bold text-gold-light transition hover:bg-gold/[.08]">↓ Export All</button>
+            <button type="button" onClick={exportAllCsv} disabled={!hasExportableResults} className="min-h-10 rounded-xl border border-white/[.08] bg-white/[.02] px-3 text-xs font-bold text-text-dim transition hover:border-gold/20 hover:text-text-bright disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-white/[.08] disabled:hover:text-text-dim">↓ Export All</button>
           </div>
         </div>
       </header>
 
       {isStaff && createOpen && (
         <section id="loot-roulette-create" className="rounded-2xl border border-gold/15 bg-[#0c0a09]/95 p-4 sm:p-5">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">Staff Only</div>
-              <h2 className="mt-1 text-lg font-bold text-text-bright">New Loot Roulette</h2>
-              <p className="mt-1 text-[13px] leading-5 text-text-dim">Pick one Attendance run, then enter one loot item per line.</p>
+              <h2 className="font-spectral text-xl font-bold text-text-bright sm:text-2xl">New Loot Roulette</h2>
+              <p className="mt-1 text-[14px] leading-6 text-text/80">Choose the event, then list the loot, one item per line.</p>
             </div>
-            <button type="button" onClick={() => setCreateOpen(false)} className="self-start rounded-lg border border-white/[.08] px-3 py-2 text-xs font-bold text-text-dim hover:text-text-bright">Close</button>
+            <button type="button" onClick={() => setCreateOpen(false)} className="min-h-10 shrink-0 rounded-xl border border-white/[.08] px-3 text-xs font-bold text-text-dim transition hover:text-text-bright" aria-label="Close new roulette form">✕ Close</button>
           </div>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1.15fr]">
+          <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
             <div>
-              <label className="mb-2 block text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Attendance Event</label>
+              <label className="mb-2 block text-[13px] font-semibold text-text-bright">Attendance event</label>
               <AttendancePicker options={attendanceOptions} value={selectedAttendanceId} onChange={setSelectedAttendanceId} activeAttendanceIds={activeAttendanceIds} />
               {selectedSummary && (
-                <div className="mt-2 rounded-xl border border-white/[.07] bg-black/20 px-3 py-2.5 text-[12px] text-text-dim">
-                  <span className="font-bold text-text-bright">{selectedSummary.participants} players</span> · {selectedSummary.run} · {selectedSummary.date}
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-white/[.07] bg-black/20 px-3 py-2.5 text-[13px] text-text-dim">
+                  <span className="font-bold text-text-bright">{selectedSummary.participants} players</span>
+                  <span className="text-white/20">•</span>
+                  <span>{selectedSummary.run}</span>
+                  {selectedSummary.used && <span className="rounded-md border border-amber-400/25 bg-amber-400/[.06] px-1.5 py-0.5 text-[11px] font-bold text-amber-300">Roulette exists</span>}
                 </div>
               )}
+              <p className="mt-2 text-[12px] leading-5 text-text-dim">Events that already have a roulette are locked. Void the old one first to make a replacement.</p>
             </div>
 
             <div>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <label className="text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Loot Pool</label>
-                <span className="text-[12px] font-bold text-gold-light">{createUnitCount} items · {selectedSummary?.participants || 0} players</span>
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <label htmlFor="loot-pool-input" className="text-[13px] font-semibold text-text-bright">Loot items</label>
+                <span className="text-[13px] font-semibold text-gold-light">{createUnitCount} {createUnitCount === 1 ? 'item' : 'items'} · {createPlayerCount} players</span>
               </div>
               <textarea
+                id="loot-pool-input"
+                rows={Math.min(16, Math.max(8, items.length + 1))}
                 value={items.map(item => item.name).join('\n')}
                 onChange={event => {
                   const lines = event.target.value.split('\n')
                   setItems(lines.map(line => ({ name: line })).concat(lines.length ? [] : [{ name: '' }]))
                 }}
-                placeholder={'Silvarin x3\nMiddle Horn x1\nParchment X1'}
-                className={`${inputClass} min-h-36 resize-y py-3`}
-                aria-label="Loot items, one per line"
+                placeholder={'Silvarin x2\nMiddle Horn x5\nParchment x6'}
+                className={textareaClass}
               />
-              <div className="mt-2 space-y-2">
-                {items.map((item, index) => {
-                  const parsed = parseLootInput(item.name)
-                  if (!parsed.name) return null
-                  return (
-                    <div key={`${index}-${parsed.name}`} className="flex items-center gap-2">
-                      <div className="min-w-0 flex-1 truncate rounded-lg border border-white/[.06] bg-black/20 px-3 py-2 text-[13px] text-text-bright">{parsed.name}</div>
-
-                    </div>
-                  )
-                })}
-              </div>
-              <button type="button" disabled={creating} onClick={requestCreateRoulette} className="btn-gold mt-4 min-h-11 w-full text-sm font-bold disabled:opacity-50">{creating ? 'Creating...' : 'Create Roulette'}</button>
+              <p className="mt-2 text-[12px] leading-5 text-text-dim">One item per line. Repeat a line if you have extra copies.</p>
             </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 border-t border-white/[.06] pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className={`text-[13px] ${createBlockedReason ? 'text-text-dim' : 'text-text/85'}`} aria-live="polite">{createBlockedReason || createBalanceText}</p>
+            <button type="button" disabled={creating || Boolean(createBlockedReason)} onClick={requestCreateRoulette} className="btn-gold min-h-11 w-full px-6 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[220px]">{creating ? 'Creating…' : 'Create Roulette'}</button>
           </div>
         </section>
       )}
@@ -943,7 +971,7 @@ export default function LootRoulette({ ctx }) {
                   <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${roulette.status === 'completed' ? 'border-emerald-400/20 bg-emerald-400/[.05] text-emerald-300' : roulette.status === 'void' ? 'border-red-400/20 bg-red-400/[.05] text-red-300' : 'border-gold/20 bg-gold/[.05] text-gold-light'}`}>{statusLabel}</span>
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-text-dim">
-                  <span>{roulette.session_display_name || 'Event Run'}</span><span className="text-white/20">•</span><span>{roulette.event_date || 'Unknown date'}</span><span className="text-white/20">•</span><span>{formatTime(roulette.event_ts)} GMT+8</span>
+                  <span>{roulette.session_display_name || 'Event Run'}</span><span className="text-white/20">•</span><span>{formatDate(roulette.event_date)}</span><span className="text-white/20">•</span><span>{formatTime(roulette.event_ts)} GMT+8</span>
                 </div>
               </div>
 
@@ -1059,12 +1087,24 @@ export default function LootRoulette({ ctx }) {
 
       <section className="overflow-hidden rounded-3xl border border-gold/15 bg-[#0c0a09]/95 shadow-[0_14px_50px_rgba(0,0,0,.18)] p-4 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div><div className="text-[10px] font-black uppercase tracking-[.2em] text-gold-dim">Archive</div><h2 className="mt-1 font-spectral text-xl font-bold text-text-bright">Loot History</h2><p className="mt-1 text-[13px] text-text-dim">Past distributions stay compact until you open one.</p></div>
+          <div><h2 className="font-spectral text-xl font-bold text-text-bright sm:text-2xl">Loot History</h2><p className="mt-1 text-[14px] leading-6 text-text/80">Open an entry to see every winner.</p></div>
           <div className="relative w-full sm:max-w-sm"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-dim">⌕</span><input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Search player, item or event..." className={`${inputClass} pl-9`} aria-label="Search loot history" /></div>
         </div>
 
         <div className="mt-5 space-y-2.5">
-          {historyLoading ? <div className="py-12 text-center text-[13px] text-text-dim">Loading loot history...</div> : filteredHistory.length === 0 ? <div className="rounded-2xl border border-white/[.06] bg-black/20 py-12 text-center text-[13px] text-text-dim">No loot roulette history found.</div> : filteredHistory.map(r => {
+          {historyLoading ? <div className="py-12 text-center text-[13px] text-text-dim">Loading loot history...</div> : filteredHistory.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/[.09] bg-black/20 px-4 py-12 text-center">
+              <div className="text-[15px] font-semibold text-text-bright">{historySearch.trim() ? 'No matching results' : 'No loot roulette yet'}</div>
+              <p className="mx-auto mt-1 max-w-sm text-[13px] leading-5 text-text-dim">
+                {historySearch.trim() ? `Nothing matches “${historySearch.trim()}”.` : isStaff ? 'Create one after an event ends. Attendance is imported automatically.' : 'Results will appear here after staff rolls loot for an event.'}
+              </p>
+              {historySearch.trim() ? (
+                <button type="button" onClick={() => setHistorySearch('')} className="mt-4 min-h-10 rounded-xl border border-white/[.08] px-4 text-xs font-bold text-text-dim hover:text-text-bright">Clear search</button>
+              ) : isStaff && !createOpen ? (
+                <button type="button" onClick={() => setCreateOpen(true)} className="btn-gold mt-4 min-h-10 px-4 text-xs font-bold">+ New Roulette</button>
+              ) : null}
+            </div>
+          ) : filteredHistory.map(r => {
             const expanded = expandedHistoryIds.has(r.id)
             const playerCount = r.participants?.length || 0
             const itemsTotal = (r.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
@@ -1076,7 +1116,7 @@ export default function LootRoulette({ ctx }) {
                 <div className="flex flex-col gap-3 px-4 py-3.5 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2"><div className="truncate text-[14px] font-bold text-text-bright">{r.event}</div><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${r.status === 'void' ? 'border-red-400/20 bg-red-400/[.04] text-red-300' : r.status === 'completed' ? 'border-emerald-400/20 bg-emerald-400/[.04] text-emerald-300' : 'border-gold/15 bg-gold/[.04] text-gold-light'}`}>{r.status}</span></div>
-                    <div className="mt-1 text-[12px] text-text-dim">{r.event_date || 'Unknown date'} <span className="text-white/20">•</span> {r.session_display_name || 'Event Run'} <span className="text-white/20">•</span> {itemsTotal} items <span className="text-white/20">•</span> {playerCount} players <span className="text-white/20">•</span> <span className="text-gold-light">{lootCount} loot</span> <span className="text-white/20">•</span> {nothing} nothing</div>
+                    <div className="mt-1 text-[12px] text-text-dim">{formatDate(r.event_date)} <span className="text-white/20">•</span> {r.session_display_name || 'Event Run'} <span className="text-white/20">•</span> {itemsTotal} items <span className="text-white/20">•</span> {playerCount} players <span className="text-white/20">•</span> <span className="text-gold-light">{lootCount} loot</span> <span className="text-white/20">•</span> {nothing} nothing</div>
                     <div className="mt-2 flex flex-wrap gap-1.5">{winnerChips.slice(0, 8).map(name => <span key={`${r.id}-${name}`} className="rounded-full border border-gold/15 bg-gold/[.035] px-2 py-1 text-[10px] font-semibold text-gold-light">{name}</span>)}{winnerChips.length > 8 && <span className="rounded-full border border-white/[.07] px-2 py-1 text-[10px] text-text-dim">+{winnerChips.length - 8} more</span>}{nothing > 0 && <span className="rounded-full border border-white/[.07] bg-white/[.02] px-2 py-1 text-[10px] font-semibold text-text-dim">{nothing} Nothing</span>}</div>
                   </div>
                   <div className="flex shrink-0 gap-2"><button type="button" onClick={() => toggleHistoryFull(r.id)} className="min-h-10 rounded-xl border border-gold/20 bg-gold/[.045] px-3.5 text-xs font-bold text-gold-light transition hover:bg-gold/[.08]">{expanded ? 'Hide Details' : 'View Full'}</button><button type="button" onClick={() => exportRouletteCsv(r)} className="min-h-10 rounded-xl border border-white/[.08] px-3.5 text-xs font-bold text-text-dim transition hover:border-white/[.14] hover:text-text-bright">CSV</button></div>
@@ -1139,7 +1179,7 @@ export default function LootRoulette({ ctx }) {
             <div className="border-b border-white/[.07] px-4 py-4 sm:px-5">
               <div className="text-[11px] font-bold uppercase tracking-[.18em] text-red-300">Staff Action</div>
               <h3 className="mt-1 text-lg font-bold text-text-bright">{actionType === 'void' ? 'Void Loot Roulette?' : 'Delete Loot Roulette?'}</h3>
-              <p className="mt-1 text-[13px] leading-5 text-text-dim">{actionTarget.event} · {actionTarget.session_display_name || 'Event Run'} · {actionTarget.event_date || ''}</p>
+              <p className="mt-1 text-[13px] leading-5 text-text-dim">{actionTarget.event} · {actionTarget.session_display_name || 'Event Run'} · {formatDate(actionTarget.event_date)}</p>
             </div>
             <div className="space-y-3 p-4 sm:p-5">
               <div className="rounded-xl border border-red-400/10 bg-red-400/[.025] p-3 text-[12px] leading-5 text-text-dim">
@@ -1179,7 +1219,7 @@ export default function LootRoulette({ ctx }) {
                 <div className="mt-0.5 text-[12px] text-text-dim">{selectedAttendance._sessionName} · {selectedAttendance._date} · {selectedAttendance._participants.length} players</div>
               </div>
               <div className="rounded-xl border border-white/[.07] bg-white/[.02] p-3">
-                <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-[.14em] text-text-dim"><span>Loot Pool</span><span className="text-gold-light">{createUnitCount} units</span></div>
+                <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-[.14em] text-text-dim"><span>Loot Pool</span><span className="text-gold-light">{createUnitCount} {createUnitCount === 1 ? 'item' : 'items'}</span></div>
                 <div className="space-y-1.5">
                   {createPayload.map((item, index) => <div key={`${item.name}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-black/20 px-3 py-2"><span className="truncate text-[13px] font-semibold text-text-bright">{item.name}</span></div>)}
                 </div>
@@ -1219,3 +1259,4 @@ export default function LootRoulette({ ctx }) {
     </div>
   )
 }
+
