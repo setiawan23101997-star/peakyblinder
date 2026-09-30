@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 // Footer credit. Put a link people can tap in CONTACT_URL (Discord invite, Instagram, WhatsApp, etc.).
 // While it is empty, the message shows as plain text without a link.
 const CREATOR_NAME = 'Ryuji / MiaKhalifa'
-const CONTACT_LABEL = 'message me directly'
+const CONTACT_LABEL = 'message me on Discord'
 const CONTACT_URL = 'https://discord.com/users/703295552821133324'
 
 export default function Login({ ctx }) {
