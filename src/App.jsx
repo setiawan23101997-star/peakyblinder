@@ -757,25 +757,72 @@ function App() {
     }
   }
 
+  const setMemberPasswordViaRpc = async (targetId, newPassword) => {
+    if (!currentUser?.id || !currentUser?.password) {
+      throw new Error('Your login session is missing the member credentials. Please log out and log in again.')
+    }
+
+    const targetNumericId = Number(targetId)
+    if (!Number.isFinite(targetNumericId)) {
+      throw new Error('Invalid target member ID.')
+    }
+
+    const trimmedPassword = String(newPassword ?? '').trim()
+    if (!trimmedPassword) {
+      throw new Error('New password cannot be empty.')
+    }
+
+    const { data, error } = await supabase.rpc('set_member_password', {
+      p_target_id: targetNumericId,
+      p_actor_id: Number(currentUser.id),
+      p_actor_password: String(currentUser.password),
+      p_new_password: trimmedPassword,
+    })
+
+    if (error) throw error
+    if (data !== true) {
+      throw new Error('Supabase did not confirm that the password was changed.')
+    }
+
+    return trimmedPassword
+  }
+
   const resetMemberPassword = async (targetId, newPassword) => {
     try {
       const targetMember = (allMembers || members || []).find(
         m => Number(m.id) === Number(targetId)
       )
-      const { error } = await supabase
+
+      await setMemberPasswordViaRpc(targetId, newPassword)
+
+      // Refresh the target from Supabase so the app does not keep stale
+      // password data in its member state.
+      const { data: refreshed, error: refreshError } = await supabase
         .from('members')
-        .update({ password: newPassword })
-        .eq('id', targetId)
-      if (error) throw error
+        .select('*')
+        .eq('id', Number(targetId))
+        .maybeSingle()
+
+      if (refreshError) throw refreshError
+
+      if (refreshed) {
+        const normalized = normalizeMember(refreshed)
+        setAllMembers(prev =>
+          prev.map(m => Number(m.id) === Number(targetId) ? normalized : m)
+        )
+        setMembers(prev =>
+          prev.map(m => Number(m.id) === Number(targetId) ? normalized : m)
+        )
+      }
 
       await logAudit({
         action: 'Reset Member Password',
         entityType: 'Member',
         entityId: targetId,
         details: {
-          member_name: targetMember?.name || 'Unknown Member',
-          username: targetMember?.username || null,
-          target_role: targetMember?.role || null,
+          member_name: targetMember?.name || refreshed?.name || 'Unknown Member',
+          username: targetMember?.username || refreshed?.username || null,
+          target_role: targetMember?.role || refreshed?.role || null,
           change_type: 'Staff reset member password',
         },
       })
@@ -783,23 +830,27 @@ function App() {
       return true
     } catch (error) {
       console.error('Failed to reset password:', error)
-      addToast('Failed to reset password.', 'red', 'Error')
+      addToast(error?.message || 'Failed to reset password.', 'red', 'Password Reset Failed')
       return false
     }
   }
 
   const changeOwnPassword = async (oldPassword, newPassword) => {
     try {
-      if (currentUser.password !== oldPassword) {
+      if (!currentUser?.id || !currentUser?.password) {
+        addToast('Your login session is missing credentials. Please log out and log in again.', 'red', 'Session Error')
         return false
       }
-      const { error } = await supabase
-        .from('members')
-        .update({ password: newPassword })
-        .eq('id', currentUser.id)
-      if (error) throw error
 
-      const updated = { ...currentUser, password: newPassword }
+      if (String(currentUser.password) !== String(oldPassword)) {
+        addToast('Current password is incorrect.', 'red', 'Password Change Failed')
+        return false
+      }
+
+      const changedPassword = await setMemberPasswordViaRpc(currentUser.id, newPassword)
+
+      // Keep the active custom-login session synchronized with the database.
+      const updated = { ...currentUser, password: changedPassword }
       setCurrentUser(updated)
       localStorage.setItem('currentUser', JSON.stringify(updated))
 
@@ -814,10 +865,11 @@ function App() {
         },
       })
 
+      addToast('Your password has been changed successfully.', 'gold', 'Password Changed')
       return true
     } catch (error) {
       console.error('Failed to change password:', error)
-      addToast('Failed to change password.', 'red', 'Error')
+      addToast(error?.message || 'Failed to change password.', 'red', 'Password Change Failed')
       return false
     }
   }
