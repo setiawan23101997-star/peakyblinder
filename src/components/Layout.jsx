@@ -20,6 +20,11 @@ const NAV_ITEM_BASE = 'flex h-10 items-center gap-2 rounded-lg px-3 text-[13px] 
 const NAV_GAP = 2            // gap-0.5
 const NAV_PILL_CHROME = 16   // pill padding + border + small safety margin
 
+// Creator credit + support link (global footer, user menu and mobile menu).
+const CREATOR_NAME = 'Ryuji / MiaKhalifa'
+const SUPPORT_URL = 'https://discord.com/users/703295552821133324'
+const SUPPORT_LINK_LABEL = 'message me on Discord'
+
 const FALLBACK_REGIONS = [
   { id: 'ph', code: 'ph', flag: '🇵🇭', name: 'Philippines', tz: 'Asia/Manila',       label: 'GMT+8' },
   { id: 'us', code: 'us', flag: '🇺🇸', name: 'New York',    tz: 'America/New_York',  label: 'ET' },
@@ -977,7 +982,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
   }
 
   return (
-    <div className="min-h-screen bg-transparent text-text-bright">
+    <div className="flex min-h-screen flex-col bg-transparent text-text-bright">
       <nav className="fixed inset-x-0 top-0 z-50 border-b border-gold/15 bg-[#080706]/95 shadow-[0_8px_35px_rgba(0,0,0,.35)] backdrop-blur-xl">
         <div className="mx-auto flex h-[64px] w-full max-w-[1900px] items-center gap-2 overflow-hidden px-2 md:h-[72px] md:gap-3 md:overflow-visible md:px-5 lg:px-7 2xl:px-6">
           <div className="flex w-auto min-w-0 shrink-0 items-center gap-2.5">
@@ -1147,6 +1152,15 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                       >
                         🔑 <span className="ml-2">Change Password</span>
                       </button>
+                      <a
+                        href={SUPPORT_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="block w-full border-t border-white/[0.06] px-4 py-3 text-left text-[13px] font-medium text-text transition hover:bg-gold/[0.06] hover:text-gold-light"
+                      >
+                        💛 <span className="ml-2">Support the developer</span>
+                      </a>
                       <button
                         type="button"
                         onClick={handleLogout}
@@ -1227,16 +1241,43 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               )}
             </div>
 
-            <div className="border-t border-white/[0.06] px-4 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-text-dim/55">
-              PeakyBlinder • Ymir Clan
+            <div className="border-t border-white/[0.06] px-4 py-3 text-center">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-dim/55">PeakyBlinder • Ymir Clan</div>
+              <a
+                href={SUPPORT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-xs font-semibold text-gold-light underline decoration-gold/30 underline-offset-2 hover:text-gold-bright"
+              >
+                💛 Built by {CREATOR_NAME} · Support the developer
+              </a>
             </div>
           </div>
         </div>
       )}
 
-      <main className="mx-auto w-full max-w-[1600px] px-3 pb-8 pt-[88px] sm:px-5 lg:px-7">
+      <main className="mx-auto w-full max-w-[1600px] flex-1 px-3 pb-8 pt-[88px] sm:px-5 lg:px-7">
         {children}
       </main>
+
+      <footer className="mx-auto w-full max-w-[1600px] px-3 pb-6 sm:px-5 lg:px-7">
+        <div className="flex flex-col items-center gap-1 border-t border-white/[0.06] pt-5 text-center text-xs leading-5 text-text-dim sm:flex-row sm:justify-center sm:gap-2">
+          <span>Built by <span className="font-semibold text-gold-light">{CREATOR_NAME}</span></span>
+          <span className="hidden text-white/20 sm:inline">•</span>
+          <span>
+            Support is always appreciated, never expected. If you'd like to help,{' '}
+            <a
+              href={SUPPORT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-gold-light underline decoration-gold/30 underline-offset-2 transition-colors hover:text-gold-bright"
+            >
+              {SUPPORT_LINK_LABEL}
+            </a>
+            .
+          </span>
+        </div>
+      </footer>
 
       <div className="fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] flex-col gap-2">
         {toasts.map(toast => (
