@@ -24,7 +24,6 @@ import EventCalendar from './components/EventCalendar'
 import NoticeBoard from './components/NoticeBoard'
 import AdminAuditLog from './components/AdminAuditLog'
 import Marketplace from './components/Marketplace'
-import LootRoulette from './components/LootRoulette'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -410,138 +409,81 @@ function App() {
         m => Number(m.id) === numericId
       )
 
-      const { data, error } = await supabase
-        .from('members')
-        .update(updates)
-        .eq('id', id)
-        .select()
+      const actorId = Number(currentUser?.id)
+      const actorPassword = currentUser?.password
 
-      if (error) throw error
-
-      if (data && data.length > 0) {
-        const normalized = normalizeMember(data[0])
-
-        setAllMembers(prev => prev.map(m => Number(m.id) === numericId ? normalized : m))
-        setMembers(prev => prev.map(m => Number(m.id) === numericId ? normalized : m))
-
-        // Record the exact before → after values for member-management changes.
-        // The Audit Log UI reads this structured object and renders each field
-        // separately instead of only showing "changes: ['coins']".
-        const fieldDefinitions = [
-          {
-            key: 'coins',
-            label: 'Coins',
-            before: Number(existingMember?.coins),
-            after: Number(normalized.coins),
-            numeric: true,
-          },
-          {
-            key: 'power',
-            label: 'Power',
-            before: Number(existingMember?.power),
-            after: Number(normalized.power),
-            numeric: true,
-          },
-          {
-            key: 'cls',
-            label: 'Class',
-            before: existingMember?.cls ?? '',
-            after: normalized.cls ?? '',
-          },
-          {
-            key: 'profile_grade',
-            label: 'Card Grade',
-            before: existingMember?.profile_grade ?? 'Legendary',
-            after: normalized.profile_grade ?? 'Legendary',
-          },
-          {
-            key: 'character_level',
-            label: 'Level',
-            before: Number(existingMember?.character_level ?? existingMember?.level ?? 1),
-            after: Number(normalized.character_level ?? 1),
-            numeric: true,
-          },
-          {
-            key: 'awakening_stage',
-            label: 'Awakening',
-            before: Number(existingMember?.awakening_stage ?? 0),
-            after: Number(normalized.awakening_stage ?? 0),
-            numeric: true,
-          },
-          {
-            key: 'role',
-            label: 'Role',
-            before: existingMember?.role ?? 'Member',
-            after: normalized.role ?? 'Member',
-          },
-        ]
-
-        const fieldChanges = {}
-
-        for (const field of fieldDefinitions) {
-          if (!Object.prototype.hasOwnProperty.call(updates || {}, field.key)) continue
-
-          const changed = field.numeric
-            ? Number(field.before) !== Number(field.after)
-            : String(field.before ?? '') !== String(field.after ?? '')
-
-          if (!changed) continue
-
-          const item = {
-            label: field.label,
-            before: field.before,
-            after: field.after,
-          }
-
-          if (field.numeric) {
-            item.delta = Number(field.after) - Number(field.before)
-          }
-
-          fieldChanges[field.key] = item
-        }
-
-        // Keep a compact legacy-compatible list too.
-        const changedKeys = Object.keys(fieldChanges)
-
-        if (changedKeys.length > 0) {
-          const auditDetails = {
-            name: normalized.name,
-            member_name: normalized.name,
-            target_role: normalized.role,
-            changes: changedKeys,
-            field_changes: fieldChanges,
-          }
-
-          // Preserve the simple coin fields for compatibility with older
-          // AdminAuditLog versions.
-          if (fieldChanges.coins) {
-            auditDetails.coins_before = fieldChanges.coins.before
-            auditDetails.coins_after = fieldChanges.coins.after
-            auditDetails.coin_change = fieldChanges.coins.delta
-          }
-
-          if (fieldChanges.power) {
-            auditDetails.power_before = fieldChanges.power.before
-            auditDetails.power_after = fieldChanges.power.after
-            auditDetails.power_change = fieldChanges.power.delta
-          }
-
-          await logAudit({
-            action: changedKeys.includes('coins')
-              ? 'Changed Member Coins'
-              : changedKeys.includes('power')
-                ? 'Changed Member Power'
-                : 'Updated Member',
-            entityType: 'Member',
-            entityId: normalized.id,
-            details: auditDetails,
-          })
-        }
-
-        return normalized
+      if (!actorId || !actorPassword) {
+        throw new Error('Your login session is missing the member ID/password. Please log out and log in again.')
       }
 
-      throw new Error('Member update returned no row. Check the members UPDATE/SELECT policy.')
+      const { data, error } = await supabase.rpc('update_member_by_staff', {
+        p_target_id: numericId,
+        p_actor_id: actorId,
+        p_actor_password: actorPassword,
+        p_updates: updates || {},
+      })
+
+      if (error) throw error
+      if (!data) throw new Error('Member update was not confirmed by the server.')
+
+      const normalized = normalizeMember(data)
+      setAllMembers(prev => prev.map(m => Number(m.id) === numericId ? normalized : m))
+      setMembers(prev => prev.map(m => Number(m.id) === numericId ? normalized : m))
+
+      const fieldDefinitions = [
+        { key: 'coins', label: 'Coins', before: Number(existingMember?.coins), after: Number(normalized.coins), numeric: true },
+        { key: 'power', label: 'Power', before: Number(existingMember?.power), after: Number(normalized.power), numeric: true },
+        { key: 'cls', label: 'Class', before: existingMember?.cls ?? '', after: normalized.cls ?? '' },
+        { key: 'profile_grade', label: 'Card Grade', before: existingMember?.profile_grade ?? 'Legendary', after: normalized.profile_grade ?? 'Legendary' },
+        { key: 'character_level', label: 'Level', before: Number(existingMember?.character_level ?? existingMember?.level ?? 1), after: Number(normalized.character_level ?? 1), numeric: true },
+        { key: 'awakening_stage', label: 'Awakening', before: Number(existingMember?.awakening_stage ?? 0), after: Number(normalized.awakening_stage ?? 0), numeric: true },
+        { key: 'role', label: 'Role', before: existingMember?.role ?? 'Member', after: normalized.role ?? 'Member' },
+      ]
+
+      const fieldChanges = {}
+      for (const field of fieldDefinitions) {
+        if (!Object.prototype.hasOwnProperty.call(updates || {}, field.key)) continue
+        const changed = field.numeric
+          ? Number(field.before) !== Number(field.after)
+          : String(field.before ?? '') !== String(field.after ?? '')
+        if (!changed) continue
+        const item = { label: field.label, before: field.before, after: field.after }
+        if (field.numeric) item.delta = Number(field.after) - Number(field.before)
+        fieldChanges[field.key] = item
+      }
+
+      const changedKeys = Object.keys(fieldChanges)
+      if (changedKeys.length > 0) {
+        const auditDetails = {
+          name: normalized.name,
+          member_name: normalized.name,
+          target_role: normalized.role,
+          changes: changedKeys,
+          field_changes: fieldChanges,
+        }
+        if (fieldChanges.coins) {
+          auditDetails.coins_before = fieldChanges.coins.before
+          auditDetails.coins_after = fieldChanges.coins.after
+          auditDetails.coin_change = fieldChanges.coins.delta
+        }
+        if (fieldChanges.power) {
+          auditDetails.power_before = fieldChanges.power.before
+          auditDetails.power_after = fieldChanges.power.after
+          auditDetails.power_change = fieldChanges.power.delta
+        }
+        await logAudit({
+          action: changedKeys.includes('coins')
+            ? 'Changed Member Coins'
+            : changedKeys.includes('power')
+              ? 'Changed Member Power'
+              : 'Updated Member',
+          entityType: 'Member',
+          entityId: normalized.id,
+          details: auditDetails,
+        })
+      }
+
+      return normalized
     } catch (error) {
       console.error('Failed to update member:', error)
       addToast(
@@ -757,72 +699,34 @@ function App() {
     }
   }
 
-  const setMemberPasswordViaRpc = async (targetId, newPassword) => {
-    if (!currentUser?.id || !currentUser?.password) {
-      throw new Error('Your login session is missing the member credentials. Please log out and log in again.')
-    }
-
-    const targetNumericId = Number(targetId)
-    if (!Number.isFinite(targetNumericId)) {
-      throw new Error('Invalid target member ID.')
-    }
-
-    const trimmedPassword = String(newPassword ?? '').trim()
-    if (!trimmedPassword) {
-      throw new Error('New password cannot be empty.')
-    }
-
-    const { data, error } = await supabase.rpc('set_member_password', {
-      p_target_id: targetNumericId,
-      p_actor_id: Number(currentUser.id),
-      p_actor_password: String(currentUser.password),
-      p_new_password: trimmedPassword,
-    })
-
-    if (error) throw error
-    if (data !== true) {
-      throw new Error('Supabase did not confirm that the password was changed.')
-    }
-
-    return trimmedPassword
-  }
-
   const resetMemberPassword = async (targetId, newPassword) => {
     try {
       const targetMember = (allMembers || members || []).find(
         m => Number(m.id) === Number(targetId)
       )
-
-      await setMemberPasswordViaRpc(targetId, newPassword)
-
-      // Refresh the target from Supabase so the app does not keep stale
-      // password data in its member state.
-      const { data: refreshed, error: refreshError } = await supabase
-        .from('members')
-        .select('*')
-        .eq('id', Number(targetId))
-        .maybeSingle()
-
-      if (refreshError) throw refreshError
-
-      if (refreshed) {
-        const normalized = normalizeMember(refreshed)
-        setAllMembers(prev =>
-          prev.map(m => Number(m.id) === Number(targetId) ? normalized : m)
-        )
-        setMembers(prev =>
-          prev.map(m => Number(m.id) === Number(targetId) ? normalized : m)
-        )
+      const actorId = Number(currentUser?.id)
+      const actorPassword = currentUser?.password
+      if (!actorId || !actorPassword) {
+        throw new Error('Your login session is missing the member ID/password. Please log out and log in again.')
       }
+
+      const { data, error } = await supabase.rpc('set_member_password', {
+        p_target_id: Number(targetId),
+        p_actor_id: actorId,
+        p_actor_password: actorPassword,
+        p_new_password: newPassword,
+      })
+      if (error) throw error
+      if (data !== true) throw new Error('Password update was not confirmed by the server.')
 
       await logAudit({
         action: 'Reset Member Password',
         entityType: 'Member',
         entityId: targetId,
         details: {
-          member_name: targetMember?.name || refreshed?.name || 'Unknown Member',
-          username: targetMember?.username || refreshed?.username || null,
-          target_role: targetMember?.role || refreshed?.role || null,
+          member_name: targetMember?.name || 'Unknown Member',
+          username: targetMember?.username || null,
+          target_role: targetMember?.role || null,
           change_type: 'Staff reset member password',
         },
       })
@@ -830,27 +734,25 @@ function App() {
       return true
     } catch (error) {
       console.error('Failed to reset password:', error)
-      addToast(error?.message || 'Failed to reset password.', 'red', 'Password Reset Failed')
+      addToast(error?.message || 'Failed to reset password.', 'red', 'Error')
       return false
     }
   }
 
   const changeOwnPassword = async (oldPassword, newPassword) => {
     try {
-      if (!currentUser?.id || !currentUser?.password) {
-        addToast('Your login session is missing credentials. Please log out and log in again.', 'red', 'Session Error')
-        return false
-      }
+      if (currentUser?.password !== oldPassword) return false
 
-      if (String(currentUser.password) !== String(oldPassword)) {
-        addToast('Current password is incorrect.', 'red', 'Password Change Failed')
-        return false
-      }
+      const { data, error } = await supabase.rpc('set_member_password', {
+        p_target_id: Number(currentUser.id),
+        p_actor_id: Number(currentUser.id),
+        p_actor_password: oldPassword,
+        p_new_password: newPassword,
+      })
+      if (error) throw error
+      if (data !== true) throw new Error('Password update was not confirmed by the server.')
 
-      const changedPassword = await setMemberPasswordViaRpc(currentUser.id, newPassword)
-
-      // Keep the active custom-login session synchronized with the database.
-      const updated = { ...currentUser, password: changedPassword }
+      const updated = { ...currentUser, password: newPassword }
       setCurrentUser(updated)
       localStorage.setItem('currentUser', JSON.stringify(updated))
 
@@ -865,11 +767,10 @@ function App() {
         },
       })
 
-      addToast('Your password has been changed successfully.', 'gold', 'Password Changed')
       return true
     } catch (error) {
       console.error('Failed to change password:', error)
-      addToast(error?.message || 'Failed to change password.', 'red', 'Password Change Failed')
+      addToast(error?.message || 'Failed to change password.', 'red', 'Error')
       return false
     }
   }
@@ -974,7 +875,6 @@ function App() {
       case 'attendance':  return <Attendance  ctx={ctx} />
       case 'auctions':    return <Auctions    ctx={ctx} />
       case 'marketplace': return <Marketplace ctx={ctx} />
-      case 'loot-roulette': return <LootRoulette ctx={ctx} />
       case 'leaderboard': return <Leaderboard ctx={ctx} />
       case 'calendar':    return <EventCalendar setPage={setPage} />
       case 'notice-board': return <NoticeBoard ctx={ctx} />
