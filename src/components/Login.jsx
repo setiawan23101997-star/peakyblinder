@@ -1,5 +1,11 @@
 import React, { useState } from 'react'
 
+// Footer credit. Put a link people can tap in CONTACT_URL (Discord invite, Instagram, WhatsApp, etc.).
+// While it is empty, the message shows as plain text without a link.
+const CREATOR_NAME = 'Ryuji / MiaKhalifa'
+const CONTACT_LABEL = 'message me directly'
+const CONTACT_URL = 'https://discord.com/users/703295552821133324'
+
 export default function Login({ ctx }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -178,11 +184,32 @@ export default function Login({ ctx }) {
             </div>
           </div>
 
-          <div className="mt-5 flex items-center justify-center gap-2 text-[9px] uppercase tracking-[0.16em] text-text-dim/60">
-            <span className="h-px w-8 bg-gold/15" />
-            <span>PeakyBlinder Clan</span>
-            <span className="h-px w-8 bg-gold/15" />
-          </div>
+          <footer className="mt-6 text-center">
+            <div className="mb-3 flex items-center justify-center gap-2 text-[11px] uppercase tracking-[0.16em] text-text-dim/70">
+              <span className="h-px w-8 bg-gold/20" />
+              <span>PeakyBlinder Clan</span>
+              <span className="h-px w-8 bg-gold/20" />
+            </div>
+            <p className="text-xs leading-5 text-text-dim">
+              Built by <span className="font-semibold text-gold-light">{CREATOR_NAME}</span>
+            </p>
+            <p className="mx-auto mt-1 max-w-[340px] text-xs leading-5 text-text-dim">
+              Support is always appreciated, never expected. If you'd like to help,{' '}
+              {CONTACT_URL ? (
+                <a
+                  href={CONTACT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-gold-light underline decoration-gold/30 underline-offset-2 transition-colors hover:text-gold-bright"
+                >
+                  {CONTACT_LABEL}
+                </a>
+              ) : (
+                <span className="font-semibold text-gold-light">{CONTACT_LABEL}</span>
+              )}
+              .
+            </p>
+          </footer>
         </div>
       </div>
     </div>
