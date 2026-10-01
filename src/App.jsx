@@ -30,6 +30,20 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 const supabase = createClient(supabaseUrl, supabaseKey)
 
+// Column lists are defined ONCE so every query (initial load, fallback refresh,
+// reloads) downloads exactly the same, minimal set of columns.
+// - `password` is intentionally NOT in MEMBER_COLS: other members' passwords
+//   never need to reach the browser. Only the legacy login fallback uses it.
+// - `region`, `server`, `character_image` are not mapped by normalizeMember, so
+//   they were downloaded and discarded. Removed.
+// - If tx_log / attend_log turn out to be big, delete them from MEMBER_COLS and
+//   fetch them on demand where they are displayed.
+const MEMBER_COLS = 'id,name,username,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log'
+const LOGIN_COLS = MEMBER_COLS + ',password'
+const AUCTION_COLS = 'id,name,description,rarity,status,current_bid,min_bid,top_bidder,ends_at,started_at,ended_at,distributed_by,image_url,is_featured,bids,image_name'
+const ATTENDANCE_COLS = 'id,event,date,ts,members,recorded_by,attendees'
+const FALLBACK_REFRESH_MS = 5 * 60 * 1000
+
 // Region options shared between Layout (picker) and Dashboard (display).
 // `code` is the ISO 3166-1 alpha-2 code used to fetch flag images from
 // flagcdn.com. `flag` is the emoji fallback for platforms that support it.
@@ -148,18 +162,43 @@ function App() {
     attend_log: toJsonArray(m.attend_log),
   })
 
+  // Realtime UPDATE payloads can omit unchanged large columns. Never let a
+  // missing key wipe data we already hold (logs, password).
+  const mergeMemberRow = (prev, row) => {
+    const next = normalizeMember(row)
+    if (!prev) return next
+    const keep = {}
+    if (!('tx_log' in row)) keep.tx_log = prev.tx_log
+    if (!('attend_log' in row)) keep.attend_log = prev.attend_log
+    if (!row.password) keep.password = prev.password
+    return { ...next, ...keep }
+  }
+
+  const upsertMember = (list, row, viewer, applyVisibility = false) => {
+    const id = Number(row.id)
+    const prevMember = list.find(m => Number(m.id) === id)
+    const merged = mergeMemberRow(prevMember, row)
+    if (applyVisibility && filterVisibleMembers([merged], viewer).length === 0) {
+      return list.filter(m => Number(m.id) !== id)
+    }
+    const next = prevMember
+      ? list.map(m => Number(m.id) === id ? merged : m)
+      : [...list, merged]
+    return next.sort((a, b) => Number(a.id) - Number(b.id))
+  }
+
   const filterVisibleMembers = (list, viewer) => {
     if (viewer?.role === 'Admin') return list
     return list.filter(m => m.role !== 'Admin')
   }
 
-  const loadAllData = async () => {
+  const loadAllData = async ({ silent = false } = {}) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
 
       const { data: membersData, error: membersError } = await supabase
         .from('members')
-        .select('id,name,username,password,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log,region,server,character_image')
+        .select(MEMBER_COLS)
         .order('id')
       if (membersError) throw membersError
       console.log('Loaded members:', membersData?.length || 0)
@@ -191,13 +230,13 @@ function App() {
 
       const { data: auctionsData, error: auctionsError } = await supabase
         .from('auctions')
-        .select('id,name,description,rarity,status,current_bid,min_bid,top_bidder,ends_at,started_at,ended_at,distributed_by,image_url,is_featured,bids,image_name')
+        .select(AUCTION_COLS)
       if (auctionsError) throw auctionsError
       setAuctions((auctionsData || []).map(normalizeAuction))
 
       const { data: logsData, error: logsError } = await supabase
         .from('attendance_logs')
-        .select('id,event,date,ts,members,recorded_by,attendees')
+        .select(ATTENDANCE_COLS)
       if (logsError) throw logsError
       setAttendanceLogs(logsData || [])
 
@@ -206,7 +245,9 @@ function App() {
         const currentMembers = membersData || []
         const found = currentMembers.find(m => Number(m.id) === Number(user.id))
         if (found) {
-          const normalized = normalizeMember(found)
+          // MEMBER_COLS has no password; keep the one from the saved session
+          // (the staff RPCs authenticate with it).
+          const normalized = { ...normalizeMember(found), password: user.password ?? '' }
           setCurrentUser(normalized)
           setMembers(filterVisibleMembers((membersData || []).map(normalizeMember), normalized))
         } else {
@@ -221,37 +262,70 @@ function App() {
     }
   }
 
+  // Don't download every table for visitors who are only looking at the login
+  // screen. Returning users (saved session) load immediately; fresh logins load
+  // right after currentUser is set.
+  const loadedForRef = useRef(null)
+
   useEffect(() => {
-    loadAllData()
+    let savedId = null
+    try {
+      const saved = JSON.parse(localStorage.getItem('currentUser') || 'null')
+      if (saved?.id != null) savedId = String(saved.id)
+    } catch {}
+
+    if (savedId) {
+      loadedForRef.current = savedId
+      loadAllData()
+    } else {
+      setLoading(false)
+    }
   }, [])
 
-  // Keep live state in sync with Supabase Realtime instead of repeatedly
-  // downloading the entire members/auctions/attendance tables every 5 seconds.
-  // A 5-minute refresh remains as a safety net for missed realtime events.
   useEffect(() => {
+    if (!currentUser) {
+      if (!loading) loadedForRef.current = null
+      return
+    }
+    if (loadedForRef.current === String(currentUser.id)) return
+    loadedForRef.current = String(currentUser.id)
+    loadAllData({ silent: true })
+  }, [currentUser?.id, loading])
+
+  // Keep live state in sync with Supabase Realtime instead of repeatedly
+  // downloading the entire members/auctions/attendance tables.
+  // - Subscribes only while someone is logged in.
+  // - A 5-minute refresh remains as a safety net for missed realtime events;
+  //   it skips hidden tabs and catches up when the tab becomes visible again.
+  useEffect(() => {
+    if (!currentUser) return undefined
+
     let membersChannel = null
     let auctionsChannel = null
     let attendanceChannel = null
+    let lastRefresh = Date.now()
 
     const refreshCoreData = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      lastRefresh = Date.now()
       try {
-        const [
-          { data: membersData },
-          { data: auctionsData },
-          { data: logsData },
-        ] = await Promise.all([
-          supabase.from('members').select('${member_select}').order('id'),
-          supabase.from('auctions').select('${auction_select}'),
-          supabase.from('attendance_logs').select('${attendance_select}'),
+        const [membersRes, auctionsRes, logsRes] = await Promise.all([
+          supabase.from('members').select(MEMBER_COLS).order('id'),
+          supabase.from('auctions').select(AUCTION_COLS),
+          supabase.from('attendance_logs').select(ATTENDANCE_COLS),
         ])
 
-        if (membersData) {
-          const normalized = membersData.map(normalizeMember)
+        if (membersRes.error) console.warn('[Fallback refresh] members:', membersRes.error.message)
+        if (auctionsRes.error) console.warn('[Fallback refresh] auctions:', auctionsRes.error.message)
+        if (logsRes.error) console.warn('[Fallback refresh] attendance:', logsRes.error.message)
+
+        if (membersRes.data) {
+          const normalized = membersRes.data.map(normalizeMember)
           setAllMembers(normalized)
           setMembers(filterVisibleMembers(normalized, currentUser))
         }
-        if (auctionsData) setAuctions(auctionsData.map(normalizeAuction))
-        if (logsData) setAttendanceLogs(logsData)
+        if (auctionsRes.data) setAuctions(auctionsRes.data.map(normalizeAuction))
+        if (logsRes.data) setAttendanceLogs(logsRes.data)
       } catch (error) {
         console.warn('[Realtime fallback] Refresh failed:', error)
       }
@@ -261,45 +335,21 @@ function App() {
       const eventType = payload?.eventType
       const row = eventType === 'DELETE' ? payload?.old : payload?.new
       if (!row?.id) return
+      const rowId = Number(row.id)
 
-      setAllMembers(prev => {
-        if (eventType === 'DELETE') {
-          return prev.filter(member => Number(member.id) !== Number(row.id))
-        }
+      if (eventType === 'DELETE') {
+        setAllMembers(prev => prev.filter(m => Number(m.id) !== rowId))
+        setMembers(prev => prev.filter(m => Number(m.id) !== rowId))
+        return
+      }
 
-        const normalized = normalizeMember(row)
-        const exists = prev.some(member => Number(member.id) === Number(normalized.id))
-        const next = exists
-          ? prev.map(member => Number(member.id) === Number(normalized.id) ? normalized : member)
-          : [...prev, normalized]
+      setAllMembers(prev => upsertMember(prev, row))
+      setMembers(prev => upsertMember(prev, row, currentUser, true))
 
-        return next.sort((a, b) => Number(a.id) - Number(b.id))
-      })
-
-      setMembers(prev => {
-        if (eventType === 'DELETE') {
-          return prev.filter(member => Number(member.id) !== Number(row.id))
-        }
-
-        const normalized = normalizeMember(row)
-        const visible = filterVisibleMembers([normalized], currentUser).length > 0
-        const exists = prev.some(member => Number(member.id) === Number(normalized.id))
-
-        if (!visible) {
-          return prev.filter(member => Number(member.id) !== Number(normalized.id))
-        }
-
-        const next = exists
-          ? prev.map(member => Number(member.id) === Number(normalized.id) ? normalized : member)
-          : [...prev, normalized]
-
-        return next.sort((a, b) => Number(a.id) - Number(b.id))
-      })
-
-      if (Number(currentUser?.id) === Number(row.id) && eventType !== 'DELETE') {
-        const normalized = normalizeMember(row)
-        setCurrentUser(normalized)
-        try { localStorage.setItem('currentUser', JSON.stringify(normalized)) } catch {}
+      if (Number(currentUser?.id) === rowId) {
+        const merged = mergeMemberRow(currentUser, row)
+        setCurrentUser(merged)
+        try { localStorage.setItem('currentUser', JSON.stringify(merged)) } catch {}
       }
     }
 
@@ -315,11 +365,9 @@ function App() {
 
         const normalized = normalizeAuction(row)
         const exists = prev.some(auction => String(auction.id) === String(normalized.id))
-        const next = exists
+        return exists
           ? prev.map(auction => String(auction.id) === String(normalized.id) ? normalized : auction)
           : [...prev, normalized]
-
-        return next
       })
     }
 
@@ -359,10 +407,16 @@ function App() {
       console.warn('[Realtime] Setup failed:', error)
     }
 
-    const fallbackId = setInterval(refreshCoreData, 5 * 60 * 1000)
+    const fallbackId = setInterval(refreshCoreData, FALLBACK_REFRESH_MS)
+
+    const handleVisibility = () => {
+      if (!document.hidden && Date.now() - lastRefresh > FALLBACK_REFRESH_MS) refreshCoreData()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
       clearInterval(fallbackId)
+      document.removeEventListener('visibilitychange', handleVisibility)
       if (membersChannel) {
         try { supabase.removeChannel(membersChannel) } catch {}
       }
@@ -806,7 +860,7 @@ function App() {
       // so this gives us the actual persisted state after the reset.
       const { data: verified, error: readError } = await supabase
         .from('members')
-        .select('id,name,username,password,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log,region,server,character_image')
+        .select(MEMBER_COLS)
         .eq('id', numericTargetId)
         .maybeSingle()
 
@@ -853,8 +907,9 @@ function App() {
       // Keep the currently logged-in user's cached data correct if the target
       // somehow matches it, although the self-reset guard above normally stops it.
       if (Number(currentUser.id) === numericTargetId) {
-        setCurrentUser(normalized)
-        localStorage.setItem('currentUser', JSON.stringify(normalized))
+        const keepSession = { ...normalized, password: currentUser.password }
+        setCurrentUser(keepSession)
+        localStorage.setItem('currentUser', JSON.stringify(keepSession))
       }
 
       // The reset itself is also a staff action and must be visible in Audit Log.
@@ -971,7 +1026,7 @@ function App() {
       // password data in its member state.
       const { data: refreshed, error: refreshError } = await supabase
         .from('members')
-        .select('id,name,username,password,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log,region,server,character_image')
+        .select(MEMBER_COLS)
         .eq('id', Number(targetId))
         .maybeSingle()
 
@@ -1047,7 +1102,7 @@ function App() {
   }
 
   const reloadMembers = async () => {
-    const { data } = await supabase.from('members').select('id,name,username,password,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log,region,server,character_image').order('id')
+    const { data } = await supabase.from('members').select(MEMBER_COLS).order('id')
     if (data) {
       const normalized = data.map(normalizeMember)
       setAllMembers(normalized)
@@ -1055,30 +1110,55 @@ function App() {
     }
   }
 
+  const isMissingFunctionError = (error) =>
+    error && (
+      error.code === 'PGRST202' ||
+      error.code === '42883' ||
+      /could not find the function/i.test(error.message || '')
+    )
+
+  // Preferred path: the `login_member` RPC (see login_member.sql) checks the
+  // credentials server-side and returns ONE row. Until that function exists,
+  // fall back to the old behaviour (downloads the whole table) so login keeps
+  // working.
   const handleLogin = async (username, password) => {
     try {
-      const { data, error } = await supabase
-        .from('members')
-        .select('id,name,username,password,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log,region,server,character_image')
-      if (error) throw error
+      let target = null
 
-      const target = (data || []).find(m =>
-        m.username && m.username.toLowerCase() === username.toLowerCase() &&
-        m.password === password
-      )
+      const { data: rpcData, error: rpcError } = await supabase.rpc('login_member', {
+        p_username: String(username ?? '').trim(),
+        p_password: String(password ?? ''),
+      })
+
+      if (!rpcError) {
+        target = Array.isArray(rpcData) ? (rpcData[0] || null) : (rpcData || null)
+      } else if (isMissingFunctionError(rpcError)) {
+        console.warn('[handleLogin] login_member RPC not found - using legacy full-table login. Run login_member.sql in Supabase to stop downloading every member on login.')
+        const { data, error } = await supabase
+          .from('members')
+          .select(LOGIN_COLS)
+        if (error) throw error
+
+        target = (data || []).find(m =>
+          m.username && m.username.toLowerCase() === username.toLowerCase() &&
+          m.password === password
+        ) || null
+      } else {
+        throw rpcError
+      }
 
       if (!target) {
         return false
       }
 
-      const user = normalizeMember(target)
+      // The password was just verified, so keep the typed value on the session
+      // (the staff RPCs need it as p_actor_password).
+      const user = { ...normalizeMember(target), password: String(password) }
       setCurrentUser(user)
       localStorage.setItem('currentUser', JSON.stringify(user))
 
-      const normalized = (data || []).map(normalizeMember)
-      setAllMembers(normalized)
-      setMembers(filterVisibleMembers(normalized, user))
-
+      // Members / auctions / logs are loaded by the effect that watches
+      // currentUser, so there is no second full download here.
       addToast(`Welcome back, ${user.name}!`, 'gold', 'Login Success')
       return true
     } catch (error) {
