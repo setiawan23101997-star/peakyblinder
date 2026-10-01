@@ -718,6 +718,11 @@ export default function Auctions({ ctx }) {
       return
     }
 
+    if (!currentUser?.password) {
+      addToast('Your login session is missing credentials. Please log out and log in again.', 'red', 'Bid Failed')
+      return
+    }
+
     const own = getOwnBidState(auction, currentUser.name)
     if (own.cancelled) {
       addToast('You cancelled your bid and cannot bid again on this auction.', 'red', 'Bid Cancelled')
@@ -750,88 +755,83 @@ export default function Auctions({ ctx }) {
       return
     }
 
-    // Only the latest bid is reserved. A change up reserves the difference;
-    // a change down immediately releases the difference.
-    const previousReserved = own.amount
-    const availableForNewBid = (Number(bidder.coins) || 0) + previousReserved
-    if (amount > availableForNewBid) {
-      addToast('Not enough available coins for that bid.', 'red', 'Insufficient Funds')
+    // The database RPC is authoritative. It locks both rows and changes
+    // the member balance + auction bid in one transaction.
+    const { data, error } = await supabase.rpc('auction_place_bid', {
+      p_auction_id: String(auctionId),
+      p_bidder_id: Number(bidder.id),
+      p_bidder_password: String(currentUser.password),
+      p_amount: amount,
+    })
+
+    if (error) {
+      console.error('Auction bid failed:', error)
+      addToast(error.message || 'Could not place your bid.', 'red', 'Bid Failed')
       return
     }
 
-    const delta = amount - previousReserved
-    const newCoins = (Number(bidder.coins) || 0) - delta
+    const result = Array.isArray(data) ? data[0] : data
+    const newCoins = Number(result?.coins)
+    const newBids = Array.isArray(result?.bids)
+      ? result.bids
+      : [...(auction.bids || []), {
+          bidder: currentUser.name,
+          amount,
+          time: bidNow,
+          previousAmount: own.amount || null,
+          changeNumber: own.submissions,
+          isChange: own.submissions > 0,
+          cancelled: false,
+        }]
 
-    const newBids = [
-      ...(auction.bids || []),
-      {
-        bidder: currentUser.name,
-        amount,
-        time: bidNow,
-        previousAmount: previousReserved || null,
-        changeNumber: own.submissions,
-        isChange: own.submissions > 0,
-        cancelled: false,
-      },
-    ]
-
-    // Reserve/release the coin difference first. If the auction write fails,
-    // roll the member balance back to its previous value.
-    const { error: coinErr } = await supabase
-      .from('members')
-      .update({ coins: newCoins })
-      .eq('id', bidder.id)
-
-    if (coinErr) {
-      console.error('Bid reserve update failed:', coinErr)
-      addToast(`Couldn't reserve coins: ${coinErr.message}`, 'red', 'Save Failed')
+    if (!Number.isFinite(newCoins)) {
+      console.error('Auction RPC returned no authoritative coin balance:', result)
+      addToast('Bid was saved, but the server did not return the new balance. Refreshing data.', 'red', 'Bid Warning')
       return
     }
 
-    const { error: auctionErr } = await supabase
-      .from('auctions')
-      .update({
-        bids: newBids,
-        current_bid: startingBid,
-        top_bidder: null,
-      })
-      .eq('id', auctionId)
-      .eq('status', 'active')
+    setMembers(prev => prev.map(m =>
+      m.id === bidder.id ? { ...m, coins: newCoins } : m
+    ))
 
-    if (auctionErr) {
-      await supabase.from('members').update({ coins: bidder.coins }).eq('id', bidder.id)
-      console.error('Blind bid save failed:', auctionErr)
-      addToast(`Couldn't save your bid: ${auctionErr.message}`, 'red', 'Save Failed')
-      return
-    }
-
-    setMembers(prev => prev.map(m => m.id === bidder.id ? { ...m, coins: newCoins } : m))
     setAuctions(prev => prev.map(a => a.id === auctionId ? {
       ...a,
       bids: newBids,
       currentBid: startingBid,
       topBidder: null,
     } : a))
+
     setBidAmounts(prev => ({ ...prev, [auctionId]: '' }))
 
     if (own.hasBid) {
+      const delta = Number(result?.delta) || 0
+      const changeText = delta >= 0
+        ? `${delta.toLocaleString()} additional coins reserved.`
+        : `${Math.abs(delta).toLocaleString()} coins released.`
+
       addToast(
-        `Your bid changed to ${amount.toLocaleString()} coins. ${Math.max(0, MAX_BID_CHANGES - own.changesUsed - 1)} change${Math.max(0, MAX_BID_CHANGES - own.changesUsed - 1) === 1 ? '' : 's'} remaining.`,
+        `Your bid changed to ${amount.toLocaleString()} coins. ${changeText}`,
         'gold',
         'Bid Changed'
       )
     } else {
-      addToast(`Your blind bid of ${amount.toLocaleString()} coins is locked in.`, 'gold', 'Bid Submitted')
+      addToast(
+        `Your blind bid of ${amount.toLocaleString()} coins is locked in. ${newCoins.toLocaleString()} coins remaining.`,
+        'gold',
+        'Bid Submitted'
+      )
     }
   }
 
   const cancelBid = async (auctionId) => {
     const auction = auctions.find(a => a.id === auctionId)
     const bidNow = Date.now()
+
     if (!auction || auction.status !== 'active') {
       addToast('This auction has already ended.', 'red', 'Auction Ended')
       return
     }
+
     if (!isBiddingOpen(auction, bidNow)) {
       addToast('Bid cancellation is disabled during the final 30 seconds.', 'red', 'Cancellation Locked')
       return
@@ -847,63 +847,63 @@ export default function Auctions({ ctx }) {
       `Cancel Blind Bid?\n\nYour current bid of ${own.amount.toLocaleString()} coins will be cancelled.\n\nThe ${own.amount.toLocaleString()} reserved coins will be returned immediately.\nYou will not be able to bid again on this auction.`
     )) return
 
-    const bidder = members.find(m => m.name === currentUser?.name)
-    if (!bidder) {
-      addToast('Your member record could not be found.', 'red', 'Cancel Failed')
+    if (!currentUser?.password) {
+      addToast('Your login session is missing credentials. Please log out and log in again.', 'red', 'Cancel Failed')
       return
     }
 
-    const newBids = [
-      ...(auction.bids || []),
-      {
-        bidder: currentUser.name,
-        amount: 0,
-        time: bidNow,
-        previousAmount: own.amount,
-        cancelled: true,
-        changeNumber: own.submissions,
-      },
-    ]
+    // Keep cancellation atomic too. This prevents a refund from succeeding
+    // while the cancelled-bid marker fails to save.
+    const { data, error } = await supabase.rpc('auction_cancel_bid', {
+      p_auction_id: String(auctionId),
+      p_bidder_id: Number(currentUser.id),
+      p_bidder_password: String(currentUser.password),
+    })
 
-    const refundedCoins = (Number(bidder.coins) || 0) + own.amount
-
-    const { error: coinErr } = await supabase
-      .from('members')
-      .update({ coins: refundedCoins })
-      .eq('id', bidder.id)
-
-    if (coinErr) {
-      console.error('Bid cancellation refund failed:', coinErr)
-      addToast(`Couldn't return your coins: ${coinErr.message}`, 'red', 'Cancel Failed')
+    if (error) {
+      console.error('Bid cancellation failed:', error)
+      addToast(error.message || 'Could not cancel your bid.', 'red', 'Cancel Failed')
       return
     }
 
-    const { error: auctionErr } = await supabase
-      .from('auctions')
-      .update({
-        bids: newBids,
-        current_bid: getStartingBid(auction),
-        top_bidder: null,
-      })
-      .eq('id', auctionId)
-      .eq('status', 'active')
+    const result = Array.isArray(data) ? data[0] : data
+    const newCoins = Number(result?.coins)
+    const newBids = Array.isArray(result?.bids)
+      ? result.bids
+      : [
+          ...(auction.bids || []),
+          {
+            bidder: currentUser.name,
+            amount: 0,
+            time: bidNow,
+            previousAmount: own.amount,
+            cancelled: true,
+            changeNumber: own.submissions,
+          },
+        ]
 
-    if (auctionErr) {
-      await supabase.from('members').update({ coins: bidder.coins }).eq('id', bidder.id)
-      console.error('Bid cancellation save failed:', auctionErr)
-      addToast(`Couldn't cancel the bid: ${auctionErr.message}`, 'red', 'Cancel Failed')
+    if (!Number.isFinite(newCoins)) {
+      addToast('Cancellation completed, but the server did not return the new balance. Refreshing data.', 'red', 'Cancel Warning')
       return
     }
 
-    setMembers(prev => prev.map(m => m.id === bidder.id ? { ...m, coins: refundedCoins } : m))
+    setMembers(prev => prev.map(m =>
+      m.id === Number(currentUser.id) ? { ...m, coins: newCoins } : m
+    ))
+
     setAuctions(prev => prev.map(a => a.id === auctionId ? {
       ...a,
       bids: newBids,
       currentBid: getStartingBid(a),
       topBidder: null,
     } : a))
+
     setBidAmounts(prev => ({ ...prev, [auctionId]: '' }))
-    addToast(`Your ${own.amount.toLocaleString()}-coin bid was cancelled and fully returned.`, 'blue', 'Bid Cancelled')
+    addToast(
+      `Your ${own.amount.toLocaleString()}-coin bid was cancelled and fully returned. ${newCoins.toLocaleString()} coins available.`,
+      'blue',
+      'Bid Cancelled'
+    )
   }
 
   const endAuction = async (auctionId) => {
