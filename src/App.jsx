@@ -159,7 +159,7 @@ function App() {
 
       const { data: membersData, error: membersError } = await supabase
         .from('members')
-        .select('*')
+        .select('id,name,username,password,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log,region,server,character_image')
         .order('id')
       if (membersError) throw membersError
       console.log('Loaded members:', membersData?.length || 0)
@@ -191,13 +191,13 @@ function App() {
 
       const { data: auctionsData, error: auctionsError } = await supabase
         .from('auctions')
-        .select('*')
+        .select('id,name,description,rarity,status,current_bid,min_bid,top_bidder,ends_at,started_at,ended_at,distributed_by,image_url,is_featured,bids,image_name')
       if (auctionsError) throw auctionsError
       setAuctions((auctionsData || []).map(normalizeAuction))
 
       const { data: logsData, error: logsError } = await supabase
         .from('attendance_logs')
-        .select('*')
+        .select('id,event,date,ts,members,recorded_by,attendees')
       if (logsError) throw logsError
       setAttendanceLogs(logsData || [])
 
@@ -225,21 +225,155 @@ function App() {
     loadAllData()
   }, [])
 
+  // Keep live state in sync with Supabase Realtime instead of repeatedly
+  // downloading the entire members/auctions/attendance tables every 5 seconds.
+  // A 5-minute refresh remains as a safety net for missed realtime events.
   useEffect(() => {
-    const interval = setInterval(async () => {
-      const { data: membersData } = await supabase.from('members').select('*').order('id')
-      const { data: auctionsData } = await supabase.from('auctions').select('*')
-      const { data: logsData } = await supabase.from('attendance_logs').select('*')
-      if (membersData) {
-        const normalized = membersData.map(normalizeMember)
-        setAllMembers(normalized)
-        setMembers(filterVisibleMembers(normalized, currentUser))
+    let membersChannel = null
+    let auctionsChannel = null
+    let attendanceChannel = null
+
+    const refreshCoreData = async () => {
+      try {
+        const [
+          { data: membersData },
+          { data: auctionsData },
+          { data: logsData },
+        ] = await Promise.all([
+          supabase.from('members').select('${member_select}').order('id'),
+          supabase.from('auctions').select('${auction_select}'),
+          supabase.from('attendance_logs').select('${attendance_select}'),
+        ])
+
+        if (membersData) {
+          const normalized = membersData.map(normalizeMember)
+          setAllMembers(normalized)
+          setMembers(filterVisibleMembers(normalized, currentUser))
+        }
+        if (auctionsData) setAuctions(auctionsData.map(normalizeAuction))
+        if (logsData) setAttendanceLogs(logsData)
+      } catch (error) {
+        console.warn('[Realtime fallback] Refresh failed:', error)
       }
-      if (auctionsData) setAuctions(auctionsData.map(normalizeAuction))
-      if (logsData) setAttendanceLogs(logsData)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [currentUser])
+    }
+
+    const handleMemberChange = payload => {
+      const eventType = payload?.eventType
+      const row = eventType === 'DELETE' ? payload?.old : payload?.new
+      if (!row?.id) return
+
+      setAllMembers(prev => {
+        if (eventType === 'DELETE') {
+          return prev.filter(member => Number(member.id) !== Number(row.id))
+        }
+
+        const normalized = normalizeMember(row)
+        const exists = prev.some(member => Number(member.id) === Number(normalized.id))
+        const next = exists
+          ? prev.map(member => Number(member.id) === Number(normalized.id) ? normalized : member)
+          : [...prev, normalized]
+
+        return next.sort((a, b) => Number(a.id) - Number(b.id))
+      })
+
+      setMembers(prev => {
+        if (eventType === 'DELETE') {
+          return prev.filter(member => Number(member.id) !== Number(row.id))
+        }
+
+        const normalized = normalizeMember(row)
+        const visible = filterVisibleMembers([normalized], currentUser).length > 0
+        const exists = prev.some(member => Number(member.id) === Number(normalized.id))
+
+        if (!visible) {
+          return prev.filter(member => Number(member.id) !== Number(normalized.id))
+        }
+
+        const next = exists
+          ? prev.map(member => Number(member.id) === Number(normalized.id) ? normalized : member)
+          : [...prev, normalized]
+
+        return next.sort((a, b) => Number(a.id) - Number(b.id))
+      })
+
+      if (Number(currentUser?.id) === Number(row.id) && eventType !== 'DELETE') {
+        const normalized = normalizeMember(row)
+        setCurrentUser(normalized)
+        try { localStorage.setItem('currentUser', JSON.stringify(normalized)) } catch {}
+      }
+    }
+
+    const handleAuctionChange = payload => {
+      const eventType = payload?.eventType
+      const row = eventType === 'DELETE' ? payload?.old : payload?.new
+      if (!row?.id) return
+
+      setAuctions(prev => {
+        if (eventType === 'DELETE') {
+          return prev.filter(auction => String(auction.id) !== String(row.id))
+        }
+
+        const normalized = normalizeAuction(row)
+        const exists = prev.some(auction => String(auction.id) === String(normalized.id))
+        const next = exists
+          ? prev.map(auction => String(auction.id) === String(normalized.id) ? normalized : auction)
+          : [...prev, normalized]
+
+        return next
+      })
+    }
+
+    const handleAttendanceChange = payload => {
+      const eventType = payload?.eventType
+      const row = eventType === 'DELETE' ? payload?.old : payload?.new
+      if (!row?.id) return
+
+      setAttendanceLogs(prev => {
+        if (eventType === 'DELETE') {
+          return prev.filter(log => String(log.id) !== String(row.id))
+        }
+
+        const exists = prev.some(log => String(log.id) === String(row.id))
+        return exists
+          ? prev.map(log => String(log.id) === String(row.id) ? row : log)
+          : [...prev, row]
+      })
+    }
+
+    try {
+      membersChannel = supabase
+        .channel('app-members-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, handleMemberChange)
+        .subscribe(status => console.log('[Members Realtime]', status))
+
+      auctionsChannel = supabase
+        .channel('app-auctions-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'auctions' }, handleAuctionChange)
+        .subscribe(status => console.log('[Auctions Realtime]', status))
+
+      attendanceChannel = supabase
+        .channel('app-attendance-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_logs' }, handleAttendanceChange)
+        .subscribe(status => console.log('[Attendance Realtime]', status))
+    } catch (error) {
+      console.warn('[Realtime] Setup failed:', error)
+    }
+
+    const fallbackId = setInterval(refreshCoreData, 5 * 60 * 1000)
+
+    return () => {
+      clearInterval(fallbackId)
+      if (membersChannel) {
+        try { supabase.removeChannel(membersChannel) } catch {}
+      }
+      if (auctionsChannel) {
+        try { supabase.removeChannel(auctionsChannel) } catch {}
+      }
+      if (attendanceChannel) {
+        try { supabase.removeChannel(attendanceChannel) } catch {}
+      }
+    }
+  }, [currentUser?.id, currentUser?.role])
 
   // Blind auctions are settled by Auctions.jsx. App.jsx must not
   // auto-close an expired auction that has submitted bids, because doing so
@@ -672,7 +806,7 @@ function App() {
       // so this gives us the actual persisted state after the reset.
       const { data: verified, error: readError } = await supabase
         .from('members')
-        .select('*')
+        .select('id,name,username,password,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log,region,server,character_image')
         .eq('id', numericTargetId)
         .maybeSingle()
 
@@ -837,7 +971,7 @@ function App() {
       // password data in its member state.
       const { data: refreshed, error: refreshError } = await supabase
         .from('members')
-        .select('*')
+        .select('id,name,username,password,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log,region,server,character_image')
         .eq('id', Number(targetId))
         .maybeSingle()
 
@@ -913,7 +1047,7 @@ function App() {
   }
 
   const reloadMembers = async () => {
-    const { data } = await supabase.from('members').select('*').order('id')
+    const { data } = await supabase.from('members').select('id,name,username,password,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log,region,server,character_image').order('id')
     if (data) {
       const normalized = data.map(normalizeMember)
       setAllMembers(normalized)
@@ -925,7 +1059,7 @@ function App() {
     try {
       const { data, error } = await supabase
         .from('members')
-        .select('*')
+        .select('id,name,username,password,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord,tx_log,attend_log,region,server,character_image')
       if (error) throw error
 
       const target = (data || []).find(m =>
