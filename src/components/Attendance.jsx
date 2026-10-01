@@ -516,6 +516,28 @@ export default function Attendance({ ctx }) {
   const toggleMember = (id) => setSelectedMembers(prev => ({ ...prev, [id]: !prev[id] }))
   const toggleLog = (id) => setExpandedLogs(prev => ({ ...prev, [id]: !prev[id] }))
 
+  // All staff coin/attendance mutations go through the SECURITY DEFINER RPC.
+  // Direct members UPDATEs are blocked by the current RLS setup, which caused
+  // Admin/Master/Elder coin operations to silently fail even though the UI changed.
+  const updateMemberStaff = async (memberId, updates) => {
+    if (!isElder || !currentUser?.id || !currentUser?.password) {
+      throw new Error('Your staff session is missing credentials. Please log out and log in again.')
+    }
+
+    const targetId = Number(memberId)
+    if (!Number.isFinite(targetId)) throw new Error('Invalid member ID.')
+
+    const { data, error } = await supabase.rpc('update_member_by_staff', {
+      p_target_id: targetId,
+      p_actor_id: Number(currentUser.id),
+      p_actor_password: String(currentUser.password),
+      p_updates: updates || {},
+    })
+
+    if (error) throw error
+    if (!data) throw new Error('The database did not return the updated member.')
+    return data
+  }
 
   const recordAttendance = async () => {
     const ids = Object.keys(selectedMembers).filter(k => selectedMembers[k])
@@ -563,8 +585,8 @@ export default function Attendance({ ctx }) {
         gpBonus: getAttendanceGpBonus(m.power, selectedEvent),
         perfectAttendanceBonus: 0,
       }
-      const { data, error } = await supabase.rpc('record_attendance_and_log', {
-        p_member_name: m.name,
+      const { data, error } = await supabase.rpc('record_attendance_staff', {
+        p_target_id: Number(m.id),
         p_coins_delta: reward,
         p_attendance_delta: 1,
         p_attend_entry: attendEntry,
@@ -664,84 +686,66 @@ export default function Attendance({ ctx }) {
     }
 
     const attendees = log.attendees || []
-    const totalCoins = attendees.reduce((s, a) => s + (a.earned || 0), 0)
+    const totalCoins = attendees.reduce((s, a) => s + Number(a.earned ?? a.coins ?? 0), 0)
 
     const confirmMsg =
-      `Delete "${log.event}" attendance from ${formatGMT8Short(log.ts || log.id)}?\n\n` +
-      `This will reverse:\n` +
-      `• ${attendees.length} member(s)\n` +
-      `• ${totalCoins.toLocaleString()} coins total\n\n` +
+      `Delete "${log.event}" attendance from ${formatGMT8Short(log.ts || log.id)}?
+
+` +
+      `This will reverse:
+` +
+      `• ${attendees.length} member(s)
+` +
+      `• ${totalCoins.toLocaleString()} coins total
+
+` +
       `This cannot be undone.`
 
     if (!window.confirm(confirmMsg)) return
 
     setDeletingId(log.id)
 
-    const reversed = await Promise.all(attendees.map(async (a) => {
-      const member = members.find(m => m.name === a.name)
-      if (!member) return { name: a.name, ok: true, skipped: true }
-
-      const newCoins = Math.max(0, (member.coins || 0) - (a.earned || 0))
-      const newAttendance = Math.max(0, (member.attendance || 0) - 1)
-
-      const filteredLog = (member.attend_log || []).filter(entry => {
-        const entryTs = entry.ts || 0
-        if (entryTs && log.ts && entryTs === log.ts) return false
-        if (a.sessionId && entry.sessionId === a.sessionId && entry.event === log.event) return false
-        return true
+    try {
+      const { data, error } = await supabase.rpc('delete_attendance_staff', {
+        p_log_id: Number(log.id),
+        p_actor_id: Number(currentUser?.id),
+        p_actor_password: String(currentUser?.password || ''),
       })
 
-      const { error } = await supabase
-        .from('members')
-        .update({
-          coins: newCoins,
-          attendance: newAttendance,
-          attend_log: filteredLog,
+      if (error) throw error
+
+      setMembers(prev => prev.map(m => {
+        const attendee = attendees.find(a =>
+          String(a.memberId ?? '') === String(m.id) ||
+          (a.memberId == null && String(a.name).trim().toLowerCase() === String(m.name).trim().toLowerCase())
+        )
+        if (!attendee) return m
+        const reward = Number(attendee.earned ?? attendee.coins ?? 0)
+        const filteredLog = (m.attend_log || []).filter(entry => {
+          if (log.ts && Number(entry.ts || 0) === Number(log.ts)) return false
+          if (attendee.sessionId && String(entry.sessionId || '') === String(attendee.sessionId) && String(entry.event || '') === String(log.event || '')) return false
+          return true
         })
-        .eq('id', member.id)
+        return {
+          ...m,
+          coins: Math.max(0, Number(m.coins || 0) - reward),
+          attendance: Math.max(0, Number(m.attendance || 0) - 1),
+          attend_log: filteredLog,
+        }
+      }))
 
-      if (error) {
-        console.error(`Failed to reverse ${a.name}:`, error)
-        return { name: a.name, ok: false, error }
-      }
-      return { name: a.name, ok: true, memberId: member.id, newCoins, newAttendance, filteredLog }
-    }))
-
-    const failed = reversed.filter(r => !r.ok)
-    if (failed.length > 0) {
-      addToast(`Couldn't reverse all members: ${failed.map(f => f.name).join(', ')}`, 'red', 'Partial Reversal')
-    }
-
-    setMembers(prev => prev.map(m => {
-      const r = reversed.find(x => x.memberId === m.id)
-      if (!r) return m
-      return {
-        ...m,
-        coins: r.newCoins,
-        attendance: r.newAttendance,
-        attend_log: r.filteredLog,
-      }
-    }))
-
-    const { error: delErr } = await supabase
-      .from('attendance_logs')
-      .delete()
-      .eq('id', log.id)
-
-    if (delErr) {
-      console.error('Failed to delete log row:', delErr)
-      addToast(`Couldn't remove the log: ${delErr.message}`, 'red', 'Delete Failed')
+      setAttendanceLogs(prev => prev.filter(l => l.id !== log.id))
       setDeletingId(null)
-      return
+      addToast(
+        `Attendance reversed — ${attendees.length} member(s), ${(Number(data) || totalCoins).toLocaleString()} coins removed.`,
+        'red',
+        'Attendance Deleted'
+      )
+    } catch (error) {
+      console.error('Failed to delete attendance and reverse coins:', error)
+      setDeletingId(null)
+      addToast(`Attendance was not deleted and no coins were reversed: ${error.message}`, 'red', 'Delete Failed')
     }
-
-    setAttendanceLogs(prev => prev.filter(l => l.id !== log.id))
-    setDeletingId(null)
-    addToast(
-      `Attendance reversed — ${attendees.length} member(s), ${totalCoins.toLocaleString()} coins removed.`,
-      'red',
-      'Attendance Deleted'
-    )
   }
 
   const removeAttendee = async (log, attendee) => {
@@ -763,8 +767,6 @@ export default function Attendance({ ctx }) {
     }
 
     const reward = Number(attendee.earned ?? attendee.coins ?? 0)
-    const newCoins = Math.max(0, Number(member.coins || 0) - reward)
-    const newAttendance = Math.max(0, Number(member.attendance || 0) - 1)
 
     const updatedAttendees = (log.attendees || []).filter(a => {
       if (attendee.memberId != null && a.memberId != null) {
@@ -783,31 +785,22 @@ export default function Attendance({ ctx }) {
     const key = `${log.id}-${attendee.memberId || attendee.name}`
     setRemovingAttendeeKey(key)
 
-    const filteredMemberLog = (member.attend_log || []).filter(entry => {
-      const sameEvent = String(entry.event || '') === String(log.event || '')
-      const sameMember = attendee.memberId != null && entry.memberId != null
-        ? String(entry.memberId) === String(attendee.memberId)
-        : true
-      const sameSession = attendee.sessionId
-        ? String(entry.sessionId || '') === String(attendee.sessionId)
-        : true
-      const sameTs = entry.ts && log.ts
-        ? Number(entry.ts) === Number(log.ts)
-        : true
-
-      return !(sameEvent && sameMember && sameSession && sameTs)
-    })
-
-    const { error: memberError } = await supabase
-      .from('members')
-      .update({
-        coins: newCoins,
-        attendance: newAttendance,
-        attend_log: filteredMemberLog,
+    let reversedMember = null
+    try {
+      const { data, error } = await supabase.rpc('reverse_attendance_staff', {
+        p_target_id: Number(member.id),
+        p_coins_delta: reward,
+        p_attendance_delta: -1,
+        p_event: String(log.event || ''),
+        p_session_id: attendee.sessionId ? String(attendee.sessionId) : null,
+        p_ts: log.ts ? Number(log.ts) : null,
+        p_actor_id: Number(currentUser?.id),
+        p_actor_password: String(currentUser?.password || ''),
       })
-      .eq('id', member.id)
-
-    if (memberError) {
+      if (error) throw error
+      if (!data) throw new Error('The database did not return the reversed member.')
+      reversedMember = data
+    } catch (memberError) {
       console.error(`Failed to remove attendee ${attendee.name}:`, memberError)
       setRemovingAttendeeKey(null)
       addToast(`Couldn't remove ${attendee.name}: ${memberError.message}`, 'red', 'Remove Failed')
@@ -822,14 +815,13 @@ export default function Attendance({ ctx }) {
     if (logError) {
       console.error('Failed to update attendance log after attendee removal:', logError)
 
-      await supabase
-        .from('members')
-        .update({
-          coins: member.coins || 0,
-          attendance: member.attendance || 0,
-          attend_log: member.attend_log || [],
-        })
-        .eq('id', member.id)
+      try {
+        // No client-side rollback: the reversal RPC is atomic for the member.
+        // If the attendance log row fails, surface the failure instead of overwriting the member.
+        throw new Error('Attendance log update failed after the member reversal.')
+      } catch (rollbackError) {
+        console.error('Failed to roll back member after attendance log update failure:', rollbackError)
+      }
 
       setRemovingAttendeeKey(null)
       addToast(`Couldn't update the attendance record: ${logError.message}`, 'red', 'Remove Failed')
@@ -840,7 +832,12 @@ export default function Attendance({ ctx }) {
 
     setMembers(prev => prev.map(m =>
       String(m.id) === String(member.id)
-        ? { ...m, coins: newCoins, attendance: newAttendance, attend_log: filteredMemberLog }
+        ? {
+            ...m,
+            coins: reversedMember?.coins ?? m.coins,
+            attendance: reversedMember?.attendance ?? m.attendance,
+            attend_log: reversedMember?.attend_log ?? m.attend_log,
+          }
         : m
     ))
 
@@ -966,16 +963,16 @@ export default function Attendance({ ctx }) {
       }
 
       const nextAttendLog = [...(m.attend_log || []), attendEntry]
-      const { error } = await supabase
-        .from('members')
-        .update({
+      try {
+        await updateMemberStaff(m.id, {
           coins: (m.coins || 0) + reward,
           attendance: (m.attendance || 0) + 1,
           attend_log: nextAttendLog,
         })
-        .eq('id', m.id)
-
-      return { member: m, ok: !error, error, nextAttendLog }
+        return { member: m, ok: true, nextAttendLog }
+      } catch (error) {
+        return { member: m, ok: false, error, nextAttendLog }
+      }
     }))
 
     const failed = results.filter(r => !r.ok)
@@ -1054,15 +1051,15 @@ export default function Attendance({ ctx }) {
         awardedBy: currentUser?.name || 'System',
       }
       const nextAttendLog = [...(member.attend_log || []), bonusEntry]
-      const { error } = await supabase
-        .from('members')
-        .update({
+      try {
+        await updateMemberStaff(member.id, {
           coins: (member.coins || 0) + PERFECT_ATTENDANCE_BONUS,
           attend_log: nextAttendLog,
         })
-        .eq('id', member.id)
-
-      return { member, ok: !error, error, nextAttendLog }
+        return { member, ok: true, nextAttendLog }
+      } catch (error) {
+        return { member, ok: false, error, nextAttendLog }
+      }
     }))
 
     const failed = results.filter(result => !result.ok)
@@ -1126,20 +1123,25 @@ export default function Attendance({ ctx }) {
 
       const newCoins = Math.max(0, Number(member.coins) - (removedCount * PERFECT_ATTENDANCE_BONUS))
 
-      const { error } = await supabase
-        .from('members')
-        .update({
+      try {
+        await updateMemberStaff(member.id, {
           coins: newCoins,
           attend_log: nextAttendLog,
         })
-        .eq('id', member.id)
-
-      return {
-        member,
-        ok: !error,
-        error,
-        nextAttendLog,
-        newCoins,
+        return {
+          member,
+          ok: true,
+          nextAttendLog,
+          newCoins,
+        }
+      } catch (error) {
+        return {
+          member,
+          ok: false,
+          error,
+          nextAttendLog,
+          newCoins,
+        }
       }
     }))
 
