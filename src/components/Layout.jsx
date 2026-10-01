@@ -244,7 +244,7 @@ function NotificationBell({ ctx, onNavigate }) {
       if (auctionIds.length) {
         const { data: auctions, error: auctionError } = await supabase
           .from('auctions')
-          .select('id, name, rarity, image_url, image_data')
+          .select('id, name, rarity, image_url')
           .in('id', auctionIds)
 
         if (auctionError) {
@@ -267,7 +267,7 @@ function NotificationBell({ ctx, onNavigate }) {
       if (marketplaceItemIds.length) {
         const { data: marketplaceItems, error: marketplaceError } = await supabase
           .from('marketplace_items')
-          .select('id, name, rarity, image_url, image_data')
+          .select('id, name, rarity, image_url')
           .in('id', marketplaceItemIds)
 
         if (marketplaceError) {
@@ -313,7 +313,7 @@ function NotificationBell({ ctx, onNavigate }) {
     loadNotifications()
     if (!supabase || isGuest) return
 
-    const poll = setInterval(loadNotifications, 5000)
+    const poll = setInterval(loadNotifications, 5 * 60 * 1000)
 
     let channel = null
     try {
@@ -348,7 +348,7 @@ function NotificationBell({ ctx, onNavigate }) {
             if (incoming.type === 'auction_won' && incoming.auction_id) {
               const { data: auction, error: auctionError } = await supabase
                 .from('auctions')
-                .select('id, name, rarity, image_url, image_data')
+                .select('id, name, rarity, image_url')
                 .eq('id', incoming.auction_id)
                 .maybeSingle()
 
@@ -365,7 +365,7 @@ function NotificationBell({ ctx, onNavigate }) {
             if (incoming.marketplace_item_id) {
               const { data: marketplaceItem, error: marketplaceError } = await supabase
                 .from('marketplace_items')
-                .select('id, name, rarity, image_url, image_data')
+                .select('id, name, rarity, image_url')
                 .eq('id', incoming.marketplace_item_id)
                 .maybeSingle()
 
@@ -483,7 +483,7 @@ function NotificationBell({ ctx, onNavigate }) {
     if (!supabase || !memberId || notifications.length === 0) return
 
     // Invalidate every in-flight/polling load first. Without this, a
-    // 5-second poll that started before the DELETE can finish afterward and
+    // fallback poll that started before the DELETE can finish afterward and
     // reinsert the old notifications into React state.
     ++loadRequestRef.current
 
