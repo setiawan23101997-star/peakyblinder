@@ -427,35 +427,31 @@ function CoinDecayModal({ ctx, onClose }) {
     setBusy(true)
 
     try {
-      const targets = rows.filter(member => selected.includes(member.id))
+      if (!supabase || !currentUser?.id) throw new Error('Could not identify the signed-in staff member.')
+      const targetIds = rows.filter(member => selected.includes(member.id)).map(member => member.id)
+      if (targetIds.length !== selected.length) throw new Error('Some selected members are no longer available. Refresh the member list and try again.')
 
-      const results = await Promise.all(
-        targets.map(member =>
-          supabase
-            .from('members')
-            .update({
-              coins: Math.floor(Math.max(0, Number(member.coins) || 0) * 0.75),
-            })
-            .eq('id', member.id)
-        )
-      )
-
-      const failed = results.find(result => result.error)
-      if (failed?.error) throw failed.error
+      const { data, error } = await supabase.rpc('apply_coin_decay', {
+        p_actor_id: currentUser.id,
+        p_member_ids: targetIds,
+      })
+      if (error) throw error
+      if (!data || !Array.isArray(data.targets) || data.targets.length !== targetIds.length) {
+        throw new Error('Coin Decay returned an incomplete result. Refresh members and check the Activity Log before retrying.')
+      }
 
       await reloadMembers?.()
-      await recordAdminActivity(supabase, currentUser, 'Apply Coin Decay', 'Coins', null, {
-        percentage: 25,
-        members_affected: targets.length,
-        targets: targets.map(member => ({
-          id: member.id,
-          name: member.name,
-          coins_before: Number(member.coins) || 0,
-          coins_after: Math.floor(Math.max(0, Number(member.coins) || 0) * 0.75),
-        })),
-      })
+      const changed = data.targets.map(item => ({
+        id: item.id,
+        name: item.name || item.username || 'Member',
+        coins_before: Number(item.before),
+        coins_after: Number(item.after),
+        coin_delta: Number(item.delta),
+      }))
+      const netDelta = changed.reduce((total, item) => total + item.coin_delta, 0)
+      const appliedCount = Number(data.members_affected ?? changed.length)
       addToast(
-        `25% Coin decay applied to ${targets.length} members.`,
+        `25% Coin decay applied to ${appliedCount} members. ${formatNumber(Math.abs(netDelta))} Coins removed.`,
         'gold',
         'Coin Decay Applied'
       )
