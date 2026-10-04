@@ -26,7 +26,69 @@ const TABS = [
   { id: 'decay', label: 'Coin Decay' },
 ]
 
+const PAGE_SIZE = 40
+const TZ = 'Asia/Singapore' // GMT+8 server time
+
+// Each activity type gets its own icon + colour so rows can be told apart at a glance.
+const TYPE_META = {
+  attendance: {
+    label: 'Attendance',
+    icon: '📋',
+    tile: 'border-emerald-400/25 bg-emerald-400/[.07]',
+    pill: 'border-emerald-400/25 bg-emerald-400/[.07] text-emerald-300',
+  },
+  perfect: {
+    label: 'Perfect Attendance',
+    icon: '🏆',
+    tile: 'border-gold/30 bg-gold/[.08]',
+    pill: 'border-gold/30 bg-gold/[.08] text-gold-light',
+  },
+  auction: {
+    label: 'Auction Win',
+    icon: '🔨',
+    tile: 'border-amber-400/25 bg-amber-400/[.07]',
+    pill: 'border-amber-400/25 bg-amber-400/[.07] text-amber-300',
+  },
+  decay: {
+    label: 'Coin Decay',
+    icon: '📉',
+    tile: 'border-red-400/25 bg-red-400/[.07]',
+    pill: 'border-red-400/25 bg-red-400/[.07] text-red-300',
+  },
+}
+
+const STAT_TONES = {
+  emerald: { tile: 'border-emerald-400/25 bg-emerald-400/[.07]', value: 'text-emerald-300' },
+  gold: { tile: 'border-gold/30 bg-gold/[.08]', value: 'text-gold-bright' },
+  amber: { tile: 'border-amber-400/25 bg-amber-400/[.07]', value: 'text-amber-300' },
+  red: { tile: 'border-red-400/25 bg-red-400/[.07]', value: 'text-red-300' },
+}
+
+// Same rarity colours as the Auctions page.
+const RARITY_COLOR = {
+  material: '#ffffff',
+  common: '#4ade80',
+  uncommon: '#ffffff',
+  rare: '#60a5fa',
+  epic: '#f87171',
+  legendary: '#f2cc60',
+}
+
 const money = value => Number(value || 0).toLocaleString()
+
+function signedMoney(value) {
+  const n = Number(value) || 0
+  if (n > 0) return `+${money(n)}`
+  if (n < 0) return `-${money(Math.abs(n))}`
+  return '0'
+}
+
+function amountTone(value) {
+  const n = Number(value) || 0
+  if (n > 0) return 'text-emerald-300'
+  if (n < 0) return 'text-red-300'
+  return 'text-text-dim'
+}
 
 function toTime(value) {
   if (value == null || value === '') return 0
@@ -40,24 +102,12 @@ function toTime(value) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-function formatDate(value) {
-  const ts = toTime(value)
-  if (!ts) return 'Unknown date'
-
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Singapore',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(ts))
-}
-
 function formatDateTime(value) {
   const ts = toTime(value)
   if (!ts) return 'Unknown date'
 
   return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Singapore',
+    timeZone: TZ,
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -66,6 +116,66 @@ function formatDateTime(value) {
     hour12: false,
   }).format(new Date(ts))
 }
+
+function formatTime(value) {
+  const ts = toTime(value)
+  if (!ts) return ''
+
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(ts))
+}
+
+const DAY_KEY_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: TZ,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+const DAY_LABEL_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TZ,
+  weekday: 'short',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+})
+
+function dayKey(ts) {
+  return ts > 0 ? DAY_KEY_FMT.format(new Date(ts)) : 'unknown'
+}
+
+function dayLabel(ts, todayKey, yesterdayKey) {
+  const key = dayKey(ts)
+  if (key === 'unknown') return 'Unknown date'
+  const full = DAY_LABEL_FMT.format(new Date(ts))
+  if (key === todayKey) return `Today · ${full}`
+  if (key === yesterdayKey) return `Yesterday · ${full}`
+  return full
+}
+
+// Items must already be sorted newest-first.
+function groupByDay(items) {
+  const groups = []
+  let current = null
+
+  for (const item of items) {
+    const key = dayKey(item._time)
+    if (!current || current.key !== key) {
+      current = { key, time: item._time, items: [], net: 0 }
+      groups.push(current)
+    }
+    current.items.push(item)
+    current.net += Number(item._coins) || 0
+  }
+
+  return groups
+}
+
+const byNewest = (a, b) => b._time - a._time
 
 function getMemberFromContext(members, currentUser) {
   if (!Array.isArray(members) || !currentUser) return null
@@ -87,8 +197,10 @@ function getAttendanceEntries(member) {
     .map((entry, index) => ({
       ...entry,
       _type: 'attendance',
-      _id: `attendance-${entry.ts || entry.date || index}`,
+      _id: `attendance-${entry.ts || entry.date || 'x'}-${index}`,
       _time: toTime(entry.ts || entry.date),
+      // Entries that only have a date have no real time of day, so don't show one.
+      _hasTime: entry.ts != null && entry.ts !== '',
       _coins: Number(entry.coins ?? entry.earned ?? 0) || 0,
     }))
 }
@@ -99,8 +211,9 @@ function getPerfectEntries(member) {
     .map((entry, index) => ({
       ...entry,
       _type: 'perfect',
-      _id: `perfect-${entry.weekKey || entry.awardedAt || index}`,
+      _id: `perfect-${entry.weekKey || entry.awardedAt || 'x'}-${index}`,
       _time: toTime(entry.awardedAt),
+      _hasTime: toTime(entry.awardedAt) > 0,
       _coins: Number(entry.coins ?? 150) || 0,
     }))
 }
@@ -196,80 +309,109 @@ function getAuctionImage(auction) {
     null
 }
 
-function StatCard({ label, value, detail, icon }) {
+/* ───────────────────────── presentation ───────────────────────── */
+
+function StatCard({ label, value, detail, icon, tone = 'gold', className = '' }) {
+  const t = STAT_TONES[tone] || STAT_TONES.gold
+
   return (
-    <div className="rounded-xl border border-white/[.07] bg-black/20 p-4 shadow-[0_10px_35px_rgba(0,0,0,.16)]">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-[10px] font-bold uppercase tracking-[.18em] text-text-dim">
+    <div className={`flex items-center gap-3.5 rounded-xl border border-white/[.08] bg-black/25 p-4 ${className}`}>
+      <div
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border text-xl ${t.tile}`}
+        aria-hidden="true"
+      >
+        {icon}
+      </div>
+
+      <div className="min-w-0">
+        <div className="text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">
           {label}
         </div>
-        <div className="text-base opacity-80">{icon}</div>
+        <div className={`mt-0.5 font-spectral text-[26px] font-bold leading-tight tabular-nums ${t.value}`}>
+          {value}
+        </div>
+        {detail ? (
+          <div className="mt-0.5 text-[12px] leading-4 text-text-dim">{detail}</div>
+        ) : null}
       </div>
+    </div>
+  )
+}
 
-      <div className="mt-2 font-spectral text-2xl font-bold text-gold-bright">
-        {value}
-      </div>
+function DayHeader({ group, todayKey, yesterdayKey }) {
+  const count = group.items.length
 
-      {detail ? (
-        <div className="mt-1 text-[10px] text-text-dim">{detail}</div>
-      ) : null}
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 border-y border-white/[.06] bg-white/[.03] px-4 py-2.5 first:border-t-0 sm:px-5">
+      <span className="text-[13px] font-bold text-text-bright">
+        {dayLabel(group.time, todayKey, yesterdayKey)}
+      </span>
+
+      <span className="text-[12px] text-text-dim">
+        {count} {count === 1 ? 'record' : 'records'} ·{' '}
+        <span className={`font-mono font-semibold ${amountTone(group.net)}`}>
+          {signedMoney(group.net)}
+        </span>{' '}
+        net
+      </span>
     </div>
   )
 }
 
 function ActivityRow({ item }) {
-  const isAttendance = item._type === 'attendance'
-  const isPerfect = item._type === 'perfect'
-  const isAuction = item._type === 'auction'
+  const meta = TYPE_META[item._type] || TYPE_META.attendance
+
+  // Extra details, without repeating what the title / subtitle already say.
+  const shown = [item.title, item.subtitle].filter(Boolean).map(String)
+  const extras = [...new Set(
+    [item.event, item.sessionDisplayName, item.weekLabel]
+      .filter(Boolean)
+      .map(String)
+      .filter(text => !shown.some(s => s === text || s.includes(text)))
+  )]
 
   return (
-    <div className="flex gap-3 border-b border-white/[.05] px-4 py-4 last:border-b-0">
-      <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border text-sm ${
-        isAuction
-          ? 'border-amber-400/20 bg-amber-400/[.06]'
-          : isPerfect
-            ? 'border-gold/25 bg-gold/[.07]'
-            : 'border-emerald-400/20 bg-emerald-400/[.05]'
-      }`}>
-        {isAuction ? '🔨' : isPerfect ? '🏆' : '📋'}
+    <div className="flex gap-3 border-b border-white/[.05] px-4 py-4 last:border-b-0 sm:gap-4 sm:px-5">
+      <div
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-base ${meta.tile}`}
+        aria-hidden="true"
+      >
+        {meta.icon}
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-text-bright">
-              {item.title}
-            </div>
-            <div className="mt-0.5 text-[10px] text-text-dim">
-              {item.subtitle}
-            </div>
-          </div>
-
-          <div className={`whitespace-nowrap font-mono text-[12px] font-bold ${
-            item._coins >= 0 ? 'text-emerald-300' : 'text-red-300'
-          }`}>
-            {item._coins >= 0 ? '+' : ''}
-            {money(item._coins)} coins
-          </div>
+        <div className="break-words text-[14px] font-semibold leading-5 text-text-bright">
+          {item.title}
         </div>
 
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-text-dim">
-          <span>{formatDateTime(item._time)} GMT+8</span>
+        {item.subtitle ? (
+          <div className="mt-0.5 break-words text-[13px] leading-5 text-text">
+            {item.subtitle}
+          </div>
+        ) : null}
 
-          {item.event ? (
-            <span className="text-text">
-              {item.event}
+        <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[12px] text-text-dim">
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${meta.pill}`}>
+            {meta.label}
+          </span>
+
+          {item._hasTime ? (
+            <span className="font-mono">{formatTime(item._time)}</span>
+          ) : null}
+
+          {extras.map(text => (
+            <span key={text}>
+              <span className="mr-2 text-text-dim/50">•</span>{text}
             </span>
-          ) : null}
-
-          {item.sessionDisplayName ? (
-            <span>{item.sessionDisplayName}</span>
-          ) : null}
-
-          {item.weekLabel ? (
-            <span>{item.weekLabel}</span>
-          ) : null}
+          ))}
         </div>
+      </div>
+
+      <div className="shrink-0 text-right">
+        <div className={`font-mono text-[16px] font-bold tabular-nums ${amountTone(item._coins)}`}>
+          {signedMoney(item._coins)}
+        </div>
+        <div className="text-[11px] text-text-dim">coins</div>
       </div>
     </div>
   )
@@ -277,10 +419,12 @@ function ActivityRow({ item }) {
 
 function AuctionWinCard({ item }) {
   const image = getAuctionImage(item.auction)
+  const rarity = String(item.auction?.rarity || '').toLowerCase()
+  const nameColor = RARITY_COLOR[rarity]
 
   return (
-    <div className="flex gap-3 rounded-xl border border-white/[.07] bg-black/20 p-3">
-      <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-white/[.08] bg-black/30">
+    <div className="flex gap-3.5 rounded-xl border border-white/[.08] bg-black/25 p-3.5">
+      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-white/[.1] bg-black/30">
         {image ? (
           <img
             src={image}
@@ -289,49 +433,65 @@ function AuctionWinCard({ item }) {
             loading="lazy"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-xl">
+          <div className="flex h-full w-full items-center justify-center text-2xl">
             🔨
           </div>
         )}
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-bold text-text-bright">
+            <div
+              className="break-words text-[15px] font-bold leading-5 text-text-bright"
+              style={nameColor ? { color: nameColor } : undefined}
+            >
               {getAuctionItemName(item.auction)}
             </div>
 
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {item.auction?.rarity ? (
-                <span className="rounded-full border border-gold/15 bg-gold/[.05] px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-gold-light">
-                  {item.auction.rarity}
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {rarity ? (
+                <span className="rounded-full border border-gold/20 bg-gold/[.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gold-light">
+                  {rarity}
                 </span>
               ) : null}
 
-              <span className="rounded-full border border-emerald-400/15 bg-emerald-400/[.04] px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-300">
+              <span className="rounded-full border border-emerald-400/25 bg-emerald-400/[.07] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
                 Winner
               </span>
             </div>
           </div>
 
-          <div className="text-right">
-            <div className="font-mono text-[13px] font-bold text-red-300">
+          <div className="shrink-0 text-right">
+            <div className="font-mono text-[16px] font-bold tabular-nums text-red-300">
               -{money(item.amount)}
             </div>
-            <div className="text-[8px] uppercase tracking-wider text-text-dim">
-              coins spent
-            </div>
+            <div className="text-[11px] text-text-dim">coins spent</div>
           </div>
         </div>
 
-        <div className="mt-2 text-[9px] text-text-dim">
+        <div className="mt-2.5 text-[12px] leading-4 text-text-dim">
           {formatDateTime(item._time)} GMT+8
-          {item.auction?.distributedBy
-            ? ` · Distributed by ${item.auction.distributedBy}`
-            : ''}
+          {item.auction?.distributedBy ? (
+            <span className="block sm:inline">
+              <span className="hidden sm:inline"> · </span>
+              Distributed by <span className="text-text">{item.auction.distributedBy}</span>
+            </span>
+          ) : null}
         </div>
       </div>
+    </div>
+  )
+}
+
+function Notice({ tone = 'info', children }) {
+  const cls = tone === 'error'
+    ? 'border-red-400/20 bg-red-400/[.05] text-red-200'
+    : 'border-white/[.08] bg-white/[.03] text-text'
+
+  return (
+    <div className={`border-b px-4 py-2.5 text-[12px] leading-5 sm:px-5 ${cls}`}>
+      {children}
     </div>
   )
 }
@@ -344,6 +504,7 @@ export default function MyActivity({ ctx }) {
   } = ctx || {}
 
   const [activeTab, setActiveTab] = useState('all')
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [decayLogs, setDecayLogs] = useState([])
   const [decayLoading, setDecayLoading] = useState(false)
   const [decayError, setDecayError] = useState('')
@@ -362,6 +523,11 @@ export default function MyActivity({ ctx }) {
     () => getPerfectEntries(member),
     [member]
   )
+
+  // Start from the first page again whenever the tab changes.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [activeTab])
 
   useEffect(() => {
     let cancelled = false
@@ -425,6 +591,7 @@ export default function MyActivity({ ctx }) {
             _id: `decay-${log.id}-${member.id}`,
             _type: 'decay',
             _time: toTime(log.created_at),
+            _hasTime: true,
             _coins: rawDelta,
             memberId: member.id,
             before,
@@ -483,16 +650,18 @@ export default function MyActivity({ ctx }) {
         return {
           auction,
           amount: Number(winner.amount) || 0,
+          _id: `auction-${auction.id}`,
           _time: toTime(
             auction.endedAt ??
             auction.ended_at ??
             winner.time
           ),
+          _hasTime: true,
           _type: 'auction',
         }
       })
       .filter(Boolean)
-      .sort((a, b) => b._time - a._time)
+      .sort(byNewest)
   }, [auctions, member, currentUser])
 
   const attendanceCoins = attendanceEntries.reduce(
@@ -518,77 +687,75 @@ export default function MyActivity({ ctx }) {
   const totalEarned = attendanceCoins + perfectCoins
   const currentCoins = Number(member?.coins ?? currentUser?.coins ?? 0) || 0
 
-  const activity = useMemo(() => {
-    const attendance = attendanceEntries.map(entry => ({
-      ...entry,
-      title: entry.event || 'Attendance',
-      subtitle: entry.sessionDisplayName ||
-        entry.sessionLabel ||
-        'Attendance reward',
-    }))
+  // Build each typed list once, newest first; tabs just pick one of them.
+  const attendanceItems = useMemo(() => attendanceEntries.map(entry => ({
+    ...entry,
+    title: entry.event || 'Attendance',
+    subtitle: entry.sessionDisplayName ||
+      entry.sessionLabel ||
+      'Attendance reward',
+  })).sort(byNewest), [attendanceEntries])
 
-    const perfect = perfectEntries.map(entry => ({
-      ...entry,
-      title: 'Perfect Attendance',
-      subtitle: entry.weekLabel
-        ? `${entry.weekLabel} · ${entry.sessions || 8} sessions completed`
-        : `${entry.sessions || 8} sessions completed`,
-    }))
+  const perfectItems = useMemo(() => perfectEntries.map(entry => ({
+    ...entry,
+    title: 'Perfect Attendance',
+    subtitle: entry.weekLabel
+      ? `${entry.weekLabel} · ${entry.sessions || 8} sessions completed`
+      : `${entry.sessions || 8} sessions completed`,
+  })).sort(byNewest), [perfectEntries])
 
-    const auctionsActivity = auctionWins.map(item => ({
-      ...item,
-      title: `Won ${getAuctionItemName(item.auction)}`,
-      subtitle: item.auction?.rarity
-        ? `${item.auction.rarity} auction item`
-        : 'Auction win',
-      _coins: -Math.abs(item.amount),
-    }))
+  const auctionItems = useMemo(() => auctionWins.map(item => ({
+    ...item,
+    title: `Won ${getAuctionItemName(item.auction)}`,
+    subtitle: item.auction?.rarity
+      ? `${item.auction.rarity} auction item`
+      : 'Auction win',
+    _coins: -Math.abs(item.amount),
+  })), [auctionWins])
 
-    const decayActivity = decayLogs.map(item => ({
-      ...item,
-      title: `Coin Decay${item.percentage != null ? ` · ${item.percentage}%` : ''}`,
-      subtitle: `${money(item.before)} → ${money(item.after)} coins`,
-      _coins: -Math.abs(Number(item.delta || 0)),
-    }))
+  const decayItems = useMemo(() => decayLogs.map(item => ({
+    ...item,
+    title: `Coin Decay${item.percentage != null ? ` · ${item.percentage}%` : ''}`,
+    subtitle: `${money(item.before)} → ${money(item.after)} coins`,
+    _coins: -Math.abs(Number(item.delta || 0)),
+  })).sort(byNewest), [decayLogs])
 
-    return [...attendance, ...perfect, ...auctionsActivity, ...decayActivity]
-      .sort((a, b) => b._time - a._time)
-  }, [attendanceEntries, perfectEntries, auctionWins, decayLogs])
+  const activity = useMemo(
+    () => [...attendanceItems, ...perfectItems, ...auctionItems, ...decayItems].sort(byNewest),
+    [attendanceItems, perfectItems, auctionItems, decayItems]
+  )
 
-  const filteredActivity = activeTab === 'all'
-    ? activity
-    : activeTab === 'attendance'
-      ? attendanceEntries.map(entry => ({
-          ...entry,
-          title: entry.event || 'Attendance',
-          subtitle: entry.sessionDisplayName || entry.sessionLabel || 'Attendance reward',
-        }))
-      : activeTab === 'perfect'
-        ? perfectEntries.map(entry => ({
-            ...entry,
-            title: 'Perfect Attendance',
-            subtitle: entry.weekLabel
-              ? `${entry.weekLabel} · ${entry.sessions || 8} sessions completed`
-              : `${entry.sessions || 8} sessions completed`,
-          }))
-        : activeTab === 'decay'
-          ? decayLogs.map(item => ({
-              ...item,
-              title: `Coin Decay${item.percentage != null ? ` · ${item.percentage}%` : ''}`,
-              subtitle: `${money(item.before)} → ${money(item.after)} coins`,
-              _coins: -Math.abs(Number(item.delta || 0)),
-            }))
-          : []
+  const listByTab = {
+    all: activity,
+    attendance: attendanceItems,
+    perfect: perfectItems,
+    decay: decayItems,
+  }
+  const filteredActivity = listByTab[activeTab] || []
+  const visibleActivity = filteredActivity.slice(0, visibleCount)
+  const remaining = filteredActivity.length - visibleActivity.length
+
+  const todayKey = dayKey(Date.now())
+  const yesterdayKey = dayKey(Date.now() - 24 * 60 * 60 * 1000)
+  const dayGroups = groupByDay(visibleActivity)
+
+  const tabCounts = {
+    all: activity.length,
+    attendance: attendanceItems.length,
+    auctions: auctionWins.length,
+    perfect: perfectItems.length,
+    decay: decayLoading ? '…' : decayItems.length,
+  }
 
   if (!member) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-5 sm:py-6">
+      <div className="mx-auto w-full max-w-5xl px-3 py-4 sm:px-5 sm:py-6">
         <div className="rounded-2xl border border-red-400/15 bg-red-400/[.03] p-6 text-center">
           <div className="text-2xl">⚠️</div>
-          <h1 className="mt-2 font-spectral text-lg font-bold text-text-bright">
+          <h1 className="mt-2 font-spectral text-xl font-bold text-text-bright">
             Member record not found
           </h1>
-          <p className="mx-auto mt-1 max-w-md text-[11px] leading-5 text-text-dim">
+          <p className="mx-auto mt-1.5 max-w-md text-[13px] leading-5 text-text-dim">
             Your account is logged in, but no matching member record was found.
             Please check that your account name or member ID matches the Members data.
           </p>
@@ -597,42 +764,43 @@ export default function MyActivity({ ctx }) {
     )
   }
 
+  const activeTabLabel = TABS.find(t => t.id === activeTab)?.label
+
   return (
-    <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-5 sm:py-6">
+    <div className="mx-auto w-full max-w-5xl px-3 py-4 sm:px-5 sm:py-6">
       {/* Header */}
-      <div className="mb-5">
-        <div className="text-[10px] font-bold uppercase tracking-[.22em] text-gold-dim">
-          Personal Ledger
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[.22em] text-gold-dim">
+            Personal Ledger
+          </div>
+          <h1 className="mt-1 font-spectral text-[30px] font-bold leading-tight text-text-bright sm:text-4xl">
+            My Activity
+          </h1>
+          <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-text-dim">
+            Your attendance rewards, auction wins, Perfect Attendance, and Coin Decay history.
+          </p>
         </div>
 
-        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="font-spectral text-2xl font-bold text-text-bright sm:text-3xl">
-              My Activity
-            </h1>
-            <p className="mt-1 text-[11px] text-text-dim">
-              Your attendance rewards, auction wins, Perfect Attendance, and Coin Decay history.
-            </p>
+        <div className="rounded-xl border border-gold/25 bg-gold/[.05] px-4 py-3 sm:min-w-[190px] sm:text-right">
+          <div className="text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">
+            Current Balance
           </div>
-
-          <div className="rounded-lg border border-gold/15 bg-gold/[.04] px-3 py-2">
-            <div className="text-[8px] font-bold uppercase tracking-[.16em] text-gold-dim">
-              Current Balance
-            </div>
-            <div className="mt-0.5 font-mono text-lg font-bold text-gold-bright">
-              {money(currentCoins)} <span className="text-[9px] text-text-dim">coins</span>
-            </div>
+          <div className="mt-0.5 font-mono text-2xl font-bold tabular-nums text-gold-bright">
+            {money(currentCoins)}{' '}
+            <span className="text-[12px] font-normal text-text-dim">coins</span>
           </div>
         </div>
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label="Coins Earned"
-          value={money(totalEarned)}
+          value={`+${money(totalEarned)}`}
           detail="Attendance + Perfect Attendance"
           icon="🪙"
+          tone="emerald"
         />
 
         <StatCard
@@ -640,13 +808,7 @@ export default function MyActivity({ ctx }) {
           value={attendanceEntries.length}
           detail={`${money(attendanceCoins)} coins earned`}
           icon="📋"
-        />
-
-        <StatCard
-          label="Auction Wins"
-          value={auctionWins.length}
-          detail={`${money(auctionSpent)} coins spent`}
-          icon="🔨"
+          tone="emerald"
         />
 
         <StatCard
@@ -654,19 +816,30 @@ export default function MyActivity({ ctx }) {
           value={perfectEntries.length}
           detail={`+${money(perfectCoins)} coins`}
           icon="🏆"
+          tone="gold"
+        />
+
+        <StatCard
+          label="Auction Wins"
+          value={auctionWins.length}
+          detail={`${money(auctionSpent)} coins spent`}
+          icon="🔨"
+          tone="amber"
         />
 
         <StatCard
           label="Coin Decay"
           value={`-${money(decaySpent)}`}
-          detail={decayLogs.length === 1 ? '1 decay event' : `${decayLogs.length} decay events`}
+          detail={decayItems.length === 1 ? '1 decay event' : `${decayItems.length} decay events`}
           icon="📉"
+          tone="red"
+          className="sm:col-span-2 lg:col-span-2"
         />
       </div>
 
       {/* Tabs */}
-      <div className="mt-5 overflow-x-auto border-b border-white/[.06]">
-        <div className="flex min-w-max gap-1">
+      <div className="-mx-3 mt-6 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0">
+        <div role="tablist" aria-label="Activity filter" className="flex min-w-max gap-2">
           {TABS.map(tab => {
             const selected = activeTab === tab.id
 
@@ -674,64 +847,96 @@ export default function MyActivity({ ctx }) {
               <button
                 key={tab.id}
                 type="button"
+                role="tab"
+                aria-selected={selected}
                 onClick={() => setActiveTab(tab.id)}
-                className={`border-b-2 px-3 py-2.5 text-[10px] font-bold uppercase tracking-[.1em] transition ${
+                className={`flex min-h-[40px] items-center gap-2 rounded-lg border px-3.5 text-[13px] font-semibold transition ${
                   selected
-                    ? 'border-gold text-gold-bright'
-                    : 'border-transparent text-text-dim hover:text-text'
+                    ? 'border-gold/40 bg-gold/[.10] text-gold-bright'
+                    : 'border-white/[.08] bg-black/20 text-text hover:border-white/[.16] hover:text-text-bright'
                 }`}
               >
-                {tab.label}
+                <span>{tab.label}</span>
+                <span className={`rounded-full px-2 py-0.5 font-mono text-[11px] ${
+                  selected ? 'bg-gold/[.15] text-gold-bright' : 'bg-white/[.06] text-text-dim'
+                }`}>
+                  {tabCounts[tab.id]}
+                </span>
               </button>
             )
           })}
         </div>
       </div>
 
-      {/* Activity */}
-      {(activeTab === 'all' || activeTab === 'attendance' || activeTab === 'perfect' || activeTab === 'decay') && (
-        <section className="mt-4 overflow-hidden rounded-xl border border-white/[.07] bg-black/20">
-          <div className="flex items-center justify-between gap-3 border-b border-white/[.06] px-4 py-3">
+      {/* Timeline */}
+      {activeTab !== 'auctions' && (
+        <section className="mt-4 overflow-hidden rounded-xl border border-white/[.08] bg-black/20">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[.06] px-4 py-3.5 sm:px-5">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-[.18em] text-gold-dim">
-                {activeTab === 'all' ? 'Activity Timeline' : TABS.find(t => t.id === activeTab)?.label}
+              <div className="text-[12px] font-bold uppercase tracking-[.16em] text-gold-dim">
+                {activeTab === 'all' ? 'Activity Timeline' : activeTabLabel}
               </div>
-              <div className="mt-0.5 text-[10px] text-text-dim">
-                All times shown in GMT+8.
+              <div className="mt-0.5 text-[12px] text-text-dim">
+                Newest first · all times GMT+8 ·{' '}
+                <span className="text-emerald-300">+ earned</span>{' '}
+                <span className="text-red-300">- spent</span>
               </div>
             </div>
 
-            <span className="rounded-full border border-white/[.07] bg-black/20 px-2.5 py-1 text-[9px] font-mono text-text-dim">
-              {filteredActivity.length} records
+            <span className="rounded-full border border-white/[.08] bg-black/20 px-3 py-1 font-mono text-[12px] text-text">
+              {filteredActivity.length} {filteredActivity.length === 1 ? 'record' : 'records'}
             </span>
           </div>
 
+          {(activeTab === 'all' || activeTab === 'decay') && decayError ? (
+            <Notice tone="error">
+              Coin Decay history could not be loaded, so it is missing from this list. {decayError}
+            </Notice>
+          ) : null}
+
+          {activeTab === 'all' && decayLoading ? (
+            <Notice>Loading Coin Decay history…</Notice>
+          ) : null}
+
           {activeTab === 'decay' && decayLoading ? (
-            <div className="px-4 py-10 text-center text-[11px] text-text-dim">
+            <div className="px-4 py-12 text-center text-[13px] text-text-dim">
               Loading Coin Decay history…
             </div>
           ) : filteredActivity.length > 0 ? (
             <div>
-              {filteredActivity.map(item => (
-                <ActivityRow key={item._id} item={item} />
+              {dayGroups.map(group => (
+                <div key={group.key}>
+                  <DayHeader group={group} todayKey={todayKey} yesterdayKey={yesterdayKey} />
+                  {group.items.map(item => (
+                    <ActivityRow key={item._id} item={item} />
+                  ))}
+                </div>
               ))}
+
+              {remaining > 0 ? (
+                <div className="border-t border-white/[.06] px-4 py-3.5 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount(count => count + PAGE_SIZE)}
+                    className="min-h-[40px] rounded-lg border border-gold/30 bg-gold/[.06] px-5 text-[13px] font-semibold text-gold-light transition hover:bg-gold/[.12] hover:text-gold-bright"
+                  >
+                    Show {Math.min(PAGE_SIZE, remaining)} more
+                    <span className="ml-1.5 text-text-dim">({remaining} remaining)</span>
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
-            <div className="px-4 py-12 text-center">
-              <div className="text-2xl opacity-60">📭</div>
-              <div className="mt-2 text-[12px] font-semibold text-text">
+            <div className="px-4 py-14 text-center">
+              <div className="text-3xl opacity-60">📭</div>
+              <div className="mt-2 text-[14px] font-semibold text-text-bright">
                 No activity yet
               </div>
-              <div className="mt-1 text-[10px] text-text-dim">
+              <div className="mx-auto mt-1 max-w-sm text-[13px] leading-5 text-text-dim">
                 {activeTab === 'decay'
                   ? 'No Coin Decay records found for your account.'
                   : 'Your activity will appear here when you earn attendance rewards or Perfect Attendance.'}
               </div>
-              {activeTab === 'decay' && decayError ? (
-                <div className="mx-auto mt-2 max-w-lg text-[9px] text-red-300/80">
-                  {decayError}
-                </div>
-              ) : null}
             </div>
           )}
         </section>
@@ -742,40 +947,35 @@ export default function MyActivity({ ctx }) {
         <section className="mt-4">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-[.18em] text-gold-dim">
+              <div className="text-[12px] font-bold uppercase tracking-[.16em] text-gold-dim">
                 Auction Archive
               </div>
-              <h2 className="mt-1 font-spectral text-xl font-bold text-text-bright">
+              <h2 className="mt-1 font-spectral text-2xl font-bold text-text-bright">
                 Items You Won
               </h2>
             </div>
 
             <div className="text-right">
-              <div className="font-mono text-sm font-bold text-red-300">
+              <div className="font-mono text-lg font-bold tabular-nums text-red-300">
                 -{money(auctionSpent)}
               </div>
-              <div className="text-[8px] uppercase tracking-wider text-text-dim">
-                total spent
-              </div>
+              <div className="text-[11px] text-text-dim">total coins spent</div>
             </div>
           </div>
 
           {auctionWins.length > 0 ? (
-            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {auctionWins.map(item => (
-                <AuctionWinCard
-                  key={`${item.auction?.id || 'auction'}-${item._time}`}
-                  item={item}
-                />
+                <AuctionWinCard key={item._id} item={item} />
               ))}
             </div>
           ) : (
-            <div className="rounded-xl border border-white/[.07] bg-black/20 px-4 py-12 text-center">
-              <div className="text-2xl opacity-60">🔨</div>
-              <div className="mt-2 text-[12px] font-semibold text-text">
+            <div className="rounded-xl border border-white/[.08] bg-black/20 px-4 py-14 text-center">
+              <div className="text-3xl opacity-60">🔨</div>
+              <div className="mt-2 text-[14px] font-semibold text-text-bright">
                 No auction wins yet
               </div>
-              <div className="mt-1 text-[10px] text-text-dim">
+              <div className="mt-1 text-[13px] text-text-dim">
                 Completed auctions that you won will appear here.
               </div>
             </div>
@@ -783,12 +983,12 @@ export default function MyActivity({ ctx }) {
         </section>
       )}
 
-      {/* Small ledger note */}
-      <div className="mt-4 rounded-lg border border-white/[.05] bg-black/10 px-3 py-2.5 text-[9px] leading-4 text-text-dim">
-        <span className="font-semibold text-text">Ledger:</span>{' '}
-        Attendance and Perfect Attendance are shown as coins earned.
-        Auction wins and Coin Decay are shown separately as coins spent so the
-        page does not mistake deductions for earnings.
+      {/* Ledger note */}
+      <div className="mt-5 rounded-xl border border-white/[.06] bg-black/15 px-4 py-3 text-[12.5px] leading-5 text-text-dim">
+        <span className="font-semibold text-text">How to read this:</span>{' '}
+        Attendance and Perfect Attendance are coins <span className="text-emerald-300">earned</span>.
+        Auction wins and Coin Decay are coins <span className="text-red-300">spent</span>, shown
+        separately so deductions are never mistaken for earnings.
       </div>
     </div>
   )
