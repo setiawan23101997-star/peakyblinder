@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import ChangePasswordModal from './ChangePasswordModal'
+import MyActivity from './MyActivity'
 
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -115,6 +116,31 @@ function FlagIcon({ code, name, width = 20, height = 15, fallbackFlag }) {
 
 
 
+// CSS "hidden"/"md:hidden" only hides an element - it stays mounted and keeps
+// querying + subscribing. This hook lets us mount a single NotificationBell.
+function useMediaQuery(query) {
+  const getMatch = () =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(query).matches
+      : false
+  const [matches, setMatches] = useState(getMatch)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined
+    const mql = window.matchMedia(query)
+    const onChange = () => setMatches(mql.matches)
+    onChange()
+    if (mql.addEventListener) mql.addEventListener('change', onChange)
+    else mql.addListener(onChange)
+    return () => {
+      if (mql.removeEventListener) mql.removeEventListener('change', onChange)
+      else mql.removeListener(onChange)
+    }
+  }, [query])
+
+  return matches
+}
+
 const NOTIFICATION_RARITY = {
   common: {
     text: "text-white",
@@ -210,6 +236,10 @@ function NotificationBell({ ctx, onNavigate }) {
   const [confirmClear, setConfirmClear] = useState(false)
   const panelRef = useRef(null)
   const loadRequestRef = useRef(0)
+  const lastLoadedRef = useRef(0)
+  // Auction / marketplace names + images rarely change; look each id up once
+  // per session instead of on every notification load.
+  const lookupCacheRef = useRef({ auctions: {}, items: {} })
 
   const memberId = currentUser?.id
   const isGuest = !memberId || currentUser?.name === 'Guest'
@@ -239,20 +269,19 @@ function NotificationBell({ ctx, onNavigate }) {
           .map(n => String(n.auction_id))
       )]
 
-      let auctionMap = {}
+      const auctionMap = lookupCacheRef.current.auctions
+      const missingAuctionIds = auctionIds.filter(id => !auctionMap[id])
 
-      if (auctionIds.length) {
+      if (missingAuctionIds.length) {
         const { data: auctions, error: auctionError } = await supabase
           .from('auctions')
           .select('id, name, rarity, image_url')
-          .in('id', auctionIds)
+          .in('id', missingAuctionIds)
 
         if (auctionError) {
           console.warn('Load notification auction data failed:', auctionError)
         } else {
-          auctionMap = Object.fromEntries(
-            (auctions || []).map(auction => [String(auction.id), auction])
-          )
+          for (const auction of auctions || []) auctionMap[String(auction.id)] = auction
         }
       }
 
@@ -262,20 +291,19 @@ function NotificationBell({ ctx, onNavigate }) {
           .map(n => String(n.marketplace_item_id))
       )]
 
-      let marketplaceItemMap = {}
+      const marketplaceItemMap = lookupCacheRef.current.items
+      const missingItemIds = marketplaceItemIds.filter(id => !marketplaceItemMap[id])
 
-      if (marketplaceItemIds.length) {
+      if (missingItemIds.length) {
         const { data: marketplaceItems, error: marketplaceError } = await supabase
           .from('marketplace_items')
           .select('id, name, rarity, image_url')
-          .in('id', marketplaceItemIds)
+          .in('id', missingItemIds)
 
         if (marketplaceError) {
           console.warn('Load notification marketplace item data failed:', marketplaceError)
         } else {
-          marketplaceItemMap = Object.fromEntries(
-            (marketplaceItems || []).map(item => [String(item.id), item])
-          )
+          for (const item of marketplaceItems || []) marketplaceItemMap[String(item.id)] = item
         }
       }
 
@@ -300,6 +328,7 @@ function NotificationBell({ ctx, onNavigate }) {
             : null,
         }))
       )
+      lastLoadedRef.current = Date.now()
     } catch (err) {
       if (requestId === loadRequestRef.current) {
         console.warn('Load notifications failed:', err)
@@ -346,14 +375,22 @@ function NotificationBell({ ctx, onNavigate }) {
             let incoming = incomingRow
 
             if (incoming.type === 'auction_won' && incoming.auction_id) {
-              const { data: auction, error: auctionError } = await supabase
-                .from('auctions')
-                .select('id, name, rarity, image_url')
-                .eq('id', incoming.auction_id)
-                .maybeSingle()
+              const cacheKey = String(incoming.auction_id)
+              let auction = lookupCacheRef.current.auctions[cacheKey] || null
 
-              if (auctionError) {
-                console.warn('Realtime auction lookup failed:', auctionError)
+              if (!auction) {
+                const { data, error: auctionError } = await supabase
+                  .from('auctions')
+                  .select('id, name, rarity, image_url')
+                  .eq('id', incoming.auction_id)
+                  .maybeSingle()
+
+                if (auctionError) {
+                  console.warn('Realtime auction lookup failed:', auctionError)
+                } else if (data) {
+                  auction = data
+                  lookupCacheRef.current.auctions[cacheKey] = data
+                }
               }
 
               incoming = {
@@ -363,14 +400,22 @@ function NotificationBell({ ctx, onNavigate }) {
             }
 
             if (incoming.marketplace_item_id) {
-              const { data: marketplaceItem, error: marketplaceError } = await supabase
-                .from('marketplace_items')
-                .select('id, name, rarity, image_url')
-                .eq('id', incoming.marketplace_item_id)
-                .maybeSingle()
+              const cacheKey = String(incoming.marketplace_item_id)
+              let marketplaceItem = lookupCacheRef.current.items[cacheKey] || null
 
-              if (marketplaceError) {
-                console.warn('Realtime marketplace item lookup failed:', marketplaceError)
+              if (!marketplaceItem) {
+                const { data, error: marketplaceError } = await supabase
+                  .from('marketplace_items')
+                  .select('id, name, rarity, image_url')
+                  .eq('id', incoming.marketplace_item_id)
+                  .maybeSingle()
+
+                if (marketplaceError) {
+                  console.warn('Realtime marketplace item lookup failed:', marketplaceError)
+                } else if (data) {
+                  marketplaceItem = data
+                  lookupCacheRef.current.items[cacheKey] = data
+                }
               }
 
               incoming = {
@@ -404,7 +449,8 @@ function NotificationBell({ ctx, onNavigate }) {
   useEffect(() => {
     if (!open) return
 
-    loadNotifications()
+    // Realtime already keeps the list current; only re-query if it is stale.
+    if (Date.now() - lastLoadedRef.current > 60 * 1000) loadNotifications()
 
     const handleOutside = e => {
       if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false)
@@ -774,6 +820,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
 
+  const isDesktop = useMediaQuery('(min-width: 768px)')
   const userMenuRef = useRef(null)
   const moreMenuRef = useRef(null)
 
@@ -848,51 +895,9 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
     }
   }, [liveCurrentUser?.id, liveCurrentUser?.coins])
 
-  // Keep the header balance on the same fast path as Marketplace.jsx.
-  // Listen only to this member's row and update both local display state and
-  // currentUser immediately when Supabase delivers the UPDATE event.
-  useEffect(() => {
-    if (!supabase || !currentUser?.id || currentUser?.name === 'Guest') return undefined
-
-    const memberId = Number(currentUser.id)
-    if (!Number.isFinite(memberId)) return undefined
-
-    const channel = supabase
-      .channel(`layout-member-balance-${memberId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'members',
-          filter: `id=eq.${memberId}`,
-        },
-        payload => {
-          const nextCoins = Number(payload?.new?.coins)
-          if (!Number.isFinite(nextCoins)) return
-
-          // Update the visible header immediately.
-          setDisplayCoins(nextCoins)
-
-          // Keep the shared logged-in user record in sync too, so any Layout
-          // UI that still reads currentUser.coins stays current as well.
-          setCurrentUser(prev => (
-            prev && String(prev.id) === String(memberId)
-              ? { ...prev, coins: nextCoins }
-              : prev
-          ))
-        }
-      )
-      .subscribe(status => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn(`[Layout] Member balance realtime ${status.toLowerCase()}.`)
-        }
-      })
-
-    return () => {
-      try { supabase.removeChannel(channel) } catch {}
-    }
-  }, [supabase, currentUser?.id, currentUser?.name, setCurrentUser])
+  // NOTE: no separate Realtime channel here any more. App.jsx already listens
+  // to the members table and updates allMembers/currentUser, which feeds
+  // liveCurrentUser above. A second subscription only duplicated the traffic.
 
   useEffect(() => {
     if (!userMenuOpen && !moreOpen) return
@@ -1081,7 +1086,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
             )}
 
             <div className="flex h-10 w-10 shrink-0 items-center justify-center md:hidden">
-              <NotificationBell ctx={ctx} onNavigate={navigate} />
+              {!isDesktop && <NotificationBell ctx={ctx} onNavigate={navigate} />}
             </div>
 
             <div
@@ -1098,7 +1103,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
             {currentUser && (
               <>
                 <div className="hidden md:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[0.06] bg-black/15">
-                  <NotificationBell ctx={ctx} onNavigate={navigate} />
+                  {isDesktop && <NotificationBell ctx={ctx} onNavigate={navigate} />}
                 </div>
 
                 <div className={`hidden lg:flex shrink-0 items-center gap-2 rounded-xl border px-2.5 py-2 ${
@@ -1147,8 +1152,15 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                       </div>
                       <button
                         type="button"
+                        onClick={() => { navigate('my-activity'); setUserMenuOpen(false) }}
+                        className={`block w-full px-4 py-3 text-left text-[13px] font-medium transition hover:bg-gold/[0.06] hover:text-gold-light ${page === 'my-activity' ? 'bg-gold/[0.07] text-gold-bright' : 'text-text'}`}
+                      >
+                        📜 <span className="ml-2">My Activity</span>
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => { setShowChangePassword(true); setUserMenuOpen(false) }}
-                        className="block w-full px-4 py-3 text-left text-[13px] font-medium text-text transition hover:bg-gold/[0.06] hover:text-gold-light"
+                        className="block w-full border-t border-white/[0.06] px-4 py-3 text-left text-[13px] font-medium text-text transition hover:bg-gold/[0.06] hover:text-gold-light"
                       >
                         🔑 <span className="ml-2">Change Password</span>
                       </button>
@@ -1221,10 +1233,19 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               </div>
 
               {currentUser ? (
-                <div className="mt-3 grid grid-cols-2 gap-2">
+                <>
+                <button
+                  type="button"
+                  onClick={() => navigate('my-activity')}
+                  className={`mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition ${page === 'my-activity' ? 'border-gold/25 bg-gold/[0.07] text-gold-light' : 'border-white/[0.08] bg-white/[0.02] text-text hover:border-gold/20 hover:bg-gold/[0.05] hover:text-gold-light'}`}
+                >
+                  📜 My Activity
+                </button>
+                <div className="mt-2 grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => { setShowChangePassword(true); setMobileOpen(false) }} className="min-h-11 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 text-[12px] font-semibold text-text hover:border-gold/20 hover:bg-gold/[0.05] hover:text-gold-light">🔑 Password</button>
                   <button type="button" onClick={handleLogout} className="min-h-11 rounded-xl border border-red-500/15 bg-red-500/[0.025] px-3 text-[12px] font-semibold text-red-400 hover:bg-red-500/[0.06]">🚪 Logout</button>
                 </div>
+                </>
               ) : (
                 <button
                   type="button"
@@ -1257,7 +1278,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
       )}
 
       <main className="mx-auto w-full max-w-[1600px] flex-1 px-3 pb-8 pt-[88px] sm:px-5 lg:px-7">
-        {children}
+        {page === 'my-activity' ? <MyActivity ctx={ctx} /> : children}
       </main>
 
       <footer className="mx-auto w-full max-w-[1600px] px-3 pb-6 sm:px-5 lg:px-7">
