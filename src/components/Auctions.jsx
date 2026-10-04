@@ -1009,6 +1009,116 @@ export default function Auctions({ ctx }) {
     )
   }
 
+  const exportAuctionWinnersCsv = () => {
+    if (!isElder) {
+      addToast('Only Admin, Master, and Elder can export auction winners.', 'red', 'Not Allowed')
+      return
+    }
+
+    if (!endedAuctions.length) {
+      addToast('There are no completed auctions to export.', 'red', 'Nothing to Export')
+      return
+    }
+
+    const rows = endedAuctions.map(auction => {
+      const finalBids = getFinalBidEntries(auction)
+
+      // For completed auctions, trust the server-settled winner first.
+      // This matters when two final bids are tied and the settlement RPC
+      // performed a random tie-break. The client-side bid sort cannot know
+      // that random result.
+      const winner = auction.topBidder || finalBids[0]?.bidder || ''
+      const winnerEntry = finalBids.find(
+        bid => String(bid?.bidder || '') === String(winner || '')
+      ) || null
+      const winningBid = winnerEntry?.amount || Number(auction.currentBid) || 0
+      const endedAt = Number(auction.endedAt || auction.endsAt || 0) || 0
+      const distributor = auction.distributedBy || ''
+
+      return {
+        AuctionID: auction.id ?? '',
+        Item: auction.name || '',
+        Rarity: getRarityMeta(auction.rarity).label || auction.rarity || '',
+        Winner: winner || 'No Winner',
+        WinningBid: winner ? winningBid : 0,
+        BidderCount: finalBids.length,
+        AuctionEnded: endedAt ? formatDateTime(endedAt) : '',
+        ServerTimezone: SERVER_TZ_SHORT,
+        DistributedBy: distributor || 'Not yet assigned',
+        DistributionStatus: winner
+          ? (distributor ? 'Distributed / Assigned' : 'Awaiting hand-out')
+          : 'No Winner',
+      }
+    })
+
+    const headers = [
+      'Auction ID',
+      'Item',
+      'Rarity',
+      'Winner',
+      'Winning Bid',
+      'Bidder Count',
+      'Auction Ended',
+      'Server Timezone',
+      'Distributed By',
+      'Distribution Status',
+    ]
+
+    const csvEscape = value => {
+      const text = value == null ? '' : String(value)
+      return /[",\n\r]/.test(text)
+        ? `"${text.replace(/"/g, '""')}"`
+        : text
+    }
+
+    const csv = [
+      headers.join(','),
+      ...rows.map(row => headers.map(header => {
+        const key = header === 'Auction ID'
+          ? 'AuctionID'
+          : header === 'Winning Bid'
+            ? 'WinningBid'
+            : header === 'Bidder Count'
+              ? 'BidderCount'
+              : header === 'Auction Ended'
+                ? 'AuctionEnded'
+                : header === 'Server Timezone'
+                  ? 'ServerTimezone'
+                  : header === 'Distributed By'
+                    ? 'DistributedBy'
+                    : header === 'Distribution Status'
+                      ? 'DistributionStatus'
+                      : header
+        return csvEscape(row[key])
+      }).join(',')),
+    ].join('\r\n')
+
+    const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+
+    const dateStamp = (() => {
+      const parts = serverParts(Date.now())
+      return parts
+        ? `${parts.y}-${pad2(parts.m + 1)}-${pad2(parts.d)}`
+        : 'export'
+    })()
+
+    link.download = `auction-winners-${dateStamp}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+
+    const winnerCount = rows.filter(row => row.Winner !== 'No Winner').length
+    addToast(
+      `Exported ${rows.length} completed auction${rows.length === 1 ? '' : 's'} · ${winnerCount} winner record${winnerCount === 1 ? '' : 's'}.`,
+      'gold',
+      'Auction Winners Exported'
+    )
+  }
+
   const deleteSelectedEndedAuctions = async () => {
     if (!isElder || selectedEndedAuctions.length === 0) return
 
@@ -1602,6 +1712,14 @@ export default function Auctions({ ctx }) {
               <div className="hidden sm:block text-[10px] text-text-dim">Review bidder count, winners, final bids, and distribution status.</div>
               {isElder && (
                 <>
+                  <button
+                    type="button"
+                    onClick={exportAuctionWinnersCsv}
+                    className="rounded-md border border-gold/20 bg-gold/[.04] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gold-light hover:border-gold/35 hover:bg-gold/[.07]"
+                    title="Export completed auction winner history as CSV"
+                  >
+                    Export Winners CSV
+                  </button>
                   <button
                     type="button"
                     onClick={toggleSelectAllEnded}
