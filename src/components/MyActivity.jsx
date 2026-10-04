@@ -241,7 +241,32 @@ function getFinalBidEntries(auction) {
 }
 
 function getAuctionWinner(auction) {
-  return getFinalBidEntries(auction)[0] || null
+  // Settlement is authoritative. The server stores the final winner in
+  // top_bidder after the random tie-break (when applicable).
+  // Never infer a winner from bid order in My Activity.
+  const settledWinner = String(
+    auction?.topBidder ??
+    auction?.top_bidder ??
+    ''
+  ).trim()
+
+  if (!settledWinner) return null
+
+  const finalBids = getFinalBidEntries(auction)
+  const winnerBid = finalBids.find(
+    bid => String(bid?.bidder || '').trim().toLowerCase() === settledWinner.toLowerCase()
+  ) || null
+
+  return {
+    bidder: settledWinner,
+    amount: Number(
+      auction?.currentBid ??
+      auction?.current_bid ??
+      winnerBid?.amount ??
+      0
+    ) || Number(winnerBid?.amount) || 0,
+    time: toTime(auction?.endedAt ?? auction?.ended_at ?? winnerBid?.time),
+  }
 }
 
 function normalizeAuditDetails(value) {
@@ -285,14 +310,12 @@ function dedupeDecayRows(rows) {
 }
 
 function isAuctionEnded(auction) {
+  // My Activity must only show a completed/settled auction.
+  // An auction can pass its scheduled end time while the server settlement
+  // is still in progress. In that window it is NOT a win yet and must not
+  // appear as money spent.
   const status = String(auction?.status || '').toLowerCase()
-  if (status === 'ended' || status === 'completed' || status === 'closed') return true
-
-  const endedAt = toTime(auction?.endedAt ?? auction?.ended_at)
-  if (endedAt > 0) return true
-
-  const endsAt = toTime(auction?.endsAt ?? auction?.ends_at)
-  return endsAt > 0 && endsAt <= Date.now()
+  return status === 'ended' || status === 'completed' || status === 'closed'
 }
 
 function getAuctionItemName(auction) {
