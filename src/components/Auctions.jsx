@@ -327,7 +327,7 @@ function ItemImage({ src, alt, size = 56 }) {
 
 export default function Auctions({ ctx }) {
   const {
-    members, setMembers, auctions, setAuctions, currentUser, addToast, supabase,
+    members, setMembers, auctions, setAuctions, currentUser, addToast, supabase, reloadMembers,
   } = ctx
 
   const currentMember = useMemo(
@@ -667,6 +667,12 @@ export default function Auctions({ ctx }) {
       return false
     }
 
+    if (typeof reloadMembers === 'function') {
+      try { await reloadMembers() } catch (refreshError) {
+        console.warn('Member refresh after auction settlement failed:', refreshError)
+      }
+    }
+
     // The RPC is authoritative. Refreshing the local row from its result
     // keeps this browser in sync without performing a second settlement.
     const result = Array.isArray(data) ? data[0] : data
@@ -794,6 +800,12 @@ export default function Auctions({ ctx }) {
       m.id === bidder.id ? { ...m, coins: newCoins } : m
     ))
 
+    if (typeof reloadMembers === 'function') {
+      try { await reloadMembers() } catch (refreshError) {
+        console.warn('Member refresh after auction bid failed:', refreshError)
+      }
+    }
+
     setAuctions(prev => prev.map(a => a.id === auctionId ? {
       ...a,
       bids: newBids,
@@ -891,6 +903,12 @@ export default function Auctions({ ctx }) {
       m.id === Number(currentUser.id) ? { ...m, coins: newCoins } : m
     ))
 
+    if (typeof reloadMembers === 'function') {
+      try { await reloadMembers() } catch (refreshError) {
+        console.warn('Member refresh after bid cancellation failed:', refreshError)
+      }
+    }
+
     setAuctions(prev => prev.map(a => a.id === auctionId ? {
       ...a,
       bids: newBids,
@@ -943,46 +961,36 @@ export default function Auctions({ ctx }) {
 
     if (!window.confirm(`Delete "${auction.name}" permanently?${refundNote}`)) return
 
-    if (auction.status === 'active') {
-      for (const bid of finalBids) {
-        const member = members.find(m => m.name === bid.bidder)
-        if (!member || bid.amount <= 0) continue
-        const { error: refundErr } = await supabase
-          .from('members')
-          .update({ coins: (Number(member.coins) || 0) + bid.amount })
-          .eq('id', member.id)
-        if (refundErr) {
-          addToast(`Couldn't refund ${bid.bidder}: ${refundErr.message}`, 'red', 'Delete Failed')
-          return
-        }
-        setMembers(prev => prev.map(m =>
-          m.id === member.id ? { ...m, coins: (Number(m.coins) || 0) + bid.amount } : m
-        ))
+    const actorId = Number(currentMember?.id)
+    if (!Number.isFinite(actorId) || actorId <= 0) {
+      addToast('Your member ID could not be verified.', 'red', 'Delete Failed')
+      return
+    }
+
+    // Refunds, notification cleanup, and auction deletion are handled by one
+    // database transaction. The browser never performs a partial refund.
+    const { data, error } = await supabase.rpc('auction_delete_with_refunds', {
+      p_auction_id: String(auctionId),
+      p_actor_id: actorId,
+    })
+
+    if (error) {
+      console.error('Delete auction failed:', error)
+      addToast(error.message || `Couldn't delete auction: ${auction.name}`, 'red', 'Delete Failed')
+      return
+    }
+
+    setAuctions(prev => prev.filter(a => String(a.id) !== String(auctionId)))
+    if (typeof reloadMembers === 'function') {
+      try { await reloadMembers() } catch (refreshError) {
+        console.warn('Member refresh after auction delete failed:', refreshError)
       }
     }
 
-    // Remove notifications tied to this auction first. The DB FK currently
-    // uses ON DELETE SET NULL, which would otherwise leave old win notices
-    // behind after the auction is deleted.
-    const { error: notificationError } = await supabase
-      .from('notifications')
-      .delete()
-      .eq('auction_id', auctionId)
-
-    if (notificationError) {
-      console.error('Delete auction notifications failed:', notificationError)
-      addToast(`Couldn't clean auction notifications: ${notificationError.message}`, 'red', 'Delete Failed')
-      return
-    }
-
-    const { error } = await supabase.from('auctions').delete().eq('id', auctionId)
-    if (error) {
-      console.error('Delete auction failed:', error)
-      addToast(`Couldn't delete auction: ${error.message}`, 'red', 'Delete Failed')
-      return
-    }
-    setAuctions(prev => prev.filter(a => a.id !== auctionId))
-    addToast(`"${auction.name}" removed.`, 'red', 'Auction Deleted')
+    const refunds = Array.isArray(data?.refunds) ? data.refunds : []
+    const totalRefunded = refunds.reduce((sum, row) => sum + (Number(row?.amount) || 0), 0)
+    const suffix = totalRefunded > 0 ? ` ${totalRefunded.toLocaleString()} coins returned.` : ''
+    addToast(`"${auction.name}" removed.${suffix}`, 'red', 'Auction Deleted')
   }
 
   const toggleEndedSelection = (auctionId) => {
