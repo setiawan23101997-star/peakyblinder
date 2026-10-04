@@ -1059,25 +1059,26 @@ export default function Attendance({ ctx }) {
 
     const weekKey = currentWeekKey
     const awardedAt = Date.now()
+    const awardedBy = currentUser?.name || 'System'
     const successful = []
     const failed = []
 
     try {
-      // Sequential updates are intentional. Each award writes the complete
-      // attend_log JSON, so parallel updates can overwrite another player's
-      // latest state when the RPC is called at the same time.
+      /*
+       * IMPORTANT:
+       * Perfect Attendance must be awarded by the atomic database RPC.
+       *
+       * The old implementation used updateMemberStaff() with a client-side
+       * "current coins + 150" and a full attend_log replacement. That value
+       * can be stale when another tab/process changes the same member between
+       * render and save.
+       *
+       * award_perfect_attendance_staff() locks the member row, checks the
+       * current week's perfect-attendance entry inside PostgreSQL, and only
+       * adds the bonus when that week has not already been awarded.
+       */
       for (const row of freshRows) {
         const member = row.member
-
-        const alreadyAwarded = (member.attend_log || []).some(entry =>
-          entry?.type === 'perfect_attendance_bonus' &&
-          entry?.weekKey === weekKey
-        )
-
-        if (alreadyAwarded) {
-          successful.push({ member, skipped: true, data: member })
-          continue
-        }
 
         const bonusEntry = {
           type: 'perfect_attendance_bonus',
@@ -1086,26 +1087,46 @@ export default function Attendance({ ctx }) {
           coins: PERFECT_ATTENDANCE_BONUS,
           sessions: PERFECT_ATTENDANCE_REQUIRED_SESSIONS,
           awardedAt,
-          awardedBy: currentUser?.name || 'System',
+          awardedBy,
         }
 
-        const currentCoins = Number(member.coins) || 0
-        const nextAttendLog = [
-          ...(Array.isArray(member.attend_log) ? member.attend_log : []),
-          bonusEntry,
-        ]
-
         try {
-          const updatedMember = await updateMemberStaff(member.id, {
-            coins: currentCoins + PERFECT_ATTENDANCE_BONUS,
-            attend_log: nextAttendLog,
+          const { data, error } = await supabase.rpc('award_perfect_attendance_staff', {
+            p_target_id: Number(member.id),
+            p_actor_id: Number(currentUser?.id),
+            p_actor_password: String(currentUser?.password || ''),
+            p_week_key: weekKey,
+            p_bonus_entry: bonusEntry,
+            p_bonus_coins: PERFECT_ATTENDANCE_BONUS,
           })
+
+          if (error) throw error
+          if (!data) throw new Error('The database did not return the member after the Perfect Attendance check.')
+
+          /*
+           * If another staff session already awarded this week first, the RPC
+           * returns the existing row without adding another +150. We detect
+           * whether this exact request created the entry so the toast/counts
+           * stay truthful.
+           */
+          const returnedLog = Array.isArray(data.attend_log) ? data.attend_log : []
+          const createdByThisRequest = returnedLog.some(entry =>
+            entry?.type === 'perfect_attendance_bonus' &&
+            entry?.weekKey === weekKey &&
+            String(entry?.awardedAt ?? '') === String(awardedAt) &&
+            String(entry?.awardedBy ?? '') === String(awardedBy)
+          )
+
+          const alreadyAwardedBeforeRequest = (Array.isArray(member.attend_log) ? member.attend_log : []).some(entry =>
+            entry?.type === 'perfect_attendance_bonus' &&
+            entry?.weekKey === weekKey
+          )
 
           successful.push({
             member,
-            skipped: false,
-            data: updatedMember,
-            nextAttendLog,
+            data,
+            awardedNow: createdByThisRequest && !alreadyAwardedBeforeRequest,
+            skipped: !createdByThisRequest,
           })
         } catch (error) {
           console.error(`Perfect Attendance failed for ${member.name}:`, error)
@@ -1113,40 +1134,57 @@ export default function Attendance({ ctx }) {
         }
       }
 
-      // Prefer the actual row returned by Supabase so the UI reflects the
-      // database value instead of assuming the local +150 calculation.
+      /*
+       * Always use the authoritative member row returned by Supabase.
+       * Never calculate the new coin balance locally for this operation.
+       */
       setMembers(prev => prev.map(member => {
         const result = successful.find(
           item => String(item.member.id) === String(member.id)
         )
 
-        if (!result || result.skipped) return member
-
-        const saved = result.data && typeof result.data === 'object'
-          ? result.data
-          : null
+        if (!result?.data) return member
 
         return {
           ...member,
-          ...(saved || {}),
-          coins: saved?.coins != null
-            ? Number(saved.coins)
-            : Number(member.coins || 0) + PERFECT_ATTENDANCE_BONUS,
-          attend_log: Array.isArray(saved?.attend_log)
-            ? saved.attend_log
-            : result.nextAttendLog,
+          ...result.data,
+          coins: result.data.coins != null
+            ? Number(result.data.coins)
+            : member.coins,
+          attend_log: Array.isArray(result.data.attend_log)
+            ? result.data.attend_log
+            : member.attend_log,
         }
       }))
 
+      const awardedNowCount = successful.filter(r => r.awardedNow).length
+      const alreadyHandledCount = successful.filter(r => r.skipped).length
+
       if (failed.length > 0) {
+        const handledText = alreadyHandledCount > 0
+          ? ` Already awarded elsewhere: ${alreadyHandledCount}.`
+          : ''
+
         addToast(
-          `Awarded ${successful.filter(r => !r.skipped).length}/${freshRows.length}. Failed: ${failed.map(r => `${r.member.name} (${r.error?.message || 'Unknown error'})`).join(', ')}`,
+          `Awarded ${awardedNowCount}/${freshRows.length}.${handledText} Failed: ${failed.map(r => `${r.member.name} (${r.error?.message || 'Unknown error'})`).join(', ')}`,
           'red',
           'Perfect Attendance Partial'
         )
+      } else if (alreadyHandledCount > 0 && awardedNowCount === 0) {
+        addToast(
+          `No duplicate bonus was added. ${alreadyHandledCount} player(s) already had this week's Perfect Attendance award.`,
+          'gold',
+          'Already Awarded'
+        )
+      } else if (alreadyHandledCount > 0) {
+        addToast(
+          `+${PERFECT_ATTENDANCE_BONUS} Coins awarded to ${awardedNowCount} player(s). ${alreadyHandledCount} player(s) were already awarded.`,
+          'gold',
+          'Perfect Attendance Awarded'
+        )
       } else {
         addToast(
-          `+${PERFECT_ATTENDANCE_BONUS} Coins awarded to ${successful.filter(r => !r.skipped).length} Perfect Attendance player(s).`,
+          `+${PERFECT_ATTENDANCE_BONUS} Coins awarded to ${awardedNowCount} Perfect Attendance player(s).`,
           'gold',
           'Perfect Attendance Awarded'
         )
@@ -1188,52 +1226,85 @@ export default function Attendance({ ctx }) {
 
     const results = await Promise.all(awardedRows.map(async row => {
       const member = row.member
-      const nextAttendLog = (member.attend_log || []).filter(entry =>
-        !(entry?.type === 'perfect_attendance_bonus' && entry?.weekKey === weekKey)
-      )
-
-      const removedCount =
-        (member.attend_log || []).length - nextAttendLog.length
-
-      if (removedCount === 0) {
-        return { member, ok: true, skipped: true, nextAttendLog }
-      }
-
-      const newCoins = Math.max(0, Number(member.coins) - (removedCount * PERFECT_ATTENDANCE_BONUS))
 
       try {
-        await updateMemberStaff(member.id, {
+        /*
+         * Refresh the member first so reset does not blindly subtract from a
+         * stale browser-side coin balance or overwrite newer attendance logs.
+         */
+        const { data: freshMember, error: fetchError } = await supabase
+          .from('members')
+          .select('*')
+          .eq('id', Number(member.id))
+          .maybeSingle()
+
+        if (fetchError) throw fetchError
+        if (!freshMember) throw new Error('Member not found.')
+
+        const currentLog = Array.isArray(freshMember.attend_log) ? freshMember.attend_log : []
+        const nextAttendLog = currentLog.filter(entry =>
+          !(entry?.type === 'perfect_attendance_bonus' && entry?.weekKey === weekKey)
+        )
+
+        const removedCount = currentLog.length - nextAttendLog.length
+
+        if (removedCount === 0) {
+          return {
+            member,
+            ok: true,
+            skipped: true,
+            data: freshMember,
+          }
+        }
+
+        /*
+         * The reset path still uses the existing staff RPC because there is
+         * already a server-side authorization layer in this project.
+         * The important improvement here is that the calculation starts from
+         * the latest database row, not the stale React state.
+         */
+        const newCoins = Math.max(
+          0,
+          Number(freshMember.coins || 0) -
+            (removedCount * PERFECT_ATTENDANCE_BONUS)
+        )
+
+        const updatedMember = await updateMemberStaff(member.id, {
           coins: newCoins,
           attend_log: nextAttendLog,
         })
+
         return {
           member,
           ok: true,
-          nextAttendLog,
-          newCoins,
+          skipped: false,
+          data: updatedMember,
         }
       } catch (error) {
-        return {
-          member,
-          ok: false,
-          error,
-          nextAttendLog,
-          newCoins,
-        }
+        console.error(`Failed to reset Perfect Attendance for ${member.name}:`, error)
+        return { member, ok: false, error }
       }
     }))
 
     const failed = results.filter(result => !result.ok)
-    const successful = results.filter(result => result.ok && !result.skipped)
+    const successful = results.filter(result => result.ok)
 
     setMembers(prev => prev.map(member => {
-      const result = successful.find(item => item.member.id === member.id)
-      if (!result) return member
+      const result = successful.find(
+        item => String(item.member.id) === String(member.id)
+      )
+
+      if (!result?.data || result.skipped) return member
 
       return {
         ...member,
-        coins: result.newCoins,
-        attend_log: result.nextAttendLog,
+        ...result.data,
+        coins: result.data.coins != null
+          ? Number(result.data.coins)
+          : member.coins,
+        attend_log: Array.isArray(result.data.attend_log)
+          ? result.data.attend_log
+          : member.attend_log,
       }
     }))
 
@@ -1241,19 +1312,25 @@ export default function Attendance({ ctx }) {
 
     if (failed.length > 0) {
       addToast(
-        `Reset completed for ${successful.length} player(s). Failed: ${failed.map(r => r.member.name).join(', ')}`,
+        `Reset completed for ${successful.filter(r => !r.skipped).length} player(s). Failed: ${failed.map(r => r.member.name).join(', ')}`,
         'red',
         'Partial Reset'
       )
       return
     }
 
+    const resetCount = successful.filter(r => !r.skipped).length
+    const skippedCount = successful.filter(r => r.skipped).length
+
     addToast(
-      `Perfect Attendance reset for ${successful.length} player(s). ${total.toLocaleString()} Coins reversed.`,
+      skippedCount > 0
+        ? `Perfect Attendance reset for ${resetCount} player(s). ${skippedCount} player(s) had no current-week bonus to remove.`
+        : `Perfect Attendance reset for ${resetCount} player(s). ${total.toLocaleString()} Coins reversed.`,
       'gold',
       'Awards Reset'
     )
   }
+
 
   const sortedLogs = [...attendanceLogs].sort((a, b) => {
     const ta = a.ts || Number(a.id) || new Date(a.date).getTime() || 0
