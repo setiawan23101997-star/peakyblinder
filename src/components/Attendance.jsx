@@ -554,6 +554,31 @@ export default function Attendance({ ctx }) {
     return data
   }
 
+  // Roll back a successful attendance mutation when a later step fails.
+  // The database RPC is atomic per member, so compensation is safer than
+  // trying to rebuild the member row from React state.
+  const rollbackAttendanceMutations = async (mutations) => {
+    const items = Array.isArray(mutations) ? mutations : []
+    if (items.length === 0) return []
+
+    const results = await Promise.allSettled(items.map(item =>
+      supabase.rpc('reverse_attendance_staff', {
+        p_target_id: Number(item.memberId),
+        p_coins_delta: Number(item.reward),
+        p_attendance_delta: -1,
+        p_event: String(item.event || ''),
+        p_session_id: item.sessionId ? String(item.sessionId) : null,
+        p_ts: Number(item.ts) || null,
+        p_actor_id: Number(currentUser?.id),
+        p_actor_password: String(currentUser?.password || ''),
+      })
+    ))
+
+    return results
+      .map((result, index) => ({ result, item: items[index] }))
+      .filter(({ result }) => result.status === 'rejected' || result.value?.error)
+  }
+
   const recordAttendance = async () => {
     const ids = Object.keys(selectedMembers).filter(k => selectedMembers[k])
     if (ids.length === 0) {
@@ -566,9 +591,10 @@ export default function Attendance({ ctx }) {
       return false
     }
 
+    const currentWeek = getAttendanceWeekKey(Date.now())
     const duplicateSession = (attendanceLogs || []).find(log => {
       const logTs = log.ts || Number(log.id) || 0
-      if (!logTs || getAttendanceWeekKey(logTs) !== getAttendanceWeekKey(Date.now())) return false
+      if (!logTs || getAttendanceWeekKey(logTs) !== currentWeek) return false
       return (log.attendees || []).some(a => a.sessionId === selectedSession.id)
     })
     if (duplicateSession) {
@@ -581,117 +607,164 @@ export default function Attendance({ ctx }) {
     const nowDate = new Date()
     const dateStr = nowDate.toLocaleDateString()
     const ts = nowDate.getTime()
-
     const targets = members.filter(m => ids.includes(String(m.id)))
+    const successfulMutations = []
 
-    const results = await Promise.all(targets.map(async (m) => {
-      const reward = getAttendanceReward(m.power, selectedEvent)
-      const attendEntry = {
+    try {
+      const results = await Promise.all(targets.map(async (m) => {
+        const reward = getAttendanceReward(m.power, selectedEvent)
+        const attendEntry = {
+          event: selectedEvent,
+          sessionId: selectedSession.id,
+          sessionLabel: selectedSession.label,
+          sessionDisplayName: selectedSession.displayName,
+          date: dateStr,
+          ts,
+          qualifier: 'full',
+          coins: reward,
+          baseCoins: ATTENDANCE_REWARDS[selectedEvent].base,
+          gp: Number(m.power) || 0,
+          gpBonus: getAttendanceGpBonus(m.power, selectedEvent),
+          perfectAttendanceBonus: 0,
+        }
+
+        const { data, error } = await supabase.rpc('record_attendance_staff', {
+          p_target_id: Number(m.id),
+          p_coins_delta: reward,
+          p_attendance_delta: 1,
+          p_attend_entry: attendEntry,
+          p_bonus_tx_entries: [],
+          p_actor_id: Number(currentUser?.id) || null,
+          p_actor_password: currentUser?.password || null,
+        })
+
+        if (error) {
+          console.error(`Failed to save ${m.name}:`, error)
+          return { id: m.id, name: m.name, ok: false, error }
+        }
+
+        return {
+          id: m.id,
+          name: m.name,
+          ok: true,
+          data,
+          reward,
+          attendEntry,
+          mutation: {
+            memberId: m.id,
+            reward,
+            event: selectedEvent,
+            sessionId: selectedSession.id,
+            ts,
+          },
+        }
+      }))
+
+      results.filter(r => r.ok).forEach(r => successfulMutations.push(r.mutation))
+
+      const failed = results.filter(r => !r.ok)
+      if (failed.length > 0) {
+        const rollbackFailures = await rollbackAttendanceMutations(successfulMutations)
+        const rollbackText = rollbackFailures.length > 0
+          ? ` Rollback also failed for: ${rollbackFailures.map(x => x.item?.memberId).join(', ')}.`
+          : ''
+
+        addToast(
+          `Attendance was not saved for this batch. Failed: ${failed.map(f => f.name).join(', ')}.${rollbackText}`,
+          'red',
+          rollbackFailures.length > 0 ? 'Rollback Incomplete' : 'Save Failed'
+        )
+        return false
+      }
+
+      const log = {
+        id: ts,
         event: selectedEvent,
-        sessionId: selectedSession.id,
-        sessionLabel: selectedSession.label,
-        sessionDisplayName: selectedSession.displayName,
         date: dateStr,
         ts,
-        qualifier: 'full',
-        coins: reward,
-        baseCoins: ATTENDANCE_REWARDS[selectedEvent].base,
-        gp: Number(m.power) || 0,
-        gpBonus: getAttendanceGpBonus(m.power, selectedEvent),
-        perfectAttendanceBonus: 0,
-      }
-      const { data, error } = await supabase.rpc('record_attendance_staff', {
-        p_target_id: Number(m.id),
-        p_coins_delta: reward,
-        p_attendance_delta: 1,
-        p_attend_entry: attendEntry,
-        p_bonus_tx_entries: [],
-        p_actor_id: Number(currentUser?.id) || null,
-        p_actor_password: currentUser?.password || null,
-      })
-      if (error) {
-        console.error(`Failed to save ${m.name}:`, error)
-        return { id: m.id, name: m.name, ok: false, error }
-      }
-      return { id: m.id, name: m.name, ok: true, newCoins: data }
-    }))
-
-    const failed = results.filter(r => !r.ok)
-    if (failed.length > 0) {
-      addToast(`Couldn't save attendance for: ${failed.map(f => f.name).join(', ')}`, 'red', 'Save Failed')
-      setSubmitting(false)
-      return false
-    }
-
-    const log = {
-      id: ts,
-      event: selectedEvent,
-      date: dateStr,
-      ts,
-      members: ids.length,
-      recorded_by: currentUser?.name || 'System',
-      attendees: targets.map(m => {
-        const reward = getAttendanceReward(m.power, selectedEvent)
-        return {
-          memberId: m.id,
-          name: m.name,
-          cls: m.cls,
+        members: ids.length,
+        recorded_by: currentUser?.name || 'System',
+        attendees: results.map(r => ({
+          memberId: r.id,
+          name: r.name,
+          cls: targets.find(t => String(t.id) === String(r.id))?.cls || '',
           qualifier: 'full',
           sessionId: selectedSession.id,
           sessionLabel: selectedSession.label,
           sessionDisplayName: selectedSession.displayName,
-          earned: reward,
-          gp: Number(m.power) || 0,
+          earned: r.reward,
+          gp: Number(targets.find(t => String(t.id) === String(r.id))?.power) || 0,
           baseCoins: ATTENDANCE_REWARDS[selectedEvent].base,
-          gpBonus: getAttendanceGpBonus(m.power, selectedEvent),
+          gpBonus: getAttendanceGpBonus(
+            targets.find(t => String(t.id) === String(r.id))?.power,
+            selectedEvent
+          ),
           perfectAttendanceBonus: 0,
+        })),
+      }
+
+      const { error: logError } = await supabase
+        .from('attendance_logs')
+        .insert([log])
+
+      if (logError) {
+        console.error('Failed to save attendance log; rolling back member mutations:', logError)
+        const rollbackFailures = await rollbackAttendanceMutations(successfulMutations)
+        const rollbackText = rollbackFailures.length > 0
+          ? ` Rollback also failed for member IDs: ${rollbackFailures.map(x => x.item?.memberId).join(', ')}.`
+          : ''
+
+        addToast(
+          `Attendance log failed, so Coins and attendance were rolled back.${rollbackText}`,
+          'red',
+          rollbackFailures.length > 0 ? 'Rollback Incomplete' : 'Save Failed'
+        )
+        return false
+      }
+
+      setMembers(prev => prev.map(m => {
+        const result = results.find(r => String(r.id) === String(m.id))
+        if (!result?.ok) return m
+
+        return {
+          ...m,
+          ...result.data,
+          coins: result.data?.coins != null ? Number(result.data.coins) : m.coins,
+          attendance: result.data?.attendance != null ? Number(result.data.attendance) : m.attendance,
+          attend_log: Array.isArray(result.data?.attend_log)
+            ? result.data.attend_log
+            : [...(m.attend_log || []), result.attendEntry],
         }
-      }),
-    }
+      }))
+      setAttendanceLogs(prev => [log, ...prev])
 
-    const { error: logError } = await supabase
-      .from('attendance_logs')
-      .insert([log])
-
-    if (logError) {
-      console.error('Failed to save log:', logError)
-      addToast('Coins saved, but the attendance log failed to save.', 'red', 'Partial Save')
-    }
-
-    setMembers(prev => prev.map(m => {
-      if (!ids.includes(String(m.id))) return m
-      const reward = getAttendanceReward(m.power, selectedEvent)
-      const attendEntry = {
-        event: selectedEvent,
-        sessionId: selectedSession.id,
-        sessionLabel: selectedSession.label,
-        sessionDisplayName: selectedSession.displayName,
-        date: dateStr,
-        ts,
-        qualifier: 'full',
-        coins: reward,
-        baseCoins: ATTENDANCE_REWARDS[selectedEvent].base,
-        gp: Number(m.power) || 0,
-        gpBonus: getAttendanceGpBonus(m.power, selectedEvent),
-        perfectAttendanceBonus: 0,
+      setSelectedMembers({})
+      addToast(
+        `${ids.length} members recorded for ${selectedEvent} · ${selectedSession.displayName}.`,
+        'gold',
+        'Attendance Saved'
+      )
+      return true
+    } catch (error) {
+      console.error('Attendance save failed:', error)
+      if (successfulMutations.length > 0) {
+        const rollbackFailures = await rollbackAttendanceMutations(successfulMutations)
+        if (rollbackFailures.length > 0) {
+          addToast(
+            `Attendance failed and some rollback operations also failed for member IDs: ${rollbackFailures.map(x => x.item?.memberId).join(', ')}.`,
+            'red',
+            'Rollback Incomplete'
+          )
+        } else {
+          addToast(`Attendance was not saved: ${error?.message || 'Unknown error'}`, 'red', 'Save Failed')
+        }
+      } else {
+        addToast(`Attendance was not saved: ${error?.message || 'Unknown error'}`, 'red', 'Save Failed')
       }
-      return {
-        ...m,
-        coins: (m.coins || 0) + reward,
-        attendance: (m.attendance || 0) + 1,
-        attend_log: [...(m.attend_log || []), attendEntry],
-      }
-    }))
-    setAttendanceLogs(prev => [log, ...prev])
-
-    setSelectedMembers({})
-    setSubmitting(false)
-    addToast(
-      `${ids.length} members recorded for ${selectedEvent} · ${selectedSession.displayName}.`,
-      'gold',
-      'Attendance Saved'
-    )
-    return true
+      return false
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const deleteLog = async (log) => {
@@ -910,126 +983,206 @@ export default function Attendance({ ctx }) {
       return
     }
 
-    const existingNames = new Set((missingLog.attendees || []).map(a => String(a.name).trim().toLowerCase()))
-    const targets = members.filter(m =>
-      ids.includes(String(m.id)) &&
-      !existingNames.has(String(m.name).trim().toLowerCase())
-    )
-
-    if (targets.length === 0) {
-      addToast('Those members are already included in this attendance record.', 'red', 'Already Recorded')
-      return
-    }
-
     setAddingMissing(true)
 
-    const logTs = missingLog.ts || Number(missingLog.id) || Date.now()
-    const missingSession = getLogSession(missingLog)
-    const logDate = missingLog.date || new Date(logTs).toLocaleDateString()
-    const newAttendees = targets.map(m => {
-      const reward = getAttendanceReward(m.power, missingLog.event)
-      return {
-        memberId: m.id,
-        name: m.name,
-        cls: m.cls,
-        qualifier: 'full',
-        sessionId: missingLog.sessionId || missingSession?.id || null,
-        sessionLabel: missingLog.sessionLabel || missingSession?.label || null,
-        sessionDisplayName: missingLog.sessionDisplayName || missingSession?.displayName || null,
-        earned: reward,
-        gp: Number(m.power) || 0,
-        baseCoins: ATTENDANCE_REWARDS[missingLog.event].base,
-        gpBonus: getAttendanceGpBonus(m.power, missingLog.event),
-        perfectAttendanceBonus: 0,
-      }
-    })
-    const updatedAttendees = [...(missingLog.attendees || []), ...newAttendees]
+    let successfulMutations = []
 
-    const { error: logError } = await supabase
-      .from('attendance_logs')
-      .update({
-        members: updatedAttendees.length,
-        attendees: updatedAttendees,
-      })
-      .eq('id', missingLog.id)
+    try {
+      // Re-read the attendance record immediately before changing it so an old
+      // React snapshot cannot overwrite additions made by another staff tab.
+      const { data: latestLog, error: latestLogError } = await supabase
+        .from('attendance_logs')
+        .select('*')
+        .eq('id', missingLog.id)
+        .maybeSingle()
 
-    if (logError) {
-      console.error('Failed to update attendance record:', logError)
-      addToast(`Couldn't add the missing members: ${logError.message}`, 'red', 'Save Failed')
-      setAddingMissing(false)
-      return
-    }
+      if (latestLogError) throw latestLogError
+      if (!latestLog) throw new Error('Attendance record no longer exists.')
 
-    const results = await Promise.all(targets.map(async (m) => {
-      const reward = getAttendanceReward(m.power, missingLog.event)
-      const attendEntry = {
-        event: missingLog.event,
-        sessionId: missingLog.sessionId || missingSession?.id || null,
-        sessionLabel: missingLog.sessionLabel || missingSession?.label || null,
-        sessionDisplayName: missingLog.sessionDisplayName || missingSession?.displayName || null,
-        date: logDate,
-        ts: logTs,
-        qualifier: 'full',
-        coins: reward,
-        baseCoins: ATTENDANCE_REWARDS[missingLog.event].base,
-        gp: Number(m.power) || 0,
-        gpBonus: getAttendanceGpBonus(m.power, missingLog.event),
-        perfectAttendanceBonus: 0,
-      }
-
-      const nextAttendLog = [...(m.attend_log || []), attendEntry]
-      try {
-        await updateMemberStaff(m.id, {
-          coins: (m.coins || 0) + reward,
-          attendance: (m.attendance || 0) + 1,
-          attend_log: nextAttendLog,
-        })
-        return { member: m, ok: true, nextAttendLog }
-      } catch (error) {
-        return { member: m, ok: false, error, nextAttendLog }
-      }
-    }))
-
-    const failed = results.filter(r => !r.ok)
-    if (failed.length > 0) {
-      console.error('Failed to update some missing members:', failed)
-      addToast(
-        `Attendance record updated, but some members failed: ${failed.map(r => r.member.name).join(', ')}`,
-        'red',
-        'Partial Save'
+      const latestAttendees = Array.isArray(latestLog.attendees) ? latestLog.attendees : []
+      const existingNames = new Set(
+        latestAttendees.map(a => String(a.name || '').trim().toLowerCase())
       )
-      setAddingMissing(false)
-      return
-    }
 
-    const updatedLog = {
-      ...missingLog,
-      members: updatedAttendees.length,
-      attendees: updatedAttendees,
-    }
+      const targets = members.filter(m =>
+        ids.includes(String(m.id)) &&
+        !existingNames.has(String(m.name || '').trim().toLowerCase())
+      )
 
-    setAttendanceLogs(prev => prev.map(log => log.id === missingLog.id ? updatedLog : log))
-    setMembers(prev => prev.map(m => {
-      const result = results.find(r => r.member.id === m.id)
-      if (!result) return m
-      return {
-        ...m,
-        coins: (m.coins || 0) + getAttendanceReward(m.power, missingLog.event),
-        attendance: (m.attendance || 0) + 1,
-        attend_log: result.nextAttendLog,
+      if (targets.length === 0) {
+        addToast('Those members are already included in this attendance record.', 'red', 'Already Recorded')
+        return
       }
-    }))
 
-    setShowAddMissing(false)
-    setMissingLog(null)
-    setMissingMembers({})
-    setAddingMissing(false)
+      const logTs = latestLog.ts || Number(latestLog.id) || Date.now()
+      const missingSession = getLogSession(latestLog)
+      const logDate = latestLog.date || new Date(logTs).toLocaleDateString()
 
-    addToast(
-      `${targets.length} missing member${targets.length === 1 ? '' : 's'} added to ${missingLog.event}. Rewards were calculated from each member's GP.`,
-      'gold',
-      'Missing Record Added'
-    )
+      const results = await Promise.all(targets.map(async (m) => {
+        const reward = getAttendanceReward(m.power, latestLog.event)
+        const sessionId = latestLog.sessionId || missingSession?.id || null
+        const attendEntry = {
+          event: latestLog.event,
+          sessionId,
+          sessionLabel: latestLog.sessionLabel || missingSession?.label || null,
+          sessionDisplayName: latestLog.sessionDisplayName || missingSession?.displayName || null,
+          date: logDate,
+          ts: logTs,
+          qualifier: 'full',
+          coins: reward,
+          baseCoins: ATTENDANCE_REWARDS[latestLog.event].base,
+          gp: Number(m.power) || 0,
+          gpBonus: getAttendanceGpBonus(m.power, latestLog.event),
+          perfectAttendanceBonus: 0,
+        }
+
+        try {
+          // Use the atomic attendance RPC instead of sending an absolute
+          // client-side coins/attend_log snapshot to update_member_by_staff.
+          const { data, error } = await supabase.rpc('record_attendance_staff', {
+            p_target_id: Number(m.id),
+            p_coins_delta: reward,
+            p_attendance_delta: 1,
+            p_attend_entry: attendEntry,
+            p_bonus_tx_entries: [],
+            p_actor_id: Number(currentUser?.id) || null,
+            p_actor_password: currentUser?.password || null,
+          })
+
+          if (error) throw error
+
+          return {
+            member: m,
+            ok: true,
+            data,
+            reward,
+            attendEntry,
+            mutation: {
+              memberId: m.id,
+              reward,
+              event: latestLog.event,
+              sessionId,
+              ts: logTs,
+            },
+          }
+        } catch (error) {
+          return { member: m, ok: false, error, attendEntry, reward }
+        }
+      }))
+
+      successfulMutations = results.filter(r => r.ok).map(r => r.mutation)
+      const failed = results.filter(r => !r.ok)
+
+      if (failed.length > 0) {
+        const rollbackFailures = await rollbackAttendanceMutations(successfulMutations)
+        successfulMutations = []
+        const rollbackText = rollbackFailures.length > 0
+          ? ` Rollback also failed for member IDs: ${rollbackFailures.map(x => x.item?.memberId).join(', ')}.`
+          : ''
+
+        addToast(
+          `No missing members were added. Failed: ${failed.map(r => r.member.name).join(', ')}.${rollbackText}`,
+          'red',
+          rollbackFailures.length > 0 ? 'Rollback Incomplete' : 'Save Failed'
+        )
+        return
+      }
+
+      const newAttendees = targets.map(m => {
+        const result = results.find(r => String(r.member.id) === String(m.id))
+        return {
+          memberId: m.id,
+          name: m.name,
+          cls: m.cls,
+          qualifier: 'full',
+          sessionId: result.attendEntry.sessionId,
+          sessionLabel: result.attendEntry.sessionLabel,
+          sessionDisplayName: result.attendEntry.sessionDisplayName,
+          earned: result.reward,
+          gp: Number(m.power) || 0,
+          baseCoins: ATTENDANCE_REWARDS[latestLog.event].base,
+          gpBonus: getAttendanceGpBonus(m.power, latestLog.event),
+          perfectAttendanceBonus: 0,
+        }
+      })
+
+      const updatedAttendees = [...latestAttendees, ...newAttendees]
+      const { data: savedLog, error: logError } = await supabase
+        .from('attendance_logs')
+        .update({
+          members: updatedAttendees.length,
+          attendees: updatedAttendees,
+        })
+        .eq('id', latestLog.id)
+        .select('*')
+        .maybeSingle()
+
+      if (logError || !savedLog) {
+        console.error('Failed to update attendance record; rolling back member mutations:', logError)
+        const rollbackFailures = await rollbackAttendanceMutations(successfulMutations)
+        successfulMutations = []
+        const rollbackText = rollbackFailures.length > 0
+          ? ` Rollback also failed for member IDs: ${rollbackFailures.map(x => x.item?.memberId).join(', ')}.`
+          : ''
+
+        addToast(
+          `Attendance log was not updated, so member rewards were rolled back.${rollbackText}`,
+          'red',
+          rollbackFailures.length > 0 ? 'Rollback Incomplete' : 'Save Failed'
+        )
+        return
+      }
+
+      const updatedLog = savedLog
+
+      setAttendanceLogs(prev => prev.map(log =>
+        String(log.id) === String(updatedLog.id) ? updatedLog : log
+      ))
+
+      setMembers(prev => prev.map(m => {
+        const result = results.find(r => String(r.member.id) === String(m.id))
+        if (!result?.ok) return m
+
+        return {
+          ...m,
+          ...result.data,
+          coins: result.data?.coins != null ? Number(result.data.coins) : m.coins,
+          attendance: result.data?.attendance != null ? Number(result.data.attendance) : m.attendance,
+          attend_log: Array.isArray(result.data?.attend_log)
+            ? result.data.attend_log
+            : [...(m.attend_log || []), result.attendEntry],
+        }
+      }))
+
+      setShowAddMissing(false)
+      setMissingLog(null)
+      setMissingMembers({})
+
+      addToast(
+        `${targets.length} missing member${targets.length === 1 ? '' : 's'} added to ${latestLog.event}. Rewards were calculated from each member's GP.`,
+        'gold',
+        'Missing Record Added'
+      )
+    } catch (error) {
+      console.error('Failed to add missing attendance:', error)
+      if (successfulMutations.length > 0) {
+        const rollbackFailures = await rollbackAttendanceMutations(successfulMutations)
+        successfulMutations = []
+        if (rollbackFailures.length > 0) {
+          addToast(
+            `Add Missing failed and rollback also failed for member IDs: ${rollbackFailures.map(x => x.item?.memberId).join(', ')}.`,
+            'red',
+            'Rollback Incomplete'
+          )
+        } else {
+          addToast(`Add Missing failed: ${error?.message || 'Unknown error'}`, 'red', 'Save Failed')
+        }
+      } else {
+        addToast(`Add Missing failed: ${error?.message || 'Unknown error'}`, 'red', 'Save Failed')
+      }
+    } finally {
+      setAddingMissing(false)
+    }
   }
 
   const awardPerfectAttendance = async (rows) => {
@@ -1223,112 +1376,107 @@ export default function Attendance({ ctx }) {
 
     setAwardingPerfect(true)
     const weekKey = currentWeekKey
+    const successful = []
+    const failed = []
+    let resetCount = 0
+    let resetCoins = 0
 
-    const results = await Promise.all(awardedRows.map(async row => {
-      const member = row.member
+    try {
+      // Process one member at a time and re-read the authoritative row right
+      // before each update. This prevents a stale React snapshot from being
+      // used for the reset and avoids Promise.all races between staff actions.
+      for (const row of awardedRows) {
+        const member = row.member
 
-      try {
-        /*
-         * Refresh the member first so reset does not blindly subtract from a
-         * stale browser-side coin balance or overwrite newer attendance logs.
-         */
-        const { data: freshMember, error: fetchError } = await supabase
-          .from('members')
-          .select('*')
-          .eq('id', Number(member.id))
-          .maybeSingle()
+        try {
+          const { data: freshMember, error: fetchError } = await supabase
+            .from('members')
+            .select('*')
+            .eq('id', Number(member.id))
+            .maybeSingle()
 
-        if (fetchError) throw fetchError
-        if (!freshMember) throw new Error('Member not found.')
+          if (fetchError) throw fetchError
+          if (!freshMember) throw new Error('Member not found.')
 
-        const currentLog = Array.isArray(freshMember.attend_log) ? freshMember.attend_log : []
-        const nextAttendLog = currentLog.filter(entry =>
-          !(entry?.type === 'perfect_attendance_bonus' && entry?.weekKey === weekKey)
-        )
+          const currentLog = Array.isArray(freshMember.attend_log) ? freshMember.attend_log : []
+          const nextAttendLog = currentLog.filter(entry =>
+            !(entry?.type === 'perfect_attendance_bonus' && entry?.weekKey === weekKey)
+          )
+          const removedCount = currentLog.length - nextAttendLog.length
 
-        const removedCount = currentLog.length - nextAttendLog.length
+          if (removedCount === 0) {
+            successful.push({ member, skipped: true, data: freshMember })
+            continue
+          }
 
-        if (removedCount === 0) {
-          return {
+          const reversedCoins = removedCount * PERFECT_ATTENDANCE_BONUS
+          const newCoins = Math.max(0, Number(freshMember.coins || 0) - reversedCoins)
+          const updatedMember = await updateMemberStaff(member.id, {
+            coins: newCoins,
+            attend_log: nextAttendLog,
+          })
+
+          resetCount += 1
+          resetCoins += reversedCoins
+          successful.push({
             member,
             ok: true,
-            skipped: true,
-            data: freshMember,
-          }
+            skipped: false,
+            data: updatedMember,
+            reversedCoins,
+          })
+        } catch (error) {
+          console.error(`Failed to reset Perfect Attendance for ${member.name}:`, error)
+          failed.push({ member, error })
         }
+      }
 
-        /*
-         * The reset path still uses the existing staff RPC because there is
-         * already a server-side authorization layer in this project.
-         * The important improvement here is that the calculation starts from
-         * the latest database row, not the stale React state.
-         */
-        const newCoins = Math.max(
-          0,
-          Number(freshMember.coins || 0) -
-            (removedCount * PERFECT_ATTENDANCE_BONUS)
+      setMembers(prev => prev.map(member => {
+        const result = successful.find(
+          item => String(item.member.id) === String(member.id)
         )
 
-        const updatedMember = await updateMemberStaff(member.id, {
-          coins: newCoins,
-          attend_log: nextAttendLog,
-        })
+        if (!result?.data || result.skipped) return member
 
         return {
-          member,
-          ok: true,
-          skipped: false,
-          data: updatedMember,
+          ...member,
+          ...result.data,
+          coins: result.data.coins != null
+            ? Number(result.data.coins)
+            : member.coins,
+          attend_log: Array.isArray(result.data.attend_log)
+            ? result.data.attend_log
+            : member.attend_log,
         }
-      } catch (error) {
-        console.error(`Failed to reset Perfect Attendance for ${member.name}:`, error)
-        return { member, ok: false, error }
+      }))
+
+      if (failed.length > 0) {
+        addToast(
+          `Reset completed for ${resetCount} player(s) · ${resetCoins.toLocaleString()} Coins reversed. Failed: ${failed.map(r => `${r.member.name} (${r.error?.message || 'Unknown error'})`).join(', ')}`,
+          'red',
+          'Partial Reset'
+        )
+        return
       }
-    }))
 
-    const failed = results.filter(result => !result.ok)
-    const successful = results.filter(result => result.ok)
-
-    setMembers(prev => prev.map(member => {
-      const result = successful.find(
-        item => String(item.member.id) === String(member.id)
-      )
-
-      if (!result?.data || result.skipped) return member
-
-      return {
-        ...member,
-        ...result.data,
-        coins: result.data.coins != null
-          ? Number(result.data.coins)
-          : member.coins,
-        attend_log: Array.isArray(result.data.attend_log)
-          ? result.data.attend_log
-          : member.attend_log,
-      }
-    }))
-
-    setAwardingPerfect(false)
-
-    if (failed.length > 0) {
+      const skippedCount = successful.filter(r => r.skipped).length
       addToast(
-        `Reset completed for ${successful.filter(r => !r.skipped).length} player(s). Failed: ${failed.map(r => r.member.name).join(', ')}`,
-        'red',
-        'Partial Reset'
+        skippedCount > 0
+          ? `Perfect Attendance reset for ${resetCount} player(s). ${skippedCount} player(s) had no current-week bonus to remove.`
+          : `Perfect Attendance reset for ${resetCount} player(s). ${resetCoins.toLocaleString()} Coins reversed.`,
+        'gold',
+        'Awards Reset'
       )
-      return
+    } catch (error) {
+      console.error('Perfect Attendance reset failed:', error)
+      addToast(
+        `Perfect Attendance reset failed: ${error?.message || 'Unknown error'}`,
+        'red',
+        'Reset Failed'
+      )
+    } finally {
+      setAwardingPerfect(false)
     }
-
-    const resetCount = successful.filter(r => !r.skipped).length
-    const skippedCount = successful.filter(r => r.skipped).length
-
-    addToast(
-      skippedCount > 0
-        ? `Perfect Attendance reset for ${resetCount} player(s). ${skippedCount} player(s) had no current-week bonus to remove.`
-        : `Perfect Attendance reset for ${resetCount} player(s). ${total.toLocaleString()} Coins reversed.`,
-      'gold',
-      'Awards Reset'
-    )
   }
 
 
