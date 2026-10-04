@@ -43,6 +43,8 @@ const LOGIN_COLS = MEMBER_COLS + ',password'
 const AUCTION_COLS = 'id,name,description,rarity,status,current_bid,min_bid,top_bidder,ends_at,started_at,ended_at,distributed_by,image_url,is_featured,bids,image_name'
 const ATTENDANCE_COLS = 'id,event,date,ts,members,recorded_by,attendees'
 const FALLBACK_REFRESH_MS = 5 * 60 * 1000
+const CONSISTENCY_REFRESH_MS = 30 * 60 * 1000
+const MEMBER_LIVE_COLS = 'id,name,username,cls,role,coins,power,character_level,awakening_stage,profile_grade,power_updates_used,power_window_started_at,power_updated_at,power_next_update_at,attendance,auction_wins,join_date,discord'
 
 // Region options shared between Layout (picker) and Dashboard (display).
 // `code` is the ISO 3166-1 alpha-2 code used to fetch flag images from
@@ -292,42 +294,120 @@ function App() {
     loadAllData({ silent: true })
   }, [currentUser?.id, loading])
 
-  // Keep live state in sync with Supabase Realtime instead of repeatedly
-  // downloading the entire members/auctions/attendance tables.
-  // - Subscribes only while someone is logged in.
-  // - A 5-minute refresh remains as a safety net for missed realtime events;
-  //   it skips hidden tabs and catches up when the tab becomes visible again.
+  // Keep live state in sync with Supabase Realtime.
+  // Realtime is the primary transport; database refreshes are only used as a
+  // safety net when a channel is unhealthy and for an occasional consistency
+  // sweep. This avoids downloading all three tables every 5 minutes.
   useEffect(() => {
     if (!currentUser) return undefined
 
-    let membersChannel = null
-    let auctionsChannel = null
-    let attendanceChannel = null
-    let lastRefresh = Date.now()
+    const realtimeStatusRef = {
+      members: 'CONNECTING',
+      auctions: 'CONNECTING',
+      attendance: 'CONNECTING',
+    }
+    const refreshInFlightRef = { current: false }
+    let lastConsistencyRefresh = 0
+    let lastRefreshAttempt = 0
+    let disposed = false
 
-    const refreshCoreData = async () => {
+    const allRealtimeHealthy = () => (
+      ['SUBSCRIBED', 'RECOVERED'].includes(realtimeStatusRef.members) &&
+      ['SUBSCRIBED', 'RECOVERED'].includes(realtimeStatusRef.auctions) &&
+      ['SUBSCRIBED', 'RECOVERED'].includes(realtimeStatusRef.attendance)
+    )
+
+    lastConsistencyRefresh = Date.now()
+
+    const refreshCoreData = async ({ force = false } = {}) => {
+      if (disposed) return
       if (typeof document !== 'undefined' && document.hidden) return
-      lastRefresh = Date.now()
+      if (refreshInFlightRef.current) return
+
+      const now = Date.now()
+      const consistencyDue = now - lastConsistencyRefresh >= CONSISTENCY_REFRESH_MS
+      const needsRecovery = !allRealtimeHealthy()
+
+      // With healthy Realtime channels there is no reason to fetch the whole
+      // database on every 5-minute heartbeat. Do a full consistency sweep only
+      // every 30 minutes, or recover only the tables whose channel is unhealthy.
+      if (!force && !consistencyDue && !needsRecovery) return
+
+      refreshInFlightRef.current = true
+      lastRefreshAttempt = now
+
+      const refreshMembers = force || consistencyDue || !['SUBSCRIBED', 'RECOVERED'].includes(realtimeStatusRef.members)
+      const refreshAuctions = force || consistencyDue || !['SUBSCRIBED', 'RECOVERED'].includes(realtimeStatusRef.auctions)
+      const refreshAttendance = force || consistencyDue || !['SUBSCRIBED', 'RECOVERED'].includes(realtimeStatusRef.attendance)
+
       try {
         const [membersRes, auctionsRes, logsRes] = await Promise.all([
-          supabase.from('members').select(MEMBER_COLS).order('id'),
-          supabase.from('auctions').select(AUCTION_COLS),
-          supabase.from('attendance_logs').select(ATTENDANCE_COLS),
+          refreshMembers
+            ? supabase.from('members').select(MEMBER_COLS).order('id')
+            : Promise.resolve({ data: null, error: null }),
+          refreshAuctions
+            ? supabase.from('auctions').select(AUCTION_COLS)
+            : Promise.resolve({ data: null, error: null }),
+          refreshAttendance
+            ? supabase.from('attendance_logs').select(ATTENDANCE_COLS)
+            : Promise.resolve({ data: null, error: null }),
         ])
 
-        if (membersRes.error) console.warn('[Fallback refresh] members:', membersRes.error.message)
-        if (auctionsRes.error) console.warn('[Fallback refresh] auctions:', auctionsRes.error.message)
-        if (logsRes.error) console.warn('[Fallback refresh] attendance:', logsRes.error.message)
+        let membersOk = !refreshMembers
+        let auctionsOk = !refreshAuctions
+        let attendanceOk = !refreshAttendance
 
-        if (membersRes.data) {
-          const normalized = membersRes.data.map(normalizeMember)
-          setAllMembers(normalized)
-          setMembers(filterVisibleMembers(normalized, currentUser))
+        if (refreshMembers) {
+          membersOk = !membersRes.error
+          if (membersRes.error) {
+            console.warn('[Fallback refresh] members:', membersRes.error.message)
+          } else if (membersRes.data) {
+            const normalized = membersRes.data.map(normalizeMember)
+            setAllMembers(normalized)
+            setMembers(filterVisibleMembers(normalized, currentUser))
+
+            const currentId = Number(currentUser?.id)
+            const freshCurrent = normalized.find(member => Number(member.id) === currentId)
+            if (freshCurrent) {
+              setCurrentUser(prev => {
+                if (!prev || Number(prev.id) !== currentId) return prev
+                const merged = { ...freshCurrent, password: prev.password ?? '' }
+                try { localStorage.setItem('currentUser', JSON.stringify(merged)) } catch {}
+                return merged
+              })
+            }
+          }
         }
-        if (auctionsRes.data) setAuctions(auctionsRes.data.map(normalizeAuction))
-        if (logsRes.data) setAttendanceLogs(logsRes.data)
+
+        if (refreshAuctions) {
+          auctionsOk = !auctionsRes.error
+          if (auctionsRes.error) {
+            console.warn('[Fallback refresh] auctions:', auctionsRes.error.message)
+          } else if (auctionsRes.data) {
+            setAuctions(auctionsRes.data.map(normalizeAuction))
+          }
+        }
+
+        if (refreshAttendance) {
+          attendanceOk = !logsRes.error
+          if (logsRes.error) {
+            console.warn('[Fallback refresh] attendance:', logsRes.error.message)
+          } else if (logsRes.data) {
+            setAttendanceLogs(logsRes.data)
+          }
+        }
+
+        if (refreshMembers && membersOk) realtimeStatusRef.members = realtimeStatusRef.members === 'SUBSCRIBED' ? 'SUBSCRIBED' : 'RECOVERED'
+        if (refreshAuctions && auctionsOk) realtimeStatusRef.auctions = realtimeStatusRef.auctions === 'SUBSCRIBED' ? 'SUBSCRIBED' : 'RECOVERED'
+        if (refreshAttendance && attendanceOk) realtimeStatusRef.attendance = realtimeStatusRef.attendance === 'SUBSCRIBED' ? 'SUBSCRIBED' : 'RECOVERED'
+
+        if (refreshMembers && refreshAuctions && refreshAttendance && membersOk && auctionsOk && attendanceOk) {
+          lastConsistencyRefresh = Date.now()
+        }
       } catch (error) {
         console.warn('[Realtime fallback] Refresh failed:', error)
+      } finally {
+        refreshInFlightRef.current = false
       }
     }
 
@@ -388,34 +468,56 @@ function App() {
       })
     }
 
+    const onChannelStatus = (key, status) => {
+      realtimeStatusRef[key] = status
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        console.warn(`[${key} Realtime] ${status}. Fallback refresh will recover this table.`)
+      }
+    }
+
+    let membersChannel = null
+    let auctionsChannel = null
+    let attendanceChannel = null
+
     try {
       membersChannel = supabase
         .channel('app-members-live')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, handleMemberChange)
-        .subscribe(status => console.log('[Members Realtime]', status))
+        .subscribe(status => onChannelStatus('members', status))
 
       auctionsChannel = supabase
         .channel('app-auctions-live')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'auctions' }, handleAuctionChange)
-        .subscribe(status => console.log('[Auctions Realtime]', status))
+        .subscribe(status => onChannelStatus('auctions', status))
 
       attendanceChannel = supabase
         .channel('app-attendance-live')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_logs' }, handleAttendanceChange)
-        .subscribe(status => console.log('[Attendance Realtime]', status))
+        .subscribe(status => onChannelStatus('attendance', status))
     } catch (error) {
       console.warn('[Realtime] Setup failed:', error)
+      realtimeStatusRef.members = 'ERROR'
+      realtimeStatusRef.auctions = 'ERROR'
+      realtimeStatusRef.attendance = 'ERROR'
     }
 
-    const fallbackId = setInterval(refreshCoreData, FALLBACK_REFRESH_MS)
+    // The interval now acts as a cheap health check. With all channels healthy,
+    // it causes only one full consistency sweep every 30 minutes.
+    const fallbackId = window.setInterval(() => {
+      refreshCoreData()
+    }, FALLBACK_REFRESH_MS)
 
     const handleVisibility = () => {
-      if (!document.hidden && Date.now() - lastRefresh > FALLBACK_REFRESH_MS) refreshCoreData()
+      if (document.hidden) return
+      const stale = Date.now() - lastRefreshAttempt >= FALLBACK_REFRESH_MS
+      if (stale || !allRealtimeHealthy()) refreshCoreData({ force: !allRealtimeHealthy() })
     }
+
     document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
-      clearInterval(fallbackId)
+      disposed = true
+      window.clearInterval(fallbackId)
       document.removeEventListener('visibilitychange', handleVisibility)
       if (membersChannel) {
         try { supabase.removeChannel(membersChannel) } catch {}
@@ -1101,12 +1203,44 @@ function App() {
     }
   }
 
-  const reloadMembers = async () => {
-    const { data } = await supabase.from('members').select(MEMBER_COLS).order('id')
-    if (data) {
-      const normalized = data.map(normalizeMember)
-      setAllMembers(normalized)
-      setMembers(filterVisibleMembers(normalized, currentUser))
+  const reloadMembers = async (memberIds = null) => {
+    const requestedIds = Array.isArray(memberIds) && memberIds.length
+      ? [...new Set(memberIds.map(id => Number(id)).filter(Number.isFinite))]
+      : [Number(currentUser?.id)].filter(Number.isFinite)
+
+    if (!requestedIds.length) return
+
+    const { data, error } = await supabase
+      .from('members')
+      .select(MEMBER_LIVE_COLS)
+      .in('id', requestedIds)
+
+    if (error) throw error
+    if (!data?.length) return
+
+    // Auction actions usually need only the balances of the affected members.
+    // Do not download tx_log/attend_log or the entire member table after each
+    // bid/refund. Existing large logs stay in memory and Realtime remains the
+    // source for other member changes.
+    setAllMembers(prev => prev.map(member => {
+      const fresh = data.find(row => Number(row.id) === Number(member.id))
+      return fresh ? mergeMemberRow(member, fresh) : member
+    }))
+
+    setMembers(prev => prev.map(member => {
+      const fresh = data.find(row => Number(row.id) === Number(member.id))
+      return fresh ? mergeMemberRow(member, fresh) : member
+    }))
+
+    const currentId = Number(currentUser?.id)
+    const freshCurrent = data.find(row => Number(row.id) === currentId)
+    if (freshCurrent) {
+      setCurrentUser(prev => {
+        if (!prev || Number(prev.id) !== currentId) return prev
+        const merged = mergeMemberRow(prev, freshCurrent)
+        try { localStorage.setItem('currentUser', JSON.stringify(merged)) } catch {}
+        return merged
+      })
     }
   }
 
