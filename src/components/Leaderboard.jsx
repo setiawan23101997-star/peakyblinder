@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 
-const getClassIcon = cls => CLASS_ICONS[cls] || null
+/* ───────────────────────── class emblems ───────────────────────── */
 
 // Class artwork is mapped from the saved `cls` value, so choosing a class
 // automatically gives the member the matching visual without storing image data per member.
@@ -74,19 +74,139 @@ const ClassIcon = ({ cls, size = 32 }) => {
 }
 
 const classIconTone = (cls) =>
-  cls === 'Archer' ? 'border-emerald-400/25 bg-emerald-400/[0.06]' :
-  cls === 'Warlord' ? 'border-sky-400/25 bg-sky-400/[0.06]' :
-  cls === 'Skald' ? 'border-violet-400/25 bg-violet-400/[0.06]' :
-  cls === 'Volva' ? 'border-fuchsia-400/25 bg-fuchsia-400/[0.06]' :
-  cls === 'Rune Fighter' ? 'border-gold/30 bg-gold/[0.07]' :
-  'border-red-400/25 bg-red-400/[0.06]'
+  cls === 'Archer' ? 'border-emerald-400/30 bg-emerald-400/[0.07]' :
+  cls === 'Warlord' ? 'border-sky-400/30 bg-sky-400/[0.07]' :
+  cls === 'Skald' ? 'border-violet-400/30 bg-violet-400/[0.07]' :
+  cls === 'Volva' ? 'border-fuchsia-400/30 bg-fuchsia-400/[0.07]' :
+  cls === 'Rune Fighter' ? 'border-gold/35 bg-gold/[0.08]' :
+  'border-red-400/30 bg-red-400/[0.07]'
+
+// rgb triplets used for the soft glow behind each class emblem
+const CLASS_GLOW = {
+  Archer: '110,231,183',
+  Warlord: '125,211,252',
+  Skald: '196,181,253',
+  Volva: '240,171,252',
+  'Rune Fighter': '242,204,96',
+}
+const classGlow = cls => CLASS_GLOW[cls] || '252,165,165'
+
+/* ───────────────────────── data ───────────────────────── */
+
+const CATEGORIES = {
+  power: {
+    label: 'Combat Power',
+    shortLabel: 'Power',
+    tagline: 'Strongest warriors',
+    icon: '⚔️',
+    field: 'power',
+    suffix: '',
+  },
+  coins: {
+    label: 'Wealth',
+    shortLabel: 'Coins',
+    tagline: 'Richest hoarders',
+    icon: '🪙',
+    field: 'coins',
+    suffix: '',
+  },
+  attendance: {
+    label: 'Activity',
+    shortLabel: 'Events',
+    tagline: 'Most dedicated',
+    icon: '◆',
+    field: 'attendance',
+    suffix: 'x',
+  },
+}
+
+const PODIUM = {
+  1: { title: 'Champion', rgb: '242,204,96', text: 'text-gold-bright', border: 'border-gold/50' },
+  2: { title: 'Runner-up', rgb: '203,213,225', text: 'text-slate-200', border: 'border-slate-300/40' },
+  3: { title: 'Third Place', rgb: '205,127,50', text: 'text-orange-300', border: 'border-orange-400/40' },
+}
+
+const PAGE_SIZE = 10
+
+/* ───────────────────────── small pieces ───────────────────────── */
+
+const Crown = ({ size = 26, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+    <path d="M3 18h18l-1.5-9-4.5 4-3-7-3 7-4.5-4L3 18Zm0 2h18v2H3v-2Z" />
+  </svg>
+)
+
+// Little gold corner brackets that make a panel feel like a game window.
+function Corners({ className = 'border-gold/55' }) {
+  const base = `pointer-events-none absolute h-3 w-3 ${className}`
+  return (
+    <>
+      <span aria-hidden="true" className={`${base} left-1.5 top-1.5 border-l border-t`} />
+      <span aria-hidden="true" className={`${base} right-1.5 top-1.5 border-r border-t`} />
+      <span aria-hidden="true" className={`${base} bottom-1.5 left-1.5 border-b border-l`} />
+      <span aria-hidden="true" className={`${base} bottom-1.5 right-1.5 border-b border-r`} />
+    </>
+  )
+}
+
+function RankBadge({ rank }) {
+  const p = PODIUM[rank]
+
+  if (p) {
+    return (
+      <span
+        className={`flex h-9 w-9 items-center justify-center rounded-full border font-spectral text-[16px] font-bold ${p.text} ${p.border}`}
+        style={{
+          background: `radial-gradient(circle at 30% 25%, rgba(${p.rgb},.35), rgba(${p.rgb},.08))`,
+          boxShadow: `0 0 14px -2px rgba(${p.rgb},.55)`,
+        }}
+      >
+        {rank}
+      </span>
+    )
+  }
+
+  return (
+    <span className="flex h-9 min-w-[2.25rem] items-center justify-center rounded-lg border border-white/[.08] bg-black/25 px-1.5 font-mono text-[14px] font-bold tabular-nums text-text-dim">
+      {rank}
+    </span>
+  )
+}
+
+function Emblem({ cls, size = 44, glow = false, className = '' }) {
+  return (
+    <div
+      className={`flex shrink-0 items-center justify-center rounded-xl border ${classIconTone(cls)} ${className}`}
+      style={{
+        width: size + 10,
+        height: size + 10,
+        boxShadow: glow ? `0 0 26px -4px rgba(${classGlow(cls)},.55)` : undefined,
+      }}
+      title={cls || 'Berserker'}
+    >
+      <ClassIcon cls={cls} size={size} />
+    </div>
+  )
+}
+
+function RankValue({ rank, top = false }) {
+  return (
+    <span className={`font-mono font-bold tabular-nums ${
+      top ? 'text-gold-bright' : 'text-text-bright'
+    }`}>
+      #{rank}
+    </span>
+  )
+}
+
+
+/* ───────────────────────── page ───────────────────────── */
 
 export default function Leaderboard({ ctx }) {
   const { members = [], currentUser } = ctx
   const [category, setCategory] = useState('power')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
-  const pageSize = 10
 
   // Admin accounts are hidden from everyone except other Admins.
   const isAdmin = currentUser?.role === 'Admin'
@@ -95,68 +215,60 @@ export default function Leaderboard({ ctx }) {
     [members, isAdmin]
   )
 
-  const categories = {
-    power: {
-      label: 'Combat Power',
-      shortLabel: 'Power',
-      icon: '⚔️',
-      field: 'power',
-      suffix: '',
-    },
-    coins: {
-      label: 'Wealth',
-      shortLabel: 'Coins',
-      icon: '🪙',
-      field: 'coins',
-      suffix: '',
-    },
-    attendance: {
-      label: 'Activity',
-      shortLabel: 'Events',
-      icon: '◆',
-      field: 'attendance',
-      suffix: 'x',
-    },
-  }
-
-  const activeCategory = categories[category]
+  const activeCategory = CATEGORIES[category]
+  const field = activeCategory.field
+  const valueOf = member => Number(member?.[field]) || 0
 
   // Always calculate the official ranking from the complete member list first.
   // Search only filters what is displayed; it must never change a member's rank.
   const allRankedMembers = useMemo(() => {
-    return [...visibleMembers].sort(
-      (a, b) =>
-        (Number(b[activeCategory.field]) || 0) -
-        (Number(a[activeCategory.field]) || 0)
-    )
-  }, [visibleMembers, activeCategory.field])
+    return [...visibleMembers].sort((a, b) => (Number(b[field]) || 0) - (Number(a[field]) || 0))
+  }, [visibleMembers, field])
+
+  const rankById = useMemo(
+    () => new Map(allRankedMembers.map((m, i) => [m.id, i + 1])),
+    [allRankedMembers]
+  )
+
+  const query = search.trim().toLowerCase()
 
   const rankedMembers = useMemo(() => {
-    const query = search.trim().toLowerCase()
-
     if (!query) return allRankedMembers
 
-    return allRankedMembers.filter(member => {
-      return (
-        String(member.name || '').toLowerCase().includes(query) ||
-        String(member.cls || '').toLowerCase().includes(query) ||
-        String(member.role || '').toLowerCase().includes(query)
-      )
-    })
-  }, [allRankedMembers, search])
+    return allRankedMembers.filter(member => (
+      String(member.name || '').toLowerCase().includes(query) ||
+      String(member.cls || '').toLowerCase().includes(query) ||
+      String(member.role || '').toLowerCase().includes(query)
+    ))
+  }, [allRankedMembers, query])
 
-  const totalPages = Math.max(1, Math.ceil(rankedMembers.length / pageSize))
+  // One continuous ranking board keeps the page simple.
+  // Search filters the visible rows but never changes official ranks.
+  const showPodium = false
+  const listMembers = rankedMembers
+
+  const totalPages = Math.max(1, Math.ceil(listMembers.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
-  const startIndex = (safePage - 1) * pageSize
-  const pageMembers = rankedMembers.slice(startIndex, startIndex + pageSize)
+  const startIndex = (safePage - 1) * PAGE_SIZE
+  const pageMembers = listMembers.slice(startIndex, startIndex + PAGE_SIZE)
 
-  const getRank = member => {
-    const index = allRankedMembers.findIndex(m => m.id === member.id)
-    return index + 1
-  }
+  const topValue = allRankedMembers.length ? valueOf(allRankedMembers[0]) : 0
+  const getRank = member => rankById.get(member.id) || 0
+  const isMeMember = member => !!currentUser && String(member.id) === String(currentUser.id)
 
-  const formatValue = value =>
-    `${(Number(value) || 0).toLocaleString()}${activeCategory.suffix}`
+  const formatNumber = value => (Number(value) || 0).toLocaleString()
+  const formatValue = value => `${formatNumber(value)}${activeCategory.suffix}`
+
+  // "Your standing" banner
+  const myIndex = currentUser
+    ? allRankedMembers.findIndex(m => String(m.id) === String(currentUser.id))
+    : -1
+  const me = myIndex >= 0 ? allRankedMembers[myIndex] : null
+  const myRank = myIndex + 1
+  const above = myIndex > 0 ? allRankedMembers[myIndex - 1] : null
+  const gap = me && above ? valueOf(above) - valueOf(me) : 0
+  const topPercent = me ? Math.max(1, Math.ceil((myRank / allRankedMembers.length) * 100)) : 0
+  const canJumpToMe = !!me
 
   const changeCategory = nextCategory => {
     setCategory(nextCategory)
@@ -168,73 +280,171 @@ export default function Leaderboard({ ctx }) {
     setPage(1)
   }
 
+  const jumpToMe = () => {
+    if (!me || myRank <= 0) return
+
+    const targetPage = Math.floor((myRank - 1) / PAGE_SIZE) + 1
+    setSearch('')
+    setPage(targetPage)
+
+    const scrollToMe = () => {
+      const target = document.querySelector(
+        `[data-leaderboard-member-id="${String(me.id)}"]`
+      )
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+
+    if (targetPage === safePage) {
+      requestAnimationFrame(scrollToMe)
+    } else {
+      setTimeout(scrollToMe, 80)
+    }
+  }
+
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
-      {/* Compact page header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[9px] uppercase tracking-[0.18em] text-gold-light/70">
-            <span className="w-1.5 h-1.5 rounded-full bg-gold/70" />
-            Clan Rankings
-          </div>
-          <div className="flex items-baseline gap-3 mt-0.5">
-            <h1 className="font-spectral text-2xl font-bold text-gold-light tracking-wide">
-              Leaderboard
-            </h1>
-            <span className="hidden sm:inline text-[11px] text-text-dim">
-              {visibleMembers.length} members
-            </span>
+    <div className="mx-auto w-full max-w-5xl space-y-4 sm:space-y-5">
+      <style>{`
+        @keyframes lb-in {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: none; }
+        }
+        .lb-in { animation: lb-in .22s ease both; }
+        @media (prefers-reduced-motion: reduce) {
+          .lb-in { animation: none; }
+        }
+      `}</style>
+
+      {/* Header */}
+      <header className="overflow-hidden rounded-2xl border border-white/[.08] bg-[#0b0908]/90">
+        <div className="px-4 py-4 sm:px-5 sm:py-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <div className="text-[12px] font-bold uppercase tracking-[.2em] text-gold-dim">
+                Clan Rankings
+              </div>
+              <h1 className="mt-1 font-spectral text-[30px] font-bold leading-tight text-text-bright sm:text-[34px]">
+                Leaderboard
+              </h1>
+              <p className="mt-1 text-[14px] leading-5 text-text-dim sm:text-[14px]">
+                Compare the clan&apos;s Combat Power, Coins, and Event Attendance.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg border border-white/[.07] bg-black/20 px-3.5 py-2.5 text-right">
+                <div className="font-mono text-lg font-bold leading-none tabular-nums text-text-bright">
+                  {visibleMembers.length}
+                </div>
+                <div className="mt-1 text-[11px] font-bold uppercase tracking-[.15em] text-text-dim">
+                  Members
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gold/20 bg-gold/[.045] px-3.5 py-2.5">
+                <div className="text-base leading-none">{activeCategory.icon}</div>
+                <div className="mt-1 text-[11px] font-bold uppercase tracking-[.15em] text-gold-light">
+                  {activeCategory.shortLabel}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      </header>
 
-        <div className="hidden sm:flex items-center gap-2 shrink-0">
-          <div className="px-2.5 py-1.5 rounded-md border border-gold/15 bg-dark/50 text-[10px]">
-            <span className="text-text-dim">Ranked by</span>
-            <span className="ml-1.5 text-gold-light font-semibold">{activeCategory.shortLabel}</span>
+      {/* Your standing */}
+      {me && (
+        <section className="rounded-xl border border-white/[.08] bg-[#0b0908]/70">
+          <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <Emblem cls={me.cls} size={32} glow />
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold uppercase tracking-[.18em] text-gold-dim">
+                  Your standing
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-mono text-xl font-bold tabular-nums text-gold-bright">
+                    #{myRank}
+                  </span>
+                  <span className="text-[14px] text-text-dim">
+                    of {allRankedMembers.length}
+                  </span>
+                  <span className="text-[14px] text-text-dim">
+                    · {formatValue(valueOf(me))}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 sm:justify-end">
+              <div className="min-w-0 text-[13px] text-text-dim sm:text-right">
+                {above
+                  ? gap === 0
+                    ? `Tied with ${above.name}`
+                    : `${formatNumber(gap)}${activeCategory.suffix} behind ${above.name}`
+                  : 'You are #1'}
+              </div>
+
+              <button
+                type="button"
+                onClick={jumpToMe}
+                className="shrink-0 rounded-lg border border-gold/25 bg-gold/[.06] px-3 py-2 text-[12px] font-bold uppercase tracking-wider text-gold-light transition hover:bg-gold/[.12] hover:text-gold-bright"
+              >
+                Find me
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
+        </section>
+      )}
 
-      {/* Compact toolbar */}
-      <section className="rounded-lg border border-gold/15 bg-dark/75 overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2">
-          <div className="flex items-center gap-0.5 rounded-md border border-gold/10 bg-black/20 p-0.5 shrink-0">
-            {Object.entries(categories).map(([key, item]) => {
+      {/* Filters */}
+      <section className="rounded-xl border border-white/[.08] bg-[#0b0908]/65 p-2.5">
+        <div className="flex flex-col gap-2.5 md:flex-row">
+          <div className="grid flex-1 grid-cols-3 rounded-lg border border-white/[.07] bg-black/20 p-1">
+            {Object.entries(CATEGORIES).map(([key, item]) => {
               const active = category === key
+
               return (
                 <button
                   key={key}
                   type="button"
+                  role="tab"
+                  aria-selected={active}
                   onClick={() => changeCategory(key)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-semibold transition-colors ${
+                  className={`min-h-[38px] rounded-md px-2 text-[13px] font-bold transition sm:text-[14px] ${
                     active
-                      ? 'bg-gold/10 text-gold-bright border border-gold/20'
-                      : 'border border-transparent text-text-dim hover:text-text hover:bg-white/[0.035]'
+                      ? 'bg-gold/[.10] text-gold-bright'
+                      : 'text-text-dim hover:bg-white/[.035] hover:text-text-bright'
                   }`}
                 >
-                  <span className="text-[11px]">{item.icon}</span>
-                  <span>{item.shortLabel}</span>
+                  <span className="mr-1.5">{item.icon}</span>
+                  {item.shortLabel}
                 </button>
               )
             })}
           </div>
 
-          <div className="relative flex-1 sm:max-w-[240px] sm:ml-auto">
+          <div className="relative md:w-[300px] lg:w-[340px]">
             <input
               value={search}
               onChange={e => changeSearch(e.target.value)}
-              placeholder="Search member..."
-              className="input w-full h-9 pl-8 pr-8 text-xs"
+              placeholder="Search name, class, or role…"
+              className="input h-10 w-full pl-9 pr-9 text-[14px]"
               aria-label="Search members"
             />
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim text-xs">
+            <span
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-dim"
+            >
               ⌕
             </span>
+
             {search && (
               <button
                 type="button"
                 onClick={() => changeSearch('')}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded text-text-dim hover:text-text hover:bg-white/5"
+                className="absolute right-1.5 top-1/2 h-7 w-7 -translate-y-1/2 rounded-md text-base leading-none text-text-dim hover:bg-white/[.05] hover:text-text"
                 aria-label="Clear search"
               >
                 ×
@@ -244,33 +454,39 @@ export default function Leaderboard({ ctx }) {
         </div>
       </section>
 
-      {/* Compact leaderboard */}
-      <section className="rounded-lg border border-gold/15 bg-dark/75 overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.15)]">
-        {/* Table heading */}
-        <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-gold/10 bg-black/10">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm">{activeCategory.icon}</span>
-            <span className="text-xs font-semibold text-text truncate">{activeCategory.label}</span>
-            <span className="text-[10px] text-text-dim">·</span>
-            <span className="text-[10px] text-text-dim">Highest first</span>
+      {/* Ranking */}
+      <section className="overflow-hidden rounded-2xl border border-white/[.08] bg-[#0b0908]/80">
+        <div className="flex items-center justify-between gap-3 border-b border-white/[.07] px-4 py-3.5 sm:px-5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-base">{activeCategory.icon}</span>
+              <h2 className="truncate text-[15px] font-bold text-text-bright sm:text-[16px]">
+                {activeCategory.label}
+              </h2>
+            </div>
+            <div className="mt-0.5 text-[12px] text-text-dim">
+              Highest first
+            </div>
           </div>
-          <span className="text-[10px] text-text-dim shrink-0">
-            {search.trim() ? `${rankedMembers.length} results` : `${visibleMembers.length} members`}
-          </span>
+
+          <div className="shrink-0 rounded-full bg-white/[.04] px-2.5 py-1 text-[12px] font-mono text-text-dim">
+            {query ? `${rankedMembers.length} found` : `${visibleMembers.length} members`}
+          </div>
         </div>
 
         {pageMembers.length === 0 ? (
-          <div className="py-12 text-center">
-            <div className="w-9 h-9 mx-auto rounded-full border border-gold/15 bg-gold/5 flex items-center justify-center text-text-dim mb-2">
-              ⌕
+          <div className="px-4 py-16 text-center">
+            <div className="text-2xl opacity-60">{query ? '⌕' : '—'}</div>
+            <div className="mt-2 text-[15px] font-semibold text-text-bright">
+              {query ? 'No members found' : 'No ranking data'}
             </div>
-            <div className="text-sm font-medium text-text">No members found</div>
-            <div className="text-xs text-text-dim mt-1">Try another name, class, or role.</div>
+            <div className="mt-1 text-[14px] text-text-dim">
+              {query ? 'Try another name, class, or role.' : 'There are no members to rank yet.'}
+            </div>
           </div>
         ) : (
           <>
-            {/* Dense table header */}
-            <div className="hidden sm:grid grid-cols-[54px_minmax(0,1fr)_125px_105px] gap-2 px-3.5 py-2 bg-white/[0.018] border-b border-gold/10 text-[9px] uppercase tracking-[0.13em] text-text-dim">
+            <div className="hidden grid-cols-[56px_minmax(0,1fr)_120px_minmax(140px,1fr)] gap-3 border-b border-white/[.06] bg-black/15 px-5 py-2.5 text-[11px] font-bold uppercase tracking-[.16em] text-text-dim sm:grid">
               <div>Rank</div>
               <div>Member</div>
               <div>Class</div>
@@ -278,123 +494,124 @@ export default function Leaderboard({ ctx }) {
             </div>
 
             <div>
-              {pageMembers.map(member => {
+              {pageMembers.map((member, index) => {
                 const rank = getRank(member)
-                const isCurrentUser = member.id === currentUser?.id
+                const mine = isMeMember(member)
+                const value = valueOf(member)
+                const pct = topValue > 0
+                  ? Math.max(3, Math.min(100, Math.round((value / topValue) * 100)))
+                  : 0
 
                 return (
                   <div
-                    key={member.id}
-                    className={`grid grid-cols-[44px_minmax(0,1fr)_auto] sm:grid-cols-[54px_minmax(0,1fr)_125px_105px] gap-2 items-center px-3.5 py-2.5 border-b border-gold/10 last:border-b-0 transition-colors ${
-                      isCurrentUser ? 'bg-gold/[0.055]' : 'hover:bg-white/[0.025]'
+                    key={`${category}-${member.id}`}
+                    data-leaderboard-member-id={String(member.id)}
+                    className={`lb-in relative border-b border-white/[.05] px-3.5 py-3 last:border-b-0 sm:px-5 ${
+                      mine ? 'bg-gold/[.045]' : 'hover:bg-white/[.02]'
                     }`}
+                    style={{ animationDelay: `${Math.min(index, 10) * 18}ms` }}
                   >
-                    {/* Rank */}
-                    <div className={`text-xs font-bold tabular-nums ${
-                      rank === 1
-                        ? 'text-gold-bright'
-                        : rank === 2
-                          ? 'text-text'
-                          : rank === 3
-                            ? 'text-gold-light'
-                            : 'text-text-dim'
-                    }`}>
-                      {String(rank).padStart(2, '0')}
-                    </div>
+                    {mine && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute inset-y-0 left-0 w-0.5 bg-gold-bright"
+                      />
+                    )}
 
-                    {/* Member */}
-                    <div className="min-w-0 flex items-center gap-2.5">
-                      <div className={`w-9 h-9 shrink-0 rounded-lg border flex items-center justify-center ${
-                        classIconTone(member.cls)
-                      } ${isCurrentUser ? 'ring-1 ring-gold/40' : ''}`} title={member.cls || 'Berserker'}>
-                        <ClassIcon cls={member.cls} size={31} />
+                    <div className="grid grid-cols-[38px_minmax(0,1fr)_auto] items-center gap-3 sm:grid-cols-[56px_minmax(0,1fr)_120px_minmax(140px,1fr)]">
+                      <div>
+                        <RankValue rank={rank} top={rank <= 3} />
                       </div>
 
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="font-semibold text-xs text-text truncate">
-                            {member.name}
-                          </span>
-                          {isCurrentUser && (
-                            <span className="shrink-0 text-[8px] uppercase tracking-wider text-gold-light border border-gold/20 bg-gold/5 px-1 py-0.5 rounded">
-                              You
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Emblem
+                          cls={member.cls}
+                          size={30}
+                          className={mine ? 'ring-1 ring-gold/35' : ''}
+                        />
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-[14px] font-semibold text-text-bright">
+                              {member.name}
                             </span>
-                          )}
+                            {mine && (
+                              <span className="shrink-0 rounded border border-gold/25 bg-gold/[.07] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gold-light">
+                                You
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="truncate text-[12px] text-text-dim sm:hidden">
+                            {member.cls || 'Berserker'} · {member.role || 'Member'}
+                          </div>
+                          <div className="hidden truncate text-[12px] text-text-dim sm:block">
+                            {member.role || 'Member'}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-text-dim truncate mt-0.5">
-                          {member.role || 'Member'}
+                      </div>
+
+                      <div className="hidden truncate text-[13px] text-text sm:block">
+                        {member.cls || '—'}
+                      </div>
+
+                      <div className="min-w-[74px] text-right">
+                        <div className={`font-mono text-[15px] font-bold tabular-nums ${
+                          rank <= 3 ? 'text-gold-light' : 'text-text-bright'
+                        }`}>
+                          {formatValue(value)}
+                        </div>
+
+                        <div className="mt-1.5 hidden h-1 overflow-hidden rounded-full bg-white/[.05] sm:block">
+                          <div
+                            className="h-full rounded-full bg-gold/55"
+                            style={{ width: `${pct}%` }}
+                          />
                         </div>
                       </div>
                     </div>
 
-                    {/* Class */}
-                    <div className="hidden sm:block text-[11px] text-text-dim truncate">
-                      {member.cls || '—'}
-                    </div>
-
-                    {/* Score */}
-                    <div className="text-right">
-                      <span className={`font-bold text-xs tabular-nums ${
-                        rank <= 3 ? 'text-gold-light' : 'text-text'
-                      }`}>
-                        {formatValue(member[activeCategory.field])}
-                      </span>
-                      <div className="sm:hidden text-[8px] uppercase tracking-wider text-text-dim mt-0.5">
-                        {activeCategory.shortLabel}
-                      </div>
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/[.05] sm:hidden">
+                      <div
+                        className="h-full rounded-full bg-gold/55"
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
                   </div>
                 )
               })}
             </div>
 
-            {/* Pagination */}
-            <div className="px-3.5 py-2.5 bg-black/10 border-t border-gold/10 flex items-center justify-between gap-3">
-              <div className="text-[10px] text-text-dim">
-                {startIndex + 1}–{Math.min(startIndex + pageSize, rankedMembers.length)}
-                <span className="mx-1">of</span>
-                <span className="text-text">{rankedMembers.length}</span>
-              </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between gap-3 border-t border-white/[.06] px-4 py-3 sm:px-5">
+                <div className="text-[12px] text-text-dim sm:text-[13px]">
+                  {startIndex + 1}–{Math.min(startIndex + PAGE_SIZE, listMembers.length)} of {listMembers.length}
+                </div>
 
-              {totalPages > 1 && (
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     disabled={safePage === 1}
                     onClick={() => setPage(p => Math.max(1, p - 1))}
-                    className="px-2.5 py-1 rounded border border-gold/12 text-[10px] text-text-dim hover:text-text hover:bg-white/5 disabled:opacity-30 disabled:pointer-events-none"
+                    className="min-h-[34px] rounded-lg border border-white/[.08] px-3 text-[12px] font-semibold text-text-dim transition hover:bg-white/[.04] hover:text-text disabled:pointer-events-none disabled:opacity-30"
                   >
                     Prev
                   </button>
 
-                  {Array.from({ length: totalPages }, (_, index) => index + 1)
-                    .filter(p => totalPages <= 5 || p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
-                    .map(p => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setPage(p)}
-                        className={`min-w-7 px-1.5 py-1 rounded border text-[10px] ${
-                          p === safePage
-                            ? 'border-gold/30 bg-gold/10 text-gold-light'
-                            : 'border-transparent text-text-dim hover:text-text hover:bg-white/5'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
+                  <span className="min-w-[60px] text-center font-mono text-[12px] text-text-dim">
+                    {safePage} / {totalPages}
+                  </span>
 
                   <button
                     type="button"
                     disabled={safePage === totalPages}
                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    className="px-2.5 py-1 rounded border border-gold/12 text-[10px] text-text-dim hover:text-text hover:bg-white/5 disabled:opacity-30 disabled:pointer-events-none"
+                    className="min-h-[34px] rounded-lg border border-white/[.08] px-3 text-[12px] font-semibold text-text-dim transition hover:bg-white/[.04] hover:text-text disabled:pointer-events-none disabled:opacity-30"
                   >
                     Next
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </>
         )}
       </section>
