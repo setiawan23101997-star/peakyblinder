@@ -40,6 +40,87 @@ const presetDescriptions = [
 ]
 
 const IMAGE_BUCKET = 'auction-images'
+const MAX_SOURCE_IMAGE_SIZE = 20 * 1024 * 1024 // Allow large originals; compress before uploading.
+const MAX_UPLOAD_IMAGE_SIZE = 2 * 1024 * 1024 // Matches the Supabase bucket's 2 MB limit.
+const TARGET_WEBP_SIZE = Math.floor(MAX_UPLOAD_IMAGE_SIZE * 0.9)
+
+/** Convert a local image to WebP and shrink it enough for the Storage bucket. */
+async function convertAuctionImageToWebP(file) {
+  let image
+  let objectUrl = null
+
+  try {
+    if (typeof createImageBitmap === 'function') {
+      // createImageBitmap handles common EXIF orientation cases in modern browsers.
+      image = await createImageBitmap(file)
+    } else {
+      objectUrl = URL.createObjectURL(file)
+      image = await new Promise((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => resolve(img)
+        img.onerror = () => reject(new Error('The selected image could not be opened.'))
+        img.src = objectUrl
+      })
+    }
+
+    const originalWidth = image.width || image.naturalWidth
+    const originalHeight = image.height || image.naturalHeight
+    if (!originalWidth || !originalHeight) {
+      throw new Error('The selected image has invalid dimensions.')
+    }
+    if (originalWidth * originalHeight > 100_000_000) {
+      throw new Error('This image has too many pixels to process safely. Please resize it first.')
+    }
+
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Your browser could not prepare the image for compression.')
+    // Prefer the largest dimensions and highest quality that fit comfortably below 2 MB.
+    const maxDimensions = [1600, 1400, 1200, 1000, 900, 800, 700, 600, 512]
+    const qualities = [0.84, 0.78, 0.72, 0.66, 0.60, 0.54]
+    let bestBlob = null
+
+    for (const maxDimension of maxDimensions) {
+      const scale = Math.min(1, maxDimension / Math.max(originalWidth, originalHeight))
+      canvas.width = Math.max(1, Math.round(originalWidth * scale))
+      canvas.height = Math.max(1, Math.round(originalHeight * scale))
+      // Setting canvas dimensions resets its drawing state, so apply smoothing for each pass.
+      context.imageSmoothingEnabled = true
+      context.imageSmoothingQuality = 'high'
+      context.clearRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+      for (const quality of qualities) {
+        const blob = await new Promise((resolve, reject) => {
+          canvas.toBlob(
+            result => result ? resolve(result) : reject(new Error('Your browser could not encode this image as WebP.')),
+            'image/webp',
+            quality
+          )
+        })
+
+        if (blob.type !== 'image/webp') {
+          throw new Error('This browser does not support WebP image conversion.')
+        }
+        if (!bestBlob || blob.size < bestBlob.size) bestBlob = blob
+        if (blob.size <= TARGET_WEBP_SIZE) {
+          const webpName = `${file.name.replace(/\.[^.]+$/, '') || 'auction-image'}.webp`
+          return new File([blob], webpName, { type: 'image/webp', lastModified: Date.now() })
+        }
+      }
+    }
+
+    if (!bestBlob || bestBlob.size > MAX_UPLOAD_IMAGE_SIZE) {
+      throw new Error('The image is still larger than 2 MB after compression. Please choose a smaller image.')
+    }
+
+    const webpName = `${file.name.replace(/\.[^.]+$/, '') || 'auction-image'}.webp`
+    return new File([bestBlob], webpName, { type: 'image/webp', lastModified: Date.now() })
+  } finally {
+    if (image && typeof image.close === 'function') image.close()
+    if (objectUrl) URL.revokeObjectURL(objectUrl)
+  }
+}
 
 function rgba(rgb, alpha) { return `rgba(${rgb}, ${alpha})` }
 function getRarityMeta(rarity) { return RARITY[rarity] || RARITY.epic }
@@ -476,14 +557,19 @@ export default function Auctions({ ctx }) {
   const handleImageChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      addToast('Please choose an image file.', 'red', 'Invalid File')
+
+    // Animated GIFs and SVGs are deliberately excluded because the upload is rasterized to WebP.
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      addToast('Please choose a PNG, JPG, or WebP image.', 'red', 'Unsupported Image')
+      e.target.value = ''
       return
     }
-    if (file.size > 2 * 1024 * 1024) {
-      addToast('Image must be under 2 MB.', 'red', 'Too Large')
+    if (file.size > MAX_SOURCE_IMAGE_SIZE) {
+      addToast('The original image must be 20 MB or smaller.', 'red', 'Image Too Large')
+      e.target.value = ''
       return
     }
+
     if (imagePreview && imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
     setPickedLibraryImg(null)
     setImageFile(file)
@@ -507,15 +593,27 @@ export default function Auctions({ ctx }) {
   const uploadImage = async () => {
     if (pickedLibraryImg) return pickedLibraryImg.url
     if (!imageFile) return null
-    const ext = imageFile.name.split('.').pop()?.toLowerCase() || 'png'
-    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+
+    // Convert PNG/JPG/WebP originals to a compressed WebP before sending them to Supabase.
+    const webpFile = await convertAuctionImageToWebP(imageFile)
+    if (webpFile.size > MAX_UPLOAD_IMAGE_SIZE) {
+      throw new Error('Compressed image must be under 2 MB. Please choose a smaller image.')
+    }
+
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`
+    console.info('Auction image optimized to WebP', {
+      originalName: imageFile.name,
+      originalBytes: imageFile.size,
+      uploadedBytes: webpFile.size,
+      widthLimit: 1600,
+    })
 
     const { error } = await supabase.storage
       .from(IMAGE_BUCKET)
-      .upload(path, imageFile, {
+      .upload(path, webpFile, {
         cacheControl: '3600',
         upsert: false,
-        contentType: imageFile.type,
+        contentType: 'image/webp',
       })
 
     if (error) throw error
@@ -1571,7 +1669,7 @@ export default function Auctions({ ctx }) {
                     <div className="mt-1 truncate text-xs text-text-bright">{hasSelectedImage ? selectedImageLabel : 'No image selected'}</div>
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <input id={fileInputId} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleImageChange} disabled={uploading} className="sr-only" />
+                    <input id={fileInputId} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleImageChange} disabled={uploading} className="sr-only" />
                     <label htmlFor={fileInputId} className={`cursor-pointer rounded-lg border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-center transition-colors ${uploading ? 'border-white/[.08] text-text-dim cursor-not-allowed' : 'border-gold/35 text-gold-light hover:bg-gold/10 hover:border-gold/55'}`}>
                       {hasSelectedImage ? 'Change' : 'Upload'}
                     </label>
