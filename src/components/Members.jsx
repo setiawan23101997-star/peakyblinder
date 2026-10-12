@@ -1,1676 +1,1945 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import ResetPasswordModal from './ResetPasswordModal'
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Constants
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const POWER_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000
 const PROFILE_REGION = 'STEAM'
 const PROFILE_SERVER = '005'
+const CDN = 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft'
 
 const GRADE_META = {
-  Epic: {
-    label: 'Epic',
-    color: '#ef4444',
-    border: 'border-red-500/45',
-    text: 'text-red-300',
-    bg: 'bg-red-500/10',
-    glow: 'rgba(239,68,68,.28)',
-    image: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/grade/list_thumbnail_epic.webp',
-  },
-  Legendary: {
-    label: 'Legendary',
-    color: '#f5c542',
-    border: 'border-gold/55',
-    text: 'text-gold-bright',
-    bg: 'bg-gold/10',
-    glow: 'rgba(245,197,66,.30)',
-    image: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/grade/list_thumbnail_legendary.webp',
-  },
-  Mythic: {
-    label: 'Mythical',
-    color: '#c026d3',
-    border: 'border-fuchsia-500/55',
-    text: 'text-fuchsia-300',
-    bg: 'bg-fuchsia-500/10',
-    glow: 'rgba(192,38,211,.34)',
-    image: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/grade/list_thumbnail_mythic.webp',
-  },
+  Epic:      { label: 'Epic',      color: '#ef4444', image: `${CDN}/grade/list_thumbnail_epic.webp` },
+  Legendary: { label: 'Legendary', color: '#f5c542', image: `${CDN}/grade/list_thumbnail_legendary.webp` },
+  Mythic:    { label: 'Mythical',  color: '#c026d3', image: `${CDN}/grade/list_thumbnail_mythic.webp` },
 }
 
 const CLASS_META = {
-  Berserker: { icon: '⚔', label: 'Berserker', tone: 'from-red-500/30 via-transparent to-black' },
-  Warlord: { icon: '🛡', label: 'Warlord', tone: 'from-orange-400/25 via-transparent to-black' },
-  Archer: { icon: '🏹', label: 'Archer', tone: 'from-emerald-400/25 via-transparent to-black' },
-  Skald: { icon: '♫', label: 'Skald', tone: 'from-cyan-400/25 via-transparent to-black' },
-  Volva: { icon: '✦', label: 'Volva', tone: 'from-purple-400/25 via-transparent to-black' },
-  'Rune Fighter': { icon: 'ᚱ', label: 'Rune Fighter', tone: 'from-blue-400/25 via-transparent to-black' },
+  Berserker:      { icon: '⚔', file: 'berserker' },
+  Warlord:        { icon: '🛡', file: 'warlord' },
+  Archer:         { icon: '🏹', file: 'archer' },
+  Skald:          { icon: '♫', file: 'skald' },
+  Volva:          { icon: '✦', file: 'volva' },
+  'Rune Fighter': { icon: 'ᚱ', file: 'runeFighter' },
 }
+const CLASS_NAMES = Object.keys(CLASS_META)
 
-const CLASS_ASSETS = {
-  Archer: {
-    thumbnail: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/thumbnail/archer.webp',
-    nameplate: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/classname/en/archer.webp',
-  },
-  'Rune Fighter': {
-    thumbnail: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/thumbnail/runeFighter.webp',
-    nameplate: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/classname/en/runeFighter.webp',
-  },
-  Skald: {
-    thumbnail: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/thumbnail/skald.webp',
-    nameplate: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/classname/en/skald.webp',
-  },
-  Berserker: {
-    thumbnail: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/thumbnail/berserker.webp',
-    nameplate: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/classname/en/berserker.webp',
-  },
-  Warlord: {
-    thumbnail: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/thumbnail/warlord.webp',
-    nameplate: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/classname/en/warlord.webp',
-  },
-  Volva: {
-    thumbnail: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/thumbnail/volva.webp',
-    nameplate: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/character/classname/en/volva.webp',
-  },
-}
-
-const CHARACTER_FRAME =
-  'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/grade/list_item_frame.webp'
-const GRADE_BACKGROUNDS = {
-  Epic: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/grade/list_thumbnail_epic.webp',
-  Legendary: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/grade/list_thumbnail_legendary.webp',
-  Mythic: 'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/grade/list_thumbnail_mythic.webp',
-}
-
-const AWAKENING_BADGE =
-  'https://gcdn.wemade.games/lygl/official/0.0.19/_next/static/images/nft/badge_awakening.webp'
+const AWAKENING_BADGE = `${CDN}/badge_awakening.webp`
 
 const AWAKENING_OPTIONS = [
   { value: 0, label: 'Not Awakened' },
   { value: 1, label: 'Stage 1' },
 ]
 
-const ROLE_META = {
-  Admin: 'border-red-400/40 bg-red-400/10 text-red-300',
-  Master: 'border-gold/45 bg-gold/10 text-gold-bright',
-  Elder: 'border-orange-300/35 bg-orange-300/10 text-orange-300',
-  Member: 'border-sky-300/25 bg-sky-300/5 text-sky-300',
+const ROLE_STYLE = {
+  Admin:  'border-red-400/35 bg-red-400/[.12] text-red-300',
+  Master: 'border-gold/40 bg-gold/[.12] text-gold-bright',
+  Elder:  'border-orange-300/30 bg-orange-300/[.1] text-orange-300',
+  Member: 'border-sky-300/25 bg-sky-300/[.08] text-sky-300',
 }
 
-const formatNumber = (value) => Number(value || 0).toLocaleString()
+const STAFF_ROLES = ['Admin', 'Master', 'Elder']
 
-// Power is displayed with Indonesian-style thousands separators:
-// 100000 -> 100.000, 1250000 -> 1.250.000.
-// Keep the stored/database value numeric; the dots are display-only.
-const formatPowerInput = (value) => {
-  const digits = String(value ?? '').replace(/\D/g, '')
-  if (!digits) return ''
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+// Cards are added in batches as you scroll, so a big clan doesn't load 200+ images at once.
+const CARD_BATCH = 24
+
+const SORT_OPTIONS = [
+  { value: 'power', label: 'Power' },
+  { value: 'name', label: 'Name' },
+  { value: 'role', label: 'Role' },
+]
+
+const EMPTY_NEW_MEMBER = {
+  name: '', username: '', password: '', cls: 'Berserker', power: '10.000',
+  character_level: '1', awakening_stage: 0, role: 'Member', profile_grade: 'Legendary',
 }
-const formatDate = (value) => {
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Helpers
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const toNumber = (value, fallback = 0) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+const formatNumber = value => toNumber(value).toLocaleString()
+const digitsOnly = value => String(value ?? '').replace(/\D/g, '')
+
+// 1250000 -> "1.250.000". The stored value stays numeric; the dots are display-only.
+const formatPowerInput = value => {
+  const digits = digitsOnly(value)
+  return digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''
+}
+const parsePowerInput = value => {
+  const digits = digitsOnly(value)
+  return digits ? Number(digits) : NaN
+}
+
+const formatDate = value => {
   if (!value) return 'Not updated yet'
   const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return 'Not updated yet'
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-}
-const formatDateTime = (value) => {
-  if (!value) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+  return Number.isNaN(d.getTime())
+    ? 'Not updated yet'
+    : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-function getNextPowerUpdate(member) {
-  if (!member?.power_next_update_at) return null
-  const d = new Date(member.power_next_update_at)
-  return Number.isNaN(d.getTime()) ? null : d
-}
+const isStaffRole = role => STAFF_ROLES.includes(role)
+const gradeKeyOf = member => (member?.profile_grade === 'Mythical' ? 'Mythic' : (member?.profile_grade || 'Legendary'))
+const gradeOf = member => GRADE_META[gradeKeyOf(member)] || GRADE_META.Legendary
+const levelOf = member => Math.max(1, toNumber(member?.character_level || member?.level, 1))
+const awakeningOf = member => Math.max(0, toNumber(member?.awakening_stage, 0))
+const awakeningLabel = stage => (stage > 0 ? `Awakening ${stage}` : 'Not Awakened')
+const sameId = (a, b) => String(a) === String(b)
 
 function getCooldown(member) {
-  const next = getNextPowerUpdate(member)
-  if (next) return Math.max(0, next.getTime() - Date.now())
-  return 0
-}
-
-function isStaffRole(role) {
-  return ['Admin', 'Master', 'Elder'].includes(role)
-}
-
-function getPowerUpdatesUsed(member) {
-  const used = Number(member?.power_updates_used)
-  if (Number.isFinite(used) && used >= 0) return Math.min(3, used)
-  // Compatibility with the previous one-update lock system.
-  return getCooldown(member) > 0 ? 3 : 0
-}
-
-function getPowerWindowRemaining(member) {
-  return Math.max(0, 3 - getPowerUpdatesUsed(member))
-}
-
-function cooldownText(ms) {
-  if (ms <= 0) return 'Available now'
-  const totalMinutes = Math.ceil(ms / 60000)
-  const days = Math.floor(totalMinutes / 1440)
-  const hours = Math.floor((totalMinutes % 1440) / 60)
-  const minutes = totalMinutes % 60
-  if (days > 0) return `${days}d ${hours}h ${minutes}m`
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
+  if (!member?.power_next_update_at) return 0
+  const t = new Date(member.power_next_update_at).getTime()
+  return Number.isNaN(t) ? 0 : Math.max(0, t - Date.now())
 }
 
 function initials(name = '') {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase() || 'PB'
 }
 
-function safeImage(member) {
+function customImage(member) {
   return member?.character_image || member?.characterImage || member?.avatar_url || member?.avatarUrl || member?.image || ''
 }
 
-function PowerBadge({ member, rank }) {
-  const cooldown = getCooldown(member)
+function classAssets(cls) {
+  const file = (CLASS_META[cls] || CLASS_META.Berserker).file
+  return {
+    thumbnail: `${CDN}/character/thumbnail/${file}.webp`,
+    nameplate: `${CDN}/character/classname/en/${file}.webp`,
+  }
+}
+
+// Every member row in the database (including hidden Admin accounts).
+function allRows(ctxAllMembers, members) {
+  if (Array.isArray(ctxAllMembers) && ctxAllMembers.length > 0) return ctxAllMembers
+  return Array.isArray(members) ? members : []
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Styles (scoped to .mb-root)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const MB_STYLES = `
+  .mb-root { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  .mb-root .text-text-dim { color: #c9bda8; }
+  .mb-root .font-mono { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+  .mb-root .mb-glass {
+    position: relative;
+    background:
+      radial-gradient(120% 70% at 0% 0%, rgba(255,255,255,.08) 0%, transparent 50%),
+      linear-gradient(160deg, rgba(34,28,22,.58) 0%, rgba(12,10,8,.66) 100%);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 22px 60px -30px rgba(0,0,0,.85);
+  }
+  .mb-root .mb-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(140deg,
+      rgba(255,255,255,.38) 0%,
+      rgba(255,255,255,.04) 35%,
+      var(--mb-rim, rgba(201,162,75,.26)) 70%,
+      rgba(255,255,255,.1) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  /* Same look, no live blur: used for the repeated member cards */
+  .mb-root .mb-glass.mb-solid {
+    background:
+      radial-gradient(120% 70% at 0% 0%, rgba(255,255,255,.06) 0%, transparent 50%),
+      linear-gradient(160deg, rgba(30,25,20,.94) 0%, rgba(13,11,9,.96) 100%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .mb-root .mb-glass.mb-modal {
+    background:
+      radial-gradient(120% 60% at 0% 0%, rgba(255,255,255,.08) 0%, transparent 50%),
+      linear-gradient(160deg, rgba(34,28,22,.86) 0%, rgba(12,10,8,.92) 100%);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 40px 90px -20px rgba(0,0,0,.85);
+    animation: mb-pop .22s cubic-bezier(.2,.8,.2,1) both;
+  }
+  /* No blur behind modals: blurring a page full of artwork is very expensive. */
+  .mb-root .mb-overlay {
+    background: rgba(5,4,3,.74);
+    animation: mb-fade .18s ease-out both;
+  }
+
+  /* Off-screen cards are skipped by the browser until you scroll near them. */
+  .mb-root .mb-cv {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 360px;
+  }
+
+  /* Artwork fades in when it has loaded instead of popping in. */
+  .mb-root .mb-img { opacity: 0; transition: opacity .35s ease; }
+  .mb-root .mb-img.is-loaded { opacity: 1; }
+
+  /* Gentle zoom on the character when hovering a card (GPU-only, cheap). */
+  .mb-root .mb-portrait { transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .35s ease; transform-origin: 50% 100%; }
+  .mb-root .mb-card:hover .mb-portrait { transform: scale(1.05); }
+
+  /* Filter chips + segmented sort */
+  .mb-root .mb-pill {
+    border: 1px solid rgba(255,255,255,.1);
+    background: rgba(255,255,255,.04);
+    color: #c9bda8;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+  }
+  .mb-root .mb-pill:hover { border-color: rgba(235,208,141,.3); color: #f4ebd9; }
+  .mb-root .mb-pill[aria-pressed="true"] {
+    background: linear-gradient(180deg, rgba(201,162,75,.24) 0%, rgba(201,162,75,.08) 100%);
+    border-color: rgba(235,208,141,.45);
+    color: #f6dd93;
+  }
+  .mb-root .mb-seg { background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.08); }
+  .mb-root .mb-seg button[aria-pressed="true"] {
+    background: linear-gradient(180deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.05) 100%);
+    color: #f4ebd9;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.2);
+  }
+  .mb-root input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+  .mb-root .mb-kbd {
+    border: 1px solid rgba(255,255,255,.14);
+    border-bottom-width: 2px;
+    background: rgba(255,255,255,.05);
+  }
+  .mb-root .mb-lift { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s ease; }
+  .mb-root .mb-lift:hover { transform: translateY(-3px); }
+
+  .mb-root .mb-inset {
+    background: linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.018) 100%);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  .mb-root .mb-inset.mb-gold {
+    background: linear-gradient(160deg, rgba(201,162,75,.13) 0%, rgba(201,162,75,.03) 100%);
+    border-color: rgba(235,208,141,.2);
+  }
+  .mb-root .mb-inset.mb-red {
+    background: linear-gradient(160deg, rgba(239,68,68,.1) 0%, rgba(239,68,68,.02) 100%);
+    border-color: rgba(248,113,113,.22);
+  }
+  .mb-root .mb-well {
+    background: rgba(0,0,0,.24);
+    border: 1px solid rgba(255,255,255,.07);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,.32), 0 1px 0 rgba(255,255,255,.04);
+  }
+  .mb-root .mb-chip {
+    background: linear-gradient(180deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.025) 100%);
+    border: 1px solid rgba(255,255,255,.1);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 4px 14px -8px rgba(0,0,0,.5);
+    transition: background .2s ease, border-color .2s ease, color .2s ease;
+  }
+  .mb-root button.mb-chip:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.04) 100%);
+    border-color: rgba(235,208,141,.3);
+  }
+  .mb-root .mb-chip.mb-chip-gold {
+    background: linear-gradient(180deg, rgba(201,162,75,.2) 0%, rgba(201,162,75,.06) 100%);
+    border-color: rgba(235,208,141,.3);
+  }
+  .mb-root .mb-chip.mb-chip-red {
+    background: linear-gradient(180deg, rgba(239,68,68,.15) 0%, rgba(239,68,68,.04) 100%);
+    border-color: rgba(248,113,113,.3);
+  }
+  .mb-root .mb-emblem {
+    background:
+      radial-gradient(80% 60% at 30% 20%, rgba(255,255,255,.3) 0%, transparent 60%),
+      linear-gradient(160deg, rgba(201,162,75,.28) 0%, rgba(201,162,75,.07) 100%);
+    border: 1px solid rgba(255,255,255,.2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 6px 18px -8px rgba(201,162,75,.5);
+  }
+  .mb-root .mb-emblem-red {
+    background:
+      radial-gradient(80% 60% at 30% 20%, rgba(255,255,255,.25) 0%, transparent 60%),
+      linear-gradient(160deg, rgba(239,68,68,.3) 0%, rgba(239,68,68,.08) 100%);
+    border: 1px solid rgba(255,180,170,.28);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 6px 18px -8px rgba(239,68,68,.5);
+  }
+
+  .mb-root .input {
+    width: 100%;
+    background: linear-gradient(180deg, rgba(0,0,0,.32) 0%, rgba(0,0,0,.16) 100%);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 12px;
+    color: #f4ebd9;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,.3), 0 1px 0 rgba(255,255,255,.05);
+    transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .mb-root .input::placeholder { color: rgba(201,189,168,.5); }
+  .mb-root .input:focus {
+    outline: none;
+    border-color: rgba(235,208,141,.55);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,.28), 0 0 0 3px rgba(201,162,75,.2);
+  }
+  .mb-root .input:disabled { opacity: .55; }
+  .mb-root select.input option { background: #15110e; color: #f4ebd9; }
+
+  .mb-root .btn-gold {
+    border: 1px solid rgba(255,240,200,.5);
+    border-radius: 999px;
+    color: #1a140b;
+    font-weight: 700;
+    background: linear-gradient(180deg,
+      rgba(255,246,214,.96) 0%,
+      rgba(235,208,141,.95) 20%,
+      rgba(201,162,75,.93) 58%,
+      rgba(160,122,46,.96) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.7),
+      inset 0 -3px 8px rgba(90,60,10,.32),
+      0 10px 24px -10px rgba(201,162,75,.6);
+    transition: transform .2s ease, filter .2s ease;
+  }
+  .mb-root .btn-gold:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+  .mb-root .btn-gold:disabled { opacity: .45; cursor: not-allowed; }
+  .mb-root .mb-btn-red {
+    color: #fff5f3;
+    font-weight: 700;
+    border: 1px solid rgba(255,190,180,.45);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(248,113,113,.95) 0%, rgba(220,38,38,.92) 60%, rgba(170,28,28,.95) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 -3px 8px rgba(90,10,10,.3), 0 10px 24px -10px rgba(239,68,68,.6);
+    transition: transform .2s ease, filter .2s ease;
+  }
+  .mb-root .mb-btn-red:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+  .mb-root .mb-btn-red:disabled { opacity: .4; cursor: not-allowed; }
+
+  .mb-root .mb-focus:focus-visible,
+  .mb-root button:focus-visible {
+    outline: 2px solid rgba(235,208,141,.75);
+    outline-offset: 2px;
+  }
+
+  @keyframes mb-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mb-pop {
+    from { opacity: 0; transform: translateY(10px) scale(.98); }
+    to   { opacity: 1; transform: none; }
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .mb-root .mb-glass, .mb-root .mb-glass.mb-modal { background: rgba(16,13,11,.97); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mb-root .mb-overlay, .mb-root .mb-glass.mb-modal { animation: none; }
+    .mb-root .mb-img, .mb-root .mb-portrait { transition: none; }
+    .mb-root .mb-card:hover .mb-portrait { transform: none; }
+    .mb-root .mb-lift, .mb-root .mb-lift:hover, .mb-root .btn-gold { transition: none; transform: none; }
+  }
+`
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Shared UI: modal shell, confirm dialog, small pieces
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// Shared body-scroll lock so stacked modals don't fight over overflow.
+let scrollLocks = 0
+function lockScroll() {
+  if (scrollLocks++ === 0) document.body.style.overflow = 'hidden'
+  return () => {
+    if (--scrollLocks === 0) document.body.style.overflow = ''
+  }
+}
+
+/**
+ * Glass modal rendered into <body>, so it always sits above the top bar.
+ * Closes on Escape / backdrop click unless `busy` (saving in progress).
+ */
+function Modal({ title, eyebrow, onClose, busy = false, size = 'max-w-lg', children, footer, labelledBy }) {
+  const fallbackId = useId()
+  const titleId = labelledBy || fallbackId
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  const busyRef = useRef(busy)
+  busyRef.current = busy
+
+  useEffect(() => {
+    const unlock = lockScroll()
+    const onKey = e => {
+      if (e.key !== 'Escape') return
+      // A confirm dialog on top handles its own Escape.
+      if (document.querySelector('[data-mb-confirm]')) return
+      if (!busyRef.current) closeRef.current()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      unlock()
+    }
+  }, [])
+
+  return createPortal(
+    <div className="mb-root fixed inset-0 z-[300] flex items-end justify-center p-2 sm:items-center sm:p-5">
+      <div className="mb-overlay absolute inset-0" onClick={() => !busy && onClose()} aria-hidden="true" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={`mb-glass mb-modal flex max-h-[92vh] w-full ${size} flex-col overflow-hidden rounded-[24px]`}
+      >
+        {title !== undefined && (
+          <div className="flex items-start justify-between gap-3 border-b border-white/[.08] px-5 py-4">
+            <div className="min-w-0">
+              {eyebrow && <div className="text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim">{eyebrow}</div>}
+              <h2 id={titleId} className="mt-0.5 truncate font-spectral text-[1.3rem] font-bold leading-tight text-text-bright">
+                {title}
+              </h2>
+            </div>
+            <CloseButton onClick={onClose} disabled={busy} />
+          </div>
+        )}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+        {footer && <div className="border-t border-white/[.08] bg-white/[.025] px-5 py-3.5">{footer}</div>}
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function CloseButton({ onClick, disabled }) {
   return (
-    <div className="flex items-end justify-between gap-3">
-      <div>
-        <div className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.2em] text-text-dim">
-          <span className="text-gold-bright">⚡</span> Growth Power
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label="Close"
+      className="mb-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[18px] leading-none text-text-dim hover:text-text-bright disabled:opacity-40"
+    >
+      ×
+    </button>
+  )
+}
+
+/**
+ * Glass confirm dialog. `requireText` makes the user type a word (e.g. RESET)
+ * before the confirm button unlocks.
+ */
+function ConfirmDialog({
+  title, body, note, details, confirmLabel = 'Confirm', cancelLabel = 'Cancel',
+  tone = 'gold', requireText, onConfirm, onCancel,
+}) {
+  const titleId = useId()
+  const [typed, setTyped] = useState('')
+  const firstRef = useRef(null)
+  const cancelRef = useRef(onCancel)
+  cancelRef.current = onCancel
+  const unlocked = !requireText || typed === requireText
+  const danger = tone === 'danger'
+
+  useEffect(() => {
+    const previous = document.activeElement
+    firstRef.current?.focus()
+    const unlock = lockScroll()
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); cancelRef.current() }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      unlock()
+      previous?.focus?.()
+    }
+  }, [])
+
+  return createPortal(
+    <div data-mb-confirm="" className="mb-root fixed inset-0 z-[400] flex items-end justify-center p-3 sm:items-center sm:p-6">
+      <div className="mb-overlay absolute inset-0" onClick={onCancel} aria-hidden="true" />
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="mb-glass mb-modal relative w-full max-w-[440px] overflow-hidden rounded-[24px]"
+      >
+        <div className="px-5 pb-4 pt-5 sm:px-6 sm:pt-6">
+          <div className="flex items-start gap-3.5">
+            <span
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg font-extrabold ${danger ? 'mb-emblem-red text-red-200' : 'mb-emblem text-gold-light'}`}
+              aria-hidden="true"
+            >
+              {danger ? '!' : '?'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 id={titleId} className="font-spectral text-[19px] font-bold leading-tight text-text-bright">{title}</h2>
+              <div className="mt-1.5 space-y-2 text-[13px] leading-5 text-text-dim">
+                {body && <p>{body}</p>}
+                {details?.length > 0 && (
+                  <ul className="mb-well max-h-40 space-y-1 overflow-y-auto rounded-xl px-3 py-2 text-[12px] text-text-bright">
+                    {details.map((line, i) => <li key={`${i}-${line}`} className="truncate">• {line}</li>)}
+                  </ul>
+                )}
+                {note && <p className={`text-[12px] ${danger ? 'text-red-300/90' : 'text-gold-light/85'}`}>{note}</p>}
+                {requireText && (
+                  <label className="block pt-1">
+                    <span className="mb-1.5 block text-[12px] text-text-dim">
+                      Type <strong className="font-mono text-text-bright">{requireText}</strong> to continue.
+                    </span>
+                    <input
+                      ref={firstRef}
+                      value={typed}
+                      onChange={e => setTyped(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && unlocked) onConfirm() }}
+                      placeholder={requireText}
+                      autoComplete="off"
+                      className="input h-11 px-3 font-mono text-[14px] font-bold uppercase tracking-wider"
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="font-mono text-2xl font-black tracking-tight text-white sm:text-[27px]">
-          {formatNumber(member.power)}
+        <div className="flex flex-col-reverse gap-2 border-t border-white/[.08] bg-white/[.025] px-5 py-3.5 sm:flex-row sm:justify-end sm:px-6">
+          <button
+            ref={requireText ? undefined : firstRef}
+            type="button"
+            onClick={onCancel}
+            className="mb-chip h-10 rounded-full px-5 text-[13px] font-semibold text-text-bright"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!unlocked}
+            className={`h-10 px-5 text-[13px] ${danger ? 'mb-btn-red' : 'btn-gold'}`}
+          >
+            {confirmLabel}
+          </button>
         </div>
       </div>
-      {rank && (
-        <div className="text-right">
-          <div className="text-[9px] uppercase tracking-[0.16em] text-text-dim">Rank</div>
-          <div className="font-spectral text-lg font-bold text-gold-bright">#{rank}</div>
-        </div>
-      )}
-      {!rank && cooldown > 0 && (
-        <div className="text-right">
-          <div className="text-[9px] uppercase tracking-[0.16em] text-text-dim">Next update</div>
-          <div className="font-mono text-xs font-bold text-gold-light">{cooldownText(cooldown)}</div>
-        </div>
-      )}
+    </div>,
+    document.body
+  )
+}
+
+function useConfirm() {
+  const [dialog, setDialog] = useState(null)
+  const resolver = useRef(null)
+
+  const ask = useCallback(options => new Promise(resolve => {
+    resolver.current?.(false)
+    resolver.current = resolve
+    setDialog(options)
+  }), [])
+
+  const settle = useCallback(result => {
+    resolver.current?.(result)
+    resolver.current = null
+    setDialog(null)
+  }, [])
+
+  useEffect(() => () => resolver.current?.(false), [])
+
+  const element = dialog
+    ? <ConfirmDialog {...dialog} onConfirm={() => settle(true)} onCancel={() => settle(false)} />
+    : null
+  return [ask, element]
+}
+
+function RolePill({ role }) {
+  return (
+    <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${ROLE_STYLE[role] || ROLE_STYLE.Member}`}>
+      {role || 'Member'}
+    </span>
+  )
+}
+
+function Field({ label, hint, children }) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[.12em] text-text-dim">{label}</span>
+      {children}
+      {hint && <span className="mt-1 block text-[11px] text-text-dim/80">{hint}</span>}
+    </label>
+  )
+}
+
+function StatTile({ label, value, accent = false }) {
+  return (
+    <div className={`mb-inset rounded-2xl px-3.5 py-3 ${accent ? 'mb-gold' : ''}`}>
+      <div className="text-[11px] font-bold uppercase tracking-[.12em] text-text-dim">{label}</div>
+      <div className={`mt-1 truncate font-mono text-[15px] font-bold ${accent ? 'text-gold-bright' : 'text-text-bright'}`}>{value}</div>
     </div>
   )
 }
 
-const CharacterArtwork = React.memo(function CharacterArtwork({ member, variant = 'card' }) {
-  const gradeKey = member?.profile_grade === 'Mythical' ? 'Mythic' : (member?.profile_grade || 'Legendary')
-  const grade = GRADE_META[gradeKey] || GRADE_META.Legendary
-  const assets = CLASS_ASSETS[member?.cls] || CLASS_ASSETS.Berserker
-  const awakening = Number(member?.awakening_stage) || 0
-  const isModal = variant === 'modal'
+// Hides itself if the remote image fails, so a broken CDN link never shows an icon.
+function SafeImg({ src, alt = '', className = '', onFail, eager = false, ...rest }) {
+  const [failed, setFailed] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    setFailed(false)
+    // Already in the browser cache: show it straight away.
+    setLoaded(Boolean(ref.current?.complete && ref.current.naturalWidth))
+  }, [src])
+  if (!src || failed) return null
+  return (
+    <img
+      ref={ref}
+      src={src}
+      alt={alt}
+      loading={eager ? 'eager' : 'lazy'}
+      decoding="async"
+      draggable={false}
+      className={`mb-img ${loaded ? 'is-loaded' : ''} ${className}`}
+      onLoad={() => setLoaded(true)}
+      onError={() => { setFailed(true); onFail?.() }}
+      {...rest}
+    />
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Character artwork
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const CharacterArtwork = React.memo(function CharacterArtwork({ member, large = false }) {
+  const grade = gradeOf(member)
+  const assets = classAssets(member?.cls)
+  const awakening = awakeningOf(member)
+  const portrait = customImage(member) || assets.thumbnail
+  const [portraitFailed, setPortraitFailed] = useState(false)
+  useEffect(() => setPortraitFailed(false), [portrait])
 
   return (
     <div
-      className={`relative overflow-hidden bg-[#090807] ${
-        isModal
-          ? 'mx-auto aspect-[0.73] w-full max-w-[470px] rounded-xl'
-          : 'aspect-[0.73] w-full'
-      }`}
-      style={{
-        boxShadow: `inset 0 -110px 110px ${grade.glow}, 0 0 42px ${grade.glow}`,
-      }}
+      className={`relative w-full overflow-hidden bg-black/50 ${large ? 'aspect-[4/5] rounded-[20px]' : 'aspect-[4/5]'}`}
+      style={{ boxShadow: `inset 0 0 40px ${grade.color}33` }}
     >
-      <div className="absolute inset-0 bg-[#090807]" />
+      {/* Official grade background */}
+      <SafeImg src={grade.image} eager={large} className="absolute inset-0 h-full w-full object-cover" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-black/0 to-black/60" aria-hidden="true" />
 
-      {/* Official YMIR grade background — use the real NFT background instead of a blurred character. */}
-      <img
-        src={GRADE_BACKGROUNDS[member?.profile_grade === 'Mythical' ? 'Mythic' : (member?.profile_grade || 'Legendary')] || GRADE_BACKGROUNDS.Legendary}
-        alt=""
+      {/* Character */}
+      {!portraitFailed ? (
+        <SafeImg
+          src={portrait}
+          alt={member?.cls || 'Character'}
+          onFail={() => setPortraitFailed(true)}
+          eager={large}
+          className="mb-portrait absolute inset-x-0 bottom-0 mx-auto h-[92%] w-auto max-w-none object-contain object-bottom"
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center font-spectral text-4xl font-bold text-white/80" aria-hidden="true">
+          {initials(member?.name)}
+        </div>
+      )}
+
+      {/* Clean gold frame (replaces the official frame image, which has the game logo printed on it) */}
+      <div
+        className={`pointer-events-none absolute border ${large ? 'inset-2 rounded-[14px]' : 'inset-1.5 rounded-[12px]'}`}
+        style={{ borderColor: `${grade.color}66`, boxShadow: `inset 0 0 0 1px rgba(0,0,0,.35), inset 0 0 24px ${grade.color}26` }}
         aria-hidden="true"
-        className="pointer-events-none absolute inset-[5px] h-[calc(100%-10px)] w-[calc(100%-10px)] object-cover object-center"
-        decoding="async"
       />
 
-      {/* Subtle darkening keeps the character readable without changing the official background. */}
-      <div className="pointer-events-none absolute inset-[5px] bg-black/10" />
+      {/* Dark band behind the class name, so it's always readable */}
+      <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent ${large ? 'h-28' : 'h-20'}`} aria-hidden="true" />
 
-      <img
-        src={assets.thumbnail}
-        alt={member?.cls || 'Character'}
-        className="absolute inset-[5px] z-10 h-[calc(100%-10px)] w-[calc(100%-10px)] object-cover object-top"
-        loading="lazy"
-        decoding="async"
-      />
-
-      <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-b from-transparent via-transparent via-[58%] to-[#090807]/92" />
-
-      <img
-        src={CHARACTER_FRAME}
-        alt=""
-        className="pointer-events-none absolute inset-0 h-full w-full object-fill"
-        loading="lazy"
-        decoding="async"
-      />
-
-      {/* Official YMIR awakening badge: image only, with the stage number centered in the gem. */}
+      {/* Awakening badge */}
       {awakening > 0 && (
-        <div className="absolute right-[4.8%] top-[3.4%] z-20 h-14 w-14">
-          <img
-            src={AWAKENING_BADGE}
-            alt=""
-            className="absolute inset-0 h-14 w-14 object-contain drop-shadow-[0_3px_5px_rgba(0,0,0,.85)]"
-          />
-          <span className="absolute inset-0 flex items-center justify-center pb-[1px] font-serif text-[19px] font-black leading-none text-white drop-shadow-[0_2px_2px_rgba(0,0,0,.95)]">
+        <div className={`absolute ${large ? 'right-3 top-3 h-12 w-12' : 'right-2.5 top-2.5 h-9 w-9'}`} title={awakeningLabel(awakening)}>
+          <SafeImg src={AWAKENING_BADGE} className="h-full w-full object-contain" />
+          <span className={`absolute inset-0 flex items-center justify-center font-bold text-white drop-shadow ${large ? 'text-[15px]' : 'text-[12px]'}`}>
             {awakening}
           </span>
         </div>
       )}
 
-      {/* Official YMIR class-name artwork.
-          Fixed height keeps Archer / Berserker / Warlord / Skald / Volva / Rune Fighter visually consistent.
-          Width is automatic so each official PNG keeps its own aspect ratio. */}
-      <div className="absolute inset-x-[10%] bottom-[15.2%] z-20 flex h-[6.2%] items-center justify-center">
-        <img
-          src={assets.nameplate}
-          alt={member?.cls || ''}
-          className="block h-full w-auto max-w-[68%] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,.95)]"
-          loading="lazy"
-          decoding="async"
-        />
+      {/* Official class nameplate */}
+      <div className={`absolute inset-x-3 flex justify-center ${large ? 'bottom-5' : 'bottom-3'}`}>
+        <SafeImg src={assets.nameplate} alt="" className={`${large ? 'h-11' : 'h-7 sm:h-8'} w-auto max-w-full object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,.9)]`} />
       </div>
-
     </div>
   )
 })
 
-const PlayerCard = React.memo(function PlayerCard({ member, rank, isSelf, onView }) {
-  const meta = CLASS_META[member?.cls] || CLASS_META.Berserker
-  const roleClass = ROLE_META[member?.role] || ROLE_META.Member
-  const awakening = Number(member?.awakening_stage) || 0
+/* ═══════════════════════════════════════════════════════════════════════════
+   Member card
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const RANK_TONES = {
+  1: 'border-gold/50 bg-gold/[.2] text-gold-bright',
+  2: 'border-slate-200/40 bg-slate-200/[.14] text-slate-100',
+  3: 'border-orange-300/40 bg-orange-300/[.14] text-orange-200',
+}
+
+const MemberCard = React.memo(function MemberCard({ member, rank, isSelf, onOpen }) {
+  const grade = gradeOf(member)
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(member)}
+      aria-label={`${member.name}, rank ${rank}, ${formatNumber(member.power)} Growth Power`}
+      className="mb-glass mb-solid mb-lift mb-cv mb-card group relative flex w-full min-w-0 flex-col overflow-hidden rounded-[20px] text-left"
+      style={{ '--mb-rim': `${grade.color}80` }}
+    >
+      <div className="relative">
+        <CharacterArtwork member={member} />
+        <span className={`absolute left-3 top-3 rounded-full border px-2 py-0.5 font-mono text-[12px] font-bold ${RANK_TONES[rank] || 'border-white/20 bg-black/70 text-text-bright'}`}>
+          #{rank}
+        </span>
+        {isSelf && (
+          <span className="absolute left-3 top-10 rounded-full border border-emerald-300/40 bg-emerald-900/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-200">
+            You
+          </span>
+        )}
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-2 p-3 sm:p-3.5">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate font-spectral text-[16px] font-bold leading-tight text-text-bright group-hover:text-gold-light sm:text-[17px]">
+              {member.name}
+            </div>
+            <div className="mt-0.5 truncate text-[12px] text-text-dim">
+              {member.cls || 'Berserker'} · Lv. {levelOf(member)}
+            </div>
+          </div>
+          <RolePill role={member.role} />
+        </div>
+
+        <div className="mb-well mt-auto flex items-baseline justify-between gap-2 rounded-xl px-3 py-2">
+          <span className="text-[11px] font-bold uppercase tracking-[.1em] text-text-dim">Power</span>
+          <span className="truncate font-mono text-[15px] font-bold text-gold-bright">{formatNumber(member.power)}</span>
+        </div>
+      </div>
+    </button>
+  )
+})
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Profile (read-only view, with a "Manage" button for staff)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function ProfileModal({ member, ranked, list = [], isSelf, canManage, onManage, onNavigate, onClose }) {
+  const listIndex = list.findIndex(m => sameId(m.id, member.id))
+  const prev = listIndex > 0 ? list[listIndex - 1] : null
+  const next = listIndex >= 0 && listIndex < list.length - 1 ? list[listIndex + 1] : null
+  const navRef = useRef({ prev, next, onNavigate })
+  navRef.current = { prev, next, onNavigate }
+
+  // ← / → browse through the members currently shown on the page.
+  useEffect(() => {
+    const onKey = e => {
+      if (document.querySelector('[data-mb-confirm]')) return
+      const tag = e.target?.tagName
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
+      const { prev: p, next: n, onNavigate: go } = navRef.current
+      if (e.key === 'ArrowLeft' && p) { e.preventDefault(); go?.(p) }
+      if (e.key === 'ArrowRight' && n) { e.preventDefault(); go?.(n) }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
+  const index = ranked.findIndex(m => sameId(m.id, member.id))
+  const rank = index >= 0 ? index + 1 : '—'
+  const above = index > 0 ? ranked[index - 1] : null
+  const grade = gradeOf(member)
+  const gapToNext = above ? Math.max(0, toNumber(above.power) - toNumber(member.power)) : 0
 
   return (
-    <article
-      className={`group relative overflow-hidden rounded-xl border bg-[#0b0c0f] shadow-[0_18px_50px_rgba(0,0,0,.28)] transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 hover:border-gold/35 hover:shadow-[0_24px_65px_rgba(0,0,0,.46)] ${
-        isSelf ? 'border-gold/45 ring-1 ring-gold/10' : 'border-white/[0.07]'
-      }`}
-      style={{ contentVisibility: 'auto', containIntrinsicSize: '520px' }}
+    <Modal
+      title={member.name}
+      eyebrow={isSelf ? 'Your Character' : 'Character Profile'}
+      onClose={onClose}
+      size="max-w-3xl"
+      footer={list.length > 1 && listIndex >= 0 ? (
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => prev && onNavigate(prev)}
+            disabled={!prev}
+            className="mb-chip flex h-10 min-w-0 max-w-[42%] items-center gap-2 rounded-full px-4 text-[12px] font-semibold text-text-bright disabled:opacity-30"
+          >
+            <span aria-hidden="true">←</span>
+            <span className="truncate">{prev ? prev.name : 'Previous'}</span>
+          </button>
+          <span className="hidden shrink-0 items-center gap-1.5 text-[12px] text-text-dim sm:flex">
+            {listIndex + 1} of {list.length}
+            <span className="mb-kbd rounded px-1.5 font-mono text-[10px]">←</span>
+            <span className="mb-kbd rounded px-1.5 font-mono text-[10px]">→</span>
+          </span>
+          <span className="shrink-0 text-[12px] text-text-dim sm:hidden">{listIndex + 1} / {list.length}</span>
+          <button
+            type="button"
+            onClick={() => next && onNavigate(next)}
+            disabled={!next}
+            className="mb-chip flex h-10 min-w-0 max-w-[42%] items-center gap-2 rounded-full px-4 text-[12px] font-semibold text-text-bright disabled:opacity-30"
+          >
+            <span className="truncate">{next ? next.name : 'Next'}</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      ) : null}
     >
-      <CharacterArtwork member={member} />
+      <div className="grid gap-5 p-4 sm:p-5 md:grid-cols-[260px_minmax(0,1fr)]">
+        <div className="mx-auto w-full max-w-[260px]">
+          <div className="mb-glass overflow-hidden rounded-[20px]" style={{ '--mb-rim': `${grade.color}80` }}>
+            <CharacterArtwork member={member} large />
+          </div>
+        </div>
 
-      <div className="relative mt-3 px-3.5 pb-3.5">
-        <div className="rounded-lg border border-white/[0.07] bg-[#0b0c0f]/97 p-3.5 shadow-[0_12px_30px_rgba(0,0,0,.28)]">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="truncate font-spectral text-xl font-black leading-tight text-white">
-                {member.name}
-              </div>
-              <div className="mt-1 flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-gold-light">
-                  {meta.label}
-                </span>
-                <span className="h-1 w-1 rounded-full bg-white/20" />
-                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-dim">
-                  Lv. {Number(member?.character_level || member?.level || 1) || 1}
-                </span>
-              </div>
-            </div>
-            <span className={`shrink-0 rounded-md border px-2 py-1 text-[8px] font-black uppercase tracking-[0.12em] ${roleClass}`}>
-              {member.role}
+        <div className="min-w-0 space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <RolePill role={member.role} />
+            <span className="rounded-full border px-2.5 py-0.5 text-[11px] font-bold" style={{ color: grade.color, borderColor: `${grade.color}55`, background: `${grade.color}14` }}>
+              {grade.label}
+            </span>
+            <span className="text-[13px] text-text-dim">
+              {member.cls || 'Berserker'} · Lv. {levelOf(member)} · {awakeningLabel(awakeningOf(member))}
             </span>
           </div>
 
-          <div className="mt-3 flex items-end justify-between border-y border-white/[0.06] py-2.5">
-            <div>
-              <div className="text-[8px] font-bold uppercase tracking-[0.18em] text-text-dim">Growth Power</div>
-              <div className="mt-0.5 font-mono text-xl font-black tracking-tight text-white">
-                {formatNumber(member.power)}
-              </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="mb-inset mb-gold rounded-2xl px-4 py-3.5">
+              <div className="text-[11px] font-bold uppercase tracking-[.12em] text-gold-dim">Growth Power</div>
+              <div className="mt-1 font-mono text-[1.6rem] font-bold leading-none text-gold-bright">{formatNumber(member.power)}</div>
             </div>
-            {rank && (
-              <div className="text-right">
-                <div className="text-[8px] font-bold uppercase tracking-[0.16em] text-text-dim">Clan Rank</div>
-                <div className="font-spectral text-lg font-black text-gold-bright">#{rank}</div>
-              </div>
-            )}
+            <div className="mb-inset rounded-2xl px-4 py-3.5">
+              <div className="text-[11px] font-bold uppercase tracking-[.12em] text-text-dim">Clan Rank</div>
+              <div className="mt-1 font-mono text-[1.6rem] font-bold leading-none text-text-bright">#{rank}</div>
+            </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <Stat label="Level" value={member.character_level || member.level || 1} />
-            <Stat label="Server" value={PROFILE_SERVER} />
-            <Stat label="Att" value={formatNumber(member.attendance)} />
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            <StatTile label="Coins" value={formatNumber(member.coins)} accent />
+            <StatTile label="Attendance" value={formatNumber(member.attendance)} />
+            <StatTile label="Server" value={`${member.region || PROFILE_REGION} · ${member.server || PROFILE_SERVER}`} />
           </div>
 
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={() => onView(member)}
-              className="flex-1 rounded-md border border-gold/35 bg-gold/5 px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.13em] text-gold-light transition hover:bg-gold/10 hover:text-gold-bright"
-            >
-              View Profile
+          <div className="mb-well divide-y divide-white/[.06] rounded-2xl text-[13px]">
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <span className="text-text-dim">Power last updated</span>
+              <span className="font-semibold text-text-bright">{formatDate(member.power_updated_at)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <span className="text-text-dim">{above ? `To reach #${rank - 1}` : 'Position'}</span>
+              <span className="font-semibold text-gold-light">
+                {above ? `+${formatNumber(gapToNext)} Power` : 'Top of the clan'}
+              </span>
+            </div>
+          </div>
+
+          {canManage ? (
+            <button type="button" onClick={() => onManage(member)} className="btn-gold h-11 w-full text-[13px]">
+              Manage {isSelf ? 'My Character' : member.name}
             </button>
-            {isSelf && (
-              <button
-                onClick={() => onView(member, true)}
-                className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.13em] text-text-dim transition hover:border-gold/25 hover:text-gold-light"
-              >
-                Power
-              </button>
-            )}
-
-          </div>
-        </div>
-      </div>
-    </article>
-  )
-})
-
-function Stat({ label, value }) {
-  return (
-    <div className="min-w-0 rounded border border-white/[0.05] bg-white/[0.02] px-2.5 py-2">
-      <div className="mb-0.5 text-[8px] font-bold uppercase tracking-[0.15em] text-text-dim">{label}</div>
-      <div className="truncate font-mono text-[10px] font-semibold text-white/80">{value}</div>
-    </div>
-  )
-}
-
-function ProfileModal({ member, members, isSelf, currentUser, onClose, onPowerUpdate, onPowerCooldownReset, onProfileUpdate, canResetPowerCooldown }) {
-  const [powerValue, setPowerValue] = useState(formatPowerInput(member.power ?? 0))
-  const [selectedClass, setSelectedClass] = useState(member.cls || 'Berserker')
-  const [selectedGrade, setSelectedGrade] = useState(member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary'))
-  const [selectedLevel, setSelectedLevel] = useState(String(member.character_level || member.level || 1))
-  const [selectedAwakening, setSelectedAwakening] = useState(String(Number(member.awakening_stage) || 0))
-  const [saving, setSaving] = useState(false)
-  const [profileSaving, setProfileSaving] = useState(false)
-  const [, setClock] = useState(0)
-
-  // Only Admin, Master, and Elder can edit Power. Regular members cannot edit Power at all.
-  const viewerIsStaff = isStaffRole(currentUser?.role)
-  const cooldown = viewerIsStaff ? 0 : getCooldown(member)
-  const canEditPower = viewerIsStaff
-
-  useEffect(() => {
-    if (!member?.power_next_update_at) return undefined
-    const id = setInterval(() => setClock(value => value + 1), 1000)
-    return () => clearInterval(id)
-  }, [member?.power_next_update_at])
-  const rank = members.findIndex(m => m.id === member.id) + 1
-  const previous = useMemo(() => {
-    const index = members.findIndex(m => m.id === member.id)
-    return index >= 0 ? members[index + 1] : null
-  }, [members, member.id])
-
-  useEffect(() => {
-    setPowerValue(formatPowerInput(member.power ?? 0))
-    setSelectedClass(member.cls || 'Berserker')
-    setSelectedGrade(member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary'))
-    setSelectedLevel(String(member.character_level || member.level || 1))
-    setSelectedAwakening(String(Number(member.awakening_stage) || 0))
-  }, [member.id, member.power, member.cls, member.profile_grade, member.character_level, member.awakening_stage])
-
-  const submit = async () => {
-    const value = Number(powerValue.replace(/\D/g, ''))
-    if (!Number.isFinite(value) || value < 0) return
-    if (value === Number(member.power || 0)) return
-    if (cooldown > 0) return
-
-    setSaving(true)
-    const ok = await onPowerUpdate(member, value)
-    setSaving(false)
-    if (ok) onClose()
-  }
-
-  const currentLevel = Number(member.character_level || member.level || 1)
-  const currentAwakening = Number(member.awakening_stage) || 0
-  // Only Admin, Master, and Elder can edit character customization.
-  // Staff can edit their own profile or any other member's profile.
-  const canManageProfile = viewerIsStaff
-  const canManageOwnGrade = canManageProfile
-  const currentGradeKey = member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary')
-  const hasProfileChanges =
-    selectedClass !== (member.cls || 'Berserker') ||
-    (canManageOwnGrade && selectedGrade !== currentGradeKey) ||
-    Number(selectedLevel || 1) !== currentLevel ||
-    Number(selectedAwakening || 0) !== currentAwakening
-
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-3 backdrop-blur-md sm:p-5"
-      onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="max-h-[94vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-gold/20 bg-[#08090b] shadow-[0_35px_120px_rgba(0,0,0,.78)]">
-        <div className="grid max-h-[94vh] overflow-y-auto lg:grid-cols-[minmax(390px,43%)_1fr]">
-          {/* YMIR-style character side */}
-          <div className="relative min-h-0 overflow-visible border-b border-white/[0.07] bg-[#08090b] lg:min-h-[620px] lg:overflow-y-auto lg:border-b-0 lg:border-r">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(245,197,66,.08),transparent_42%)]" />
-
-            <div className="relative px-3 pt-3 sm:px-7 sm:pt-7">
-              <CharacterArtwork member={member} variant="modal" />
-            </div>
-
-            <div className="relative mt-3 mx-4 border-t border-white/[0.07] px-1 pt-3 pb-3 sm:mt-4 sm:mx-7 sm:pt-4 sm:pb-2">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="text-[8px] font-black uppercase tracking-[0.24em] text-gold-light">
-                    PeakyBlinder Character
-                  </div>
-                  <h2 className="mt-1 truncate font-spectral text-2xl font-black tracking-tight text-white">
-                    {member.name}
-                  </h2>
-                  <p className="mt-1 text-[11px] text-text-dim">
-                    {member.cls} · Level {currentLevel} · {currentAwakening > 0 ? `Awakening Stage ${currentAwakening}` : 'Not Awakened'}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="text-[8px] font-bold uppercase tracking-[0.18em] text-text-dim">Clan Rank</div>
-                  <div className="font-spectral text-xl font-black text-gold-bright">#{rank}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Profile information side */}
-          <div className="min-w-0 p-5 sm:p-7 lg:p-8">
-            <div className="mb-6 flex items-start justify-between gap-4">
-              <div>
-                <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.26em] text-gold-light">
-                  Character Profile
-                </div>
-                <h3 className="font-spectral text-3xl font-black tracking-tight text-white">
-                  Growth Power
-                </h3>
-                <p className="mt-1 text-xs text-text-dim">
-                  {member.cls} · {(member.profile_grade === 'Mythic' || member.profile_grade === 'Mythical') ? 'Mythical' : (member.profile_grade || 'Legendary')} · Server {PROFILE_SERVER}
-                </p>
-              </div>
-              <button
-                onClick={onClose}
-                className="shrink-0 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-text-dim transition hover:border-gold/30 hover:text-gold-light"
-                aria-label="Close profile"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="rounded-2xl border border-gold/20 bg-[radial-gradient(circle_at_100%_0%,rgba(245,197,66,.10),transparent_45%),#0d0e10] p-5 sm:p-6">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <div className="text-[9px] font-black uppercase tracking-[0.22em] text-text-dim">Current Power</div>
-                  <div className="mt-1 font-mono text-4xl font-black tracking-tight text-gold-bright sm:text-5xl">
-                    {formatNumber(member.power)}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-text-dim">Clan Rank</div>
-                  <div className="mt-1 font-spectral text-2xl font-black text-white">#{rank}</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-3">
-              <Info label="Class" value={member.cls || '—'} />
-              <Info label="Level" value={currentLevel} />
-              <Info label="Awakening" value={currentAwakening > 0 ? `Stage ${currentAwakening}` : 'Not Awakened'} />
-              <Info label="Region" value={PROFILE_REGION} />
-              <Info label="Server" value={PROFILE_SERVER} />
-              <Info label="Card Grade" value={(member.profile_grade === 'Mythic' || member.profile_grade === 'Mythical') ? 'Mythical' : (member.profile_grade || 'Legendary')} />
-              <Info label="Last Update" value={formatDateTime(member.power_updated_at)} />
-            </div>
-
-            {canManageProfile && (
-              <div className="mt-5 rounded-2xl border border-white/[0.08] bg-[#0c0d10] overflow-hidden">
-                <div className="border-b border-white/[0.06] px-4 py-3.5 sm:px-5">
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-light">
-                    {isSelf ? 'Customize My Character' : `Customize ${member.name}'s Character`}
-                  </div>
-                  <div className="mt-1 text-[10px] leading-relaxed text-text-dim">
-                    Staff-only profile controls. You can edit class, level, awakening, and Card Grade for this character.
-                  </div>
-                </div>
-
-                <div className="p-4 sm:p-5">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label>
-                      <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-text-dim">Class</span>
-                      <select className="input w-full" value={selectedClass} onChange={e => setSelectedClass(e.target.value)} disabled={profileSaving}>
-                        {Object.keys(CLASS_META).map(c => <option key={c}>{c}</option>)}
-                      </select>
-                    </label>
-
-                    <div>
-                      <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-text-dim">Card Grade</span>
-                      {canManageOwnGrade ? (
-                        <select
-                          className="input w-full"
-                          value={selectedGrade}
-                          onChange={e => setSelectedGrade(e.target.value)}
-                          disabled={profileSaving}
-                        >
-                          {Object.keys(GRADE_META).map(g => (
-                            <option key={g} value={g}>
-                              {GRADE_META[g].label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="flex h-[42px] items-center justify-between rounded-md border border-gold/20 bg-gold/[0.04] px-3">
-                          <span className="text-sm font-semibold text-gold-light">
-                            {(member.profile_grade === 'Mythic' || member.profile_grade === 'Mythical') ? 'Mythical' : (member.profile_grade || 'Legendary')}
-                          </span>
-                          <span className="text-[8px] font-black uppercase tracking-[0.12em] text-text-dim">Staff Only</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <label>
-                      <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-text-dim">Character Level</span>
-                      <input
-                        className="input w-full font-mono"
-                        type="number"
-                        min="1"
-                        value={selectedLevel}
-                        onChange={e => setSelectedLevel(e.target.value.replace(/\D/g, ''))}
-                        disabled={profileSaving}
-                      />
-                    </label>
-
-                    <label>
-                      <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-text-dim">Awakening</span>
-                      <select className="input w-full" value={selectedAwakening} onChange={e => setSelectedAwakening(e.target.value)} disabled={profileSaving}>
-                        {AWAKENING_OPTIONS.map(option => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/20 px-3 py-2.5">
-                    <div className="flex items-center gap-2 text-[9px] leading-relaxed text-text-dim">
-                      <span className="text-gold-bright">◆</span>
-                      <span>
-                        <strong className="font-bold text-white/75">Admin, Master, and Elder</strong> can edit this character's profile settings.
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={async () => {
-                      if (!hasProfileChanges) return
-                      const nextLevel = Math.max(1, Number.parseInt(selectedLevel, 10) || 1)
-                      const nextAwakening = Math.min(1, Math.max(0, Number.parseInt(selectedAwakening, 10) || 0))
-                      setProfileSaving(true)
-                      const profileUpdates = {
-                        cls: selectedClass,
-                        character_level: nextLevel,
-                        awakening_stage: nextAwakening,
-                      }
-                      if (canManageOwnGrade) profileUpdates.profile_grade = selectedGrade
-                      const ok = await onProfileUpdate(member, profileUpdates)
-                      setProfileSaving(false)
-                      if (ok) onClose()
-                    }}
-                    disabled={profileSaving || !hasProfileChanges}
-                    className="btn-gold mt-3 w-full disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {profileSaving ? 'Saving...' : 'Save Character Style'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {canResetPowerCooldown && !isSelf && (
-              <div className="mt-5 rounded-2xl border border-gold/15 bg-gold/[0.03] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gold-light">Staff Power Control</div>
-                    <div className="mt-1 text-[10px] leading-relaxed text-text-dim">
-                      Reset this player's 7-day Power window and give them 3 fresh updates immediately.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onPowerCooldownReset}
-                    className="shrink-0 rounded-lg border border-gold/30 bg-gold/10 px-3.5 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-gold-light hover:bg-gold/15"
-                  >
-                    ↻ Reset Power
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {canEditPower && (
-              <section className="mt-5 overflow-hidden rounded-xl border border-gold/15 bg-[#0b0c0f]">
-                <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] px-4 py-3.5 sm:px-5">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-light">{isSelf ? 'Update My Power' : 'Staff Power Update'}</div>
-                    <div className="mt-1 text-[10px] text-text-dim">{viewerIsStaff ? (isSelf ? 'Unlimited Power updates for staff.' : "Staff can update this member's Power without the 7-day limit.") : 'Up to 3 updates in each 7-day window.'}</div>
-                  </div>
-
-                  <div className={`shrink-0 rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] ${
-                    viewerIsStaff
-                      ? 'border-gold/30 bg-gold/[0.06] text-gold-bright'
-                      : cooldown > 0
-                        ? 'border-white/10 bg-white/[0.02] text-text-dim'
-                        : 'border-emerald-400/25 bg-emerald-400/[0.05] text-emerald-300'
-                  }`}>
-                    {viewerIsStaff ? 'UNLIMITED' : cooldown > 0 ? `LOCKED · ${cooldownText(cooldown)}` : `${getPowerWindowRemaining(member)} / 3 LEFT`}
-                  </div>
-                </div>
-
-                <div className="px-4 py-4 sm:px-5">
-                  <div className="mb-4 flex items-center gap-2">
-                    {[0, 1, 2].map(index => {
-                      const active = viewerIsStaff || (cooldown <= 0 && index < getPowerWindowRemaining(member))
-                      return (
-                        <div
-                          key={index}
-                          className={`h-1 flex-1 rounded-full ${active ? 'bg-gold/80' : 'bg-white/[0.08]'}`}
-                        />
-                      )
-                    })}
-                  </div>
-
-                  {viewerIsStaff || cooldown <= 0 ? (
-                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
-                      <div>
-                        <div className="mb-1.5 flex items-center justify-between">
-                          <label className="text-[8px] font-bold uppercase tracking-[0.16em] text-text-dim" htmlFor="profile-power-input">
-                            New Growth Power
-                          </label>
-                          <span className="font-mono text-[10px] font-bold text-white/60">
-                            Current {formatPowerInput(member.power)}
-                          </span>
-                        </div>
-                        <input
-                          id="profile-power-input"
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9.]*"
-                          value={powerValue}
-                          onChange={e => setPowerValue(formatPowerInput(e.target.value))}
-                          disabled={saving}
-                          className="input h-12 w-full border-white/10 bg-black/25 px-4 font-mono text-lg font-bold tracking-wide text-white placeholder:text-white/20 focus:border-gold/60"
-                          placeholder="100.000"
-                          aria-label="New Growth Power"
-                          autoComplete="off"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={submit}
-                        disabled={saving || !powerValue || Number(powerValue.replace(/\D/g, '')) === Number(member.power || 0)}
-                        className="btn-gold h-12 self-end rounded-lg px-5 text-[10px] font-black uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-35"
-                      >
-                        {saving ? 'Saving...' : 'Update Power'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between gap-4 rounded-lg border border-white/[0.06] bg-black/20 px-4 py-3">
-                      <div>
-                        <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-text-dim">Power updates locked</div>
-                        <div className="mt-1 text-xs font-semibold text-white/75">All 3 updates have been used.</div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="font-mono text-sm font-black text-gold-light">{cooldownText(cooldown)}</div>
-                        <div className="mt-0.5 text-[8px] text-text-dim">{formatDateTime(member.power_next_update_at)}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {cooldown <= 0 && (
-                    <div className="mt-2 text-[9px] text-text-dim">
-                      Enter the exact Growth Power from in-game. <span className="font-mono text-white/60">100000</span> is displayed as <span className="font-mono font-bold text-gold-light">100.000</span>.
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
-
-            <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <Info label="Clan Role" value={member.role || 'Member'} />
-              <Info label="Attendance" value={formatNumber(member.attendance)} />
-              <Info label="Coins" value={formatNumber(member.coins)} />
-              <Info label="Last Power Rank" value={previous ? formatNumber(previous.power) : '—'} />
-            </div>
-
-
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function Info({ label, value }) {
-  const isLastPowerRank = label === 'Last Power Rank'
-  return (
-    <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-      <div className="text-[8px] font-bold uppercase tracking-[0.17em] text-text-dim">{label}</div>
-      <div className={`mt-1 text-sm font-semibold text-white/85 ${isLastPowerRank ? 'whitespace-nowrap' : 'break-words'}`}>
-        {value}
-      </div>
-    </div>
-  )
-}
-
-function RankingPanel({ members, onClose }) {
-  const ranking = [...members].sort((a, b) => Number(b.power || 0) - Number(a.power || 0))
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="max-h-[88vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-gold/20 bg-[#0a0b0d] shadow-[0_35px_100px_rgba(0,0,0,.7)]">
-        <div className="flex items-center justify-between border-b border-white/[0.07] p-5">
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-gold-light">PeakyBlinder</div>
-            <h2 className="font-spectral text-2xl font-bold text-white">Clan Power Ranking</h2>
-          </div>
-          <button onClick={onClose} className="rounded-md border border-white/10 px-3 py-2 text-xs text-text-dim hover:text-gold-light">✕</button>
-        </div>
-        <div className="max-h-[70vh] overflow-y-auto p-3">
-          {ranking.map((member, index) => {
-            const meta = CLASS_META[member.cls] || CLASS_META.Berserker
-            return (
-              <div key={member.id} className={`mb-2 flex items-center gap-3 rounded-lg border p-3 ${index < 3 ? 'border-gold/15 bg-gold/[0.04]' : 'border-white/[0.05] bg-white/[0.015]'}`}>
-                <div className={`w-8 text-center font-spectral text-xl font-bold ${index === 0 ? 'text-gold-bright' : index === 1 ? 'text-white/75' : index === 2 ? 'text-orange-300' : 'text-text-dim'}`}>#{index + 1}</div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-black/40 text-lg">{meta.icon}</div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold text-white">{member.name}</div>
-                  <div className="text-[10px] text-text-dim">{member.cls} · Lv. {member.character_level || member.level || 1} · {Number(member.awakening_stage) > 0 ? `Awk ${member.awakening_stage}` : 'No Awakening'}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono text-sm font-black text-gold-bright">{formatNumber(member.power)}</div>
-                  <div className="text-[8px] uppercase tracking-wider text-text-dim">Power</div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function StaffControlPanel({ members, currentUser, onSelectMember, onCoinDecay, onCoinReset, coinActionBusy, onClose }) {
-  const [search, setSearch] = useState('')
-  const [selectedMemberIds, setSelectedMemberIds] = useState([])
-
-  const manageableMembers = members.filter(member => {
-    const query = search.trim().toLowerCase()
-    if (!query) return true
-
-    return `${member.name || ''} ${member.username || ''}`.toLowerCase().includes(query)
-  })
-
-  const toggleMember = (memberId) => {
-    setSelectedMemberIds(current => {
-      const key = String(memberId)
-      return current.some(id => String(id) === key)
-        ? current.filter(id => String(id) !== key)
-        : [...current, memberId]
-    })
-  }
-
-  const selectAllVisible = () => {
-    setSelectedMemberIds(current => {
-      const visibleIds = manageableMembers.map(member => member.id)
-      const allSelected = visibleIds.length > 0 && visibleIds.every(id => current.some(selectedId => String(selectedId) === String(id)))
-      if (allSelected) {
-        return current.filter(selectedId => !visibleIds.some(id => String(id) === String(selectedId)))
-      }
-      return [...current, ...visibleIds.filter(id => !current.some(selectedId => String(selectedId) === String(id)))]
-    })
-  }
-
-  const selectedCount = selectedMemberIds.length
-  const allVisibleSelected = manageableMembers.length > 0 && manageableMembers.every(member =>
-    selectedMemberIds.some(id => String(id) === String(member.id))
-  )
-
-  const handleSelectedDecay = async () => {
-    if (!selectedCount) return
-    const ok = await onCoinDecay(selectedMemberIds)
-    if (ok) setSelectedMemberIds([])
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
-      onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-gold/20 bg-[#0a0b0d] shadow-[0_35px_100px_rgba(0,0,0,.7)]">
-        <div className="flex items-start justify-between gap-4 border-b border-white/[0.07] p-5 sm:p-6">
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-gold-light">Clan Administration</div>
-            <h2 className="font-spectral text-2xl font-bold text-white">Staff Control Panel</h2>
-            <p className="mt-1 text-[11px] leading-relaxed text-text-dim">
-              Manage individual members and apply Coin economy actions. Select specific members or select all members for Coin decay.
+          ) : isSelf && (
+            <p className="mb-inset rounded-2xl px-4 py-3 text-[12px] leading-5 text-text-dim">
+              Need to update your Power or character? Ask a Master or Elder to update it for you.
             </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="shrink-0 rounded-md border border-white/10 px-3 py-2 text-xs text-text-dim hover:border-gold/25 hover:text-gold-light"
-            aria-label="Close staff control panel"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="max-h-[70vh] overflow-y-auto p-4 sm:p-5">
-          <div className="mb-5 rounded-xl border border-gold/20 bg-gold/[0.035] p-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0">
-                <div className="text-[9px] font-black uppercase tracking-[0.2em] text-gold-light">🪙 Coin Economy</div>
-                <div className="mt-1 font-semibold text-white">Selected Member Coin Decay</div>
-                <p className="mt-1 max-w-2xl text-[12px] leading-relaxed text-text-dim">
-                  Select the members you want to affect. The 25% decay reduces each selected balance to 75% of its current value. Admin, Master, and Elder can also be selected.
-                </p>
-              </div>
-
-              <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={handleSelectedDecay}
-                  disabled={coinActionBusy || selectedCount === 0}
-                  className="rounded-lg border border-gold/30 bg-gold/[0.06] px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-gold-light transition hover:bg-gold/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {coinActionBusy ? 'Processing...' : `↓ 25% Decay${selectedCount ? ` (${selectedCount})` : ''}`}
-                </button>
-                <button
-                  type="button"
-                  onClick={onCoinReset}
-                  disabled={coinActionBusy}
-                  className="rounded-lg border border-red-500/35 bg-red-500/[0.06] px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-red-300 transition hover:bg-red-500/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {coinActionBusy ? 'Processing...' : '⚠ Reset Everyone to 0'}
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-3 rounded-lg border border-gold/15 bg-black/10 px-3 py-2 text-[12px] leading-relaxed text-text-dim">
-              <span className="font-black uppercase tracking-wider text-gold-light">Selected:</span> {selectedCount} member{selectedCount === 1 ? '' : 's'}.
-              {' '}Use <span className="font-bold text-white">Select All</span> below to select every member currently shown.
-            </div>
-          </div>
-
-          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-text-dim">
-                Select members for Coin decay
-              </div>
-              <div className="mt-1 text-[11px] text-text-dim">
-                Search by character name or username. Click a member's name/card to open their staff controls.
-              </div>
-            </div>
-            <div className="relative w-full sm:w-72">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-dim">⌕</span>
-              <input
-                className="input w-full pl-8"
-                placeholder="Search player name..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
-          </div>
-
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2">
-            <div className="text-[12px] text-text-dim">
-              Showing <span className="font-bold text-white">{manageableMembers.length}</span> member{manageableMembers.length === 1 ? '' : 's'}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={selectAllVisible}
-                disabled={manageableMembers.length === 0 || coinActionBusy}
-                className="rounded-md border border-gold/25 bg-gold/[0.04] px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-gold-light hover:bg-gold/[0.10] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {allVisibleSelected ? 'Clear All' : 'Select All'}
-              </button>
-              {selectedCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedMemberIds([])}
-                  disabled={coinActionBusy}
-                  className="rounded-md border border-white/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-text-dim hover:bg-white/5 disabled:opacity-40"
-                >
-                  Clear Selection
-                </button>
-              )}
-            </div>
-          </div>
-
-          {manageableMembers.length === 0 ? (
-            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-8 text-center text-sm text-text-dim">
-              No matching members found.
-            </div>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {manageableMembers.map(member => {
-                const roleClass = ROLE_META[member.role] || ROLE_META.Member
-                const isSelected = selectedMemberIds.some(id => String(id) === String(member.id))
-                return (
-                  <div
-                    key={member.id}
-                    className={`group flex items-center gap-3 rounded-xl border p-3 text-left transition ${
-                      isSelected
-                        ? 'border-gold/40 bg-gold/[0.07]'
-                        : 'border-white/[0.07] bg-white/[0.02] hover:border-gold/30 hover:bg-gold/[0.04]'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleMember(member.id)}
-                      disabled={coinActionBusy}
-                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-black transition ${
-                        isSelected
-                          ? 'border-gold/70 bg-gold text-black'
-                          : 'border-white/20 bg-black/20 text-transparent hover:border-gold/40'
-                      }`}
-                      aria-label={`${isSelected ? 'Deselect' : 'Select'} ${member.name || 'member'}`}
-                    >
-                      ✓
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onSelectMember(member)}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <div className="truncate font-semibold text-white group-hover:text-gold-light">{member.name}</div>
-                      <div className="mt-0.5 truncate text-[10px] text-text-dim">
-                        {member.cls || '—'} · Lv. {member.character_level || member.level || 1} · {formatNumber(member.coins)} Coins
-                      </div>
-                    </button>
-
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className={`rounded-md border px-2 py-1 text-[8px] font-black uppercase tracking-[0.12em] ${roleClass}`}>
-                        {member.role || 'Member'}
-                      </span>
-                      {member.id === currentUser?.id && (
-                        <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-text-dim">
-                          You
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onSelectMember(member)}
-                      className="shrink-0 px-1 text-text-dim transition hover:text-gold-light"
-                      aria-label={`Manage ${member.name || 'member'}`}
-                    >
-                      ›
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
-function StaffEditor({ member, ctx, onClose, onResetPassword }) {
-  const { updateMember, deleteMember, addToast, currentUser } = ctx
-  const [coinInput, setCoinInput] = useState(String(member.coins ?? 0))
-  const [powerInput, setPowerInput] = useState(String(member.power ?? 0))
-  const [classInput, setClassInput] = useState(member.cls || 'Berserker')
-  const [gradeInput, setGradeInput] = useState(member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary'))
-  const [levelInput, setLevelInput] = useState(String(member.character_level || member.level || 1))
-  const [awakeningInput, setAwakeningInput] = useState(String(Number(member.awakening_stage) || 0))
-  const [saving, setSaving] = useState(false)
+/* ═══════════════════════════════════════════════════════════════════════════
+   Power ranking
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-  const isAdmin = currentUser?.role === 'Admin'
-  const isMaster = isAdmin || currentUser?.role === 'Master'
-  const isStaff = ['Admin', 'Master', 'Elder'].includes(currentUser?.role)
-  const isSelf = member.id === currentUser?.id
-  const canManage = isStaff
-  const canRemove = !isSelf && (isAdmin || (isMaster && !['Admin', 'Master'].includes(member.role)) || (currentUser?.role === 'Elder' && member.role === 'Member'))
-  const canRole = !isSelf && (isAdmin || (isMaster && !['Admin', 'Master'].includes(member.role)))
-  const canReset = !isSelf && (
-    isAdmin ||
-    (currentUser?.role === 'Master' && !['Admin', 'Master'].includes(member.role)) ||
-    (currentUser?.role === 'Elder' && member.role === 'Member')
+function RankingModal({ ranked, currentUserId, onOpen, onClose }) {
+  const listRef = useRef(null)
+  const myIndex = ranked.findIndex(m => sameId(m.id, currentUserId))
+  const jumpToMe = () => {
+    listRef.current?.querySelector('[data-me="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+  return (
+    <Modal
+      title="Clan Power Ranking"
+      eyebrow="PeakyBlinder"
+      onClose={onClose}
+      size="max-w-xl"
+      footer={myIndex >= 0 ? (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[12px] text-text-dim">You are <strong className="font-mono text-text-bright">#{myIndex + 1}</strong> of {ranked.length}</span>
+          <button type="button" onClick={jumpToMe} className="mb-chip h-9 rounded-full px-4 text-[12px] font-semibold text-emerald-300">
+            Jump to me ↓
+          </button>
+        </div>
+      ) : null}
+    >
+      <ol ref={listRef} className="divide-y divide-white/[.06]">
+        {ranked.map((member, i) => {
+          const rank = i + 1
+          const self = sameId(member.id, currentUserId)
+          return (
+            <li key={member.id} data-me={self ? 'true' : undefined}>
+              <button
+                type="button"
+                onClick={() => onOpen(member)}
+                className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[.04] sm:px-5 ${self ? 'bg-emerald-400/[.05]' : ''}`}
+              >
+                <span className={`flex h-8 w-10 shrink-0 items-center justify-center rounded-full border font-mono text-[12px] font-bold ${RANK_TONES[rank] || 'border-white/10 bg-white/[.04] text-text-dim'}`}>
+                  #{rank}
+                </span>
+                <span className="mb-emblem flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[15px] text-gold-light" aria-hidden="true">
+                  {(CLASS_META[member.cls] || CLASS_META.Berserker).icon}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-semibold text-text-bright">
+                    {member.name}{self && <span className="ml-1.5 text-[11px] font-bold text-emerald-300">· You</span>}
+                  </span>
+                  <span className="block truncate text-[12px] text-text-dim">
+                    {member.cls || 'Berserker'} · Lv. {levelOf(member)} · {awakeningLabel(awakeningOf(member))}
+                  </span>
+                </span>
+                <span className="shrink-0 text-right font-mono text-[14px] font-bold text-gold-bright">{formatNumber(member.power)}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+    </Modal>
   )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Staff panel: member list + coin economy
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function StaffPanel({ members, currentUserId, busy, onManage, onCoinDecay, onCoinReset, onClose }) {
+  const [search, setSearch] = useState('')
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return q ? members.filter(m => `${m.name || ''} ${m.username || ''}`.toLowerCase().includes(q)) : members
+  }, [members, search])
+
+  const allVisibleSelected = visible.length > 0 && visible.every(m => selectedIds.has(String(m.id)))
+  const selectedCount = selectedIds.size
+
+  const toggle = id => setSelectedIds(prev => {
+    const next = new Set(prev)
+    const key = String(id)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
+
+  const toggleVisible = () => setSelectedIds(prev => {
+    const next = new Set(prev)
+    visible.forEach(m => (allVisibleSelected ? next.delete(String(m.id)) : next.add(String(m.id))))
+    return next
+  })
+
+  const runDecay = async () => {
+    const ok = await onCoinDecay([...selectedIds])
+    if (ok) setSelectedIds(new Set())
+  }
+
+  return (
+    <Modal title="Staff Controls" eyebrow="Clan Administration" onClose={onClose} busy={busy} size="max-w-2xl">
+      <div className="space-y-4 p-4 sm:p-5">
+        {/* Coin economy */}
+        <section className="mb-inset mb-gold rounded-2xl p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h3 className="text-[14px] font-bold text-text-bright">🪙 Coin Economy</h3>
+              <p className="mt-0.5 text-[12px] leading-5 text-text-dim">
+                Select members below, then apply a 25% decay (balances drop to 75%).
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={runDecay}
+                disabled={busy || selectedCount === 0}
+                className="btn-gold h-10 px-4 text-[12px]"
+              >
+                {busy ? 'Working…' : `↓ 25% Decay${selectedCount ? ` (${selectedCount})` : ''}`}
+              </button>
+              <button
+                type="button"
+                onClick={onCoinReset}
+                disabled={busy}
+                className="mb-chip mb-chip-red h-10 rounded-full px-4 text-[12px] font-bold text-red-300 disabled:opacity-40"
+              >
+                Reset All to 0
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Search + selection */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-text-dim" aria-hidden="true">⌕</span>
+            <input
+              className="input h-10 pl-9 pr-3 text-[13px]"
+              placeholder="Search name or username…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              autoComplete="off"
+              aria-label="Search members"
+            />
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button type="button" onClick={toggleVisible} disabled={busy || visible.length === 0} className="mb-chip h-10 flex-1 rounded-full px-4 text-[12px] font-semibold text-text-bright disabled:opacity-40 sm:flex-none">
+              {allVisibleSelected ? 'Clear Visible' : 'Select Visible'}
+            </button>
+            {selectedCount > 0 && (
+              <button type="button" onClick={() => setSelectedIds(new Set())} disabled={busy} className="mb-chip h-10 flex-1 rounded-full px-4 text-[12px] font-semibold text-text-dim disabled:opacity-40 sm:flex-none">
+                Clear ({selectedCount})
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Member list */}
+        <div className="mb-well overflow-hidden rounded-2xl">
+          {visible.length === 0 ? (
+            <div className="px-4 py-10 text-center text-[13px] text-text-dim">No matching members.</div>
+          ) : (
+            <ul className="max-h-[46vh] divide-y divide-white/[.06] overflow-y-auto">
+              {visible.map(member => {
+                const checked = selectedIds.has(String(member.id))
+                return (
+                  <li key={member.id} className={`flex items-center gap-3 px-3 py-2.5 ${checked ? 'bg-gold/[.07]' : ''}`}>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={checked}
+                      onClick={() => toggle(member.id)}
+                      disabled={busy}
+                      aria-label={`${checked ? 'Deselect' : 'Select'} ${member.name || 'member'}`}
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border text-[13px] font-black transition ${checked ? 'border-gold bg-gold text-black' : 'border-white/20 bg-black/25 text-transparent hover:border-gold/50'}`}
+                    >
+                      ✓
+                    </button>
+                    <button type="button" onClick={() => onManage(member)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[14px] font-semibold text-text-bright">
+                          {member.name}{sameId(member.id, currentUserId) && <span className="ml-1.5 text-[11px] font-bold text-emerald-300">· You</span>}
+                        </span>
+                        <span className="block truncate text-[12px] text-text-dim">
+                          {member.cls || '—'} · Lv. {levelOf(member)} · <span className="text-gold-light">{formatNumber(member.coins)} coins</span>
+                        </span>
+                      </span>
+                      <RolePill role={member.role} />
+                      <span className="shrink-0 text-[18px] text-text-dim" aria-hidden="true">›</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Staff editor: one place to edit a member
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function StaffEditor({ member, ctx, ask, onClose, onResetPassword, onResetPowerWindow }) {
+  const { updateMember, deleteMember, addToast, currentUser } = ctx
+  const [form, setForm] = useState(() => ({
+    cls: member.cls || 'Berserker',
+    grade: gradeKeyOf(member),
+    level: String(levelOf(member)),
+    awakening: String(awakeningOf(member)),
+    coins: String(toNumber(member.coins)),
+    power: formatPowerInput(member.power ?? 0),
+  }))
+  const [busy, setBusy] = useState(false)
+  const set = key => e => setForm(f => ({ ...f, [key]: e.target.value }))
+
+  const role = currentUser?.role
+  const isAdmin = role === 'Admin'
+  const isMaster = isAdmin || role === 'Master'
+  const isSelf = sameId(member.id, currentUser?.id)
+  const canManage = isStaffRole(role)
+  const canRemove = !isSelf && (isAdmin || (isMaster && !['Admin', 'Master'].includes(member.role)) || (role === 'Elder' && member.role === 'Member'))
+  const canRole = !isSelf && (isAdmin || (isMaster && !['Admin', 'Master'].includes(member.role)))
+  const canReset = !isSelf && (isAdmin || (role === 'Master' && !['Admin', 'Master'].includes(member.role)) || (role === 'Elder' && member.role === 'Member'))
+  const powerLockedFor = getCooldown(member)
 
   const save = async () => {
     if (!canManage) {
       addToast('Only Admin, Master, and Elder can use Staff Controls.', 'red', 'Not Allowed')
       return
     }
-
-    const coins = Number.parseInt(coinInput, 10)
-    const power = Number.parseInt(powerInput, 10)
+    const coins = Number.parseInt(digitsOnly(form.coins), 10)
+    const power = parsePowerInput(form.power)
     if (!Number.isFinite(coins) || coins < 0 || !Number.isFinite(power) || power < 0) {
       addToast('Enter valid coin and power values.', 'red', 'Error')
       return
     }
+
     const updates = {}
-    if (coins !== Number(member.coins || 0)) updates.coins = coins
-    if (classInput !== (member.cls || 'Berserker')) updates.cls = classInput
-    const currentGradeKey = member.profile_grade === 'Mythical' ? 'Mythic' : (member.profile_grade || 'Legendary')
-    if (gradeInput !== currentGradeKey) updates.profile_grade = gradeInput
-    const level = Math.max(1, Number.parseInt(levelInput, 10) || 1)
-    const awakening = Math.max(0, Number.parseInt(awakeningInput, 10) || 0)
-    if (level !== Number(member.character_level || member.level || 1)) updates.character_level = level
-    if (awakening !== Number(member.awakening_stage || 0)) updates.awakening_stage = awakening
-    if (power !== Number(member.power || 0)) {
+    if (coins !== toNumber(member.coins)) updates.coins = coins
+    if (form.cls !== (member.cls || 'Berserker')) updates.cls = form.cls
+    if (form.grade !== gradeKeyOf(member)) updates.profile_grade = form.grade
+    const level = Math.max(1, Number.parseInt(form.level, 10) || 1)
+    const awakening = Math.min(1, Math.max(0, Number.parseInt(form.awakening, 10) || 0))
+    if (level !== levelOf(member)) updates.character_level = level
+    if (awakening !== awakeningOf(member)) updates.awakening_stage = awakening
+    if (power !== toNumber(member.power)) {
       updates.power = power
       updates.power_updated_at = new Date().toISOString()
       updates.power_next_update_at = new Date(Date.now() + POWER_COOLDOWN_MS).toISOString()
     }
+
     if (!Object.keys(updates).length) {
       onClose()
       return
     }
-    setSaving(true)
-    const ok = await updateMember(member.id, updates)
-    setSaving(false)
-    if (ok) {
-      addToast(`${member.name} updated.`, 'gold', 'Member Updated')
-      onClose()
+
+    setBusy(true)
+    try {
+      const ok = await updateMember(member.id, updates)
+      if (ok) {
+        addToast(`${member.name} updated.`, 'gold', 'Member Updated')
+        onClose()
+      }
+    } catch (error) {
+      console.error('[Members] update failed:', error)
+      addToast(error?.message || 'Could not save changes.', 'red', 'Update Failed')
+    } finally {
+      setBusy(false)
     }
   }
 
-  const changeRole = async (newRole) => {
-    if (!canRole) return
-    if (newRole === member.role) return
-    if (newRole === 'Admin' && !window.confirm(`Promote ${member.name} to ADMIN?`)) return
-    if (newRole === 'Master' && !isAdmin && !window.confirm(`Promote ${member.name} to MASTER?`)) return
-    const ok = await updateMember(member.id, { role: newRole })
-    if (ok) {
-      addToast(`${member.name} is now ${newRole}.`, 'gold', 'Role Updated')
-      onClose()
+  const changeRole = async newRole => {
+    if (!canRole || newRole === member.role || busy) return
+    if (newRole === 'Admin' || (newRole === 'Master' && !isAdmin)) {
+      const ok = await ask({
+        title: `Promote ${member.name} to ${newRole}?`,
+        body: newRole === 'Admin'
+          ? 'Admins have full control over the clan portal.'
+          : 'Masters can manage members, roles and the clan economy.',
+        confirmLabel: `Make ${newRole}`,
+        tone: newRole === 'Admin' ? 'danger' : 'gold',
+      })
+      if (!ok) return
+    }
+    setBusy(true)
+    try {
+      const ok = await updateMember(member.id, { role: newRole })
+      if (ok) {
+        addToast(`${member.name} is now ${newRole}.`, 'gold', 'Role Updated')
+        onClose()
+      }
+    } catch (error) {
+      addToast(error?.message || 'Could not change role.', 'red', 'Role Update Failed')
+    } finally {
+      setBusy(false)
     }
   }
 
   const remove = async () => {
-    if (!canRemove) return
-    if (!window.confirm(`Remove ${member.name}?`)) return
-    const ok = await deleteMember(member.id)
-    if (ok) {
-      addToast(`${member.name} removed.`, 'red', 'Removed')
-      onClose()
+    if (!canRemove || busy) return
+    const ok = await ask({
+      title: `Remove ${member.name}?`,
+      body: 'Their account will be deleted from the clan portal.',
+      note: 'This cannot be undone.',
+      confirmLabel: 'Remove member',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setBusy(true)
+    try {
+      const removed = await deleteMember(member.id)
+      if (removed) {
+        addToast(`${member.name} removed.`, 'red', 'Removed')
+        onClose()
+      }
+    } catch (error) {
+      addToast(error?.message || 'Could not remove member.', 'red', 'Remove Failed')
+    } finally {
+      setBusy(false)
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="w-full max-w-lg rounded-2xl border border-gold/20 bg-[#0a0b0d] p-5 shadow-[0_35px_100px_rgba(0,0,0,.7)] sm:p-6">
-        <div className="mb-5 flex items-start justify-between">
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-gold-light">Staff Controls</div>
-            <h2 className="font-spectral text-2xl font-bold text-white">{member.name}</h2>
-          </div>
-          <button onClick={onClose} className="rounded-md border border-white/10 px-3 py-2 text-xs text-text-dim">✕</button>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label>
-            <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-gold-light">Class</span>
-            <select className="input w-full" value={classInput} onChange={e => setClassInput(e.target.value)}>
-              {Object.keys(CLASS_META).map(c => <option key={c}>{c}</option>)}
-            </select>
-          </label>
-          <label>
-            <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-gold-light">Card Grade</span>
-            <select className="input w-full" value={gradeInput} onChange={e => setGradeInput(e.target.value)}>
-              {Object.keys(GRADE_META).map(g => <option key={g}>{g}</option>)}
-            </select>
-          </label>
-          <label>
-            <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-gold-light">Level</span>
-            <input className="input w-full font-mono" type="number" min="1" value={levelInput} onChange={e => setLevelInput(e.target.value.replace(/\D/g, ''))} />
-          </label>
-          <label>
-            <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-gold-light">Awakening</span>
-            <select className="input w-full" value={awakeningInput} onChange={e => setAwakeningInput(e.target.value)}>
-              {AWAKENING_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </label>
-          <label>
-            <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-gold-light">🪙 Coins</span>
-            <input
-              className="input w-full font-mono"
-              type="number"
-              min="0"
-              value={coinInput}
-              onChange={e => setCoinInput(e.target.value)}
-              disabled={!canManage}
-            />
-          </label>
-          <label>
-            <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-gold-light">⚡ Power</span>
-            <input className="input w-full font-mono" type="number" min="0" value={powerInput} onChange={e => setPowerInput(e.target.value)} />
-          </label>
-        </div>
-        <div className="mt-4 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[10px] text-text-dim">
-          Admin, Master, and Elder can use Staff Controls on their own account and on other members. Class, Card Grade, Level, Awakening, Coins, and Power are available to staff. Role changes, password resets, and removal remain protected by the existing hierarchy.
-        </div>
-        {(canRole || canReset) && (
-          <div className="mt-4 border-t border-white/[0.07] pt-4">
-            <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.18em] text-text-dim">Role & Access</div>
-            <div className="flex flex-wrap gap-2">
-              {canRole && member.role === 'Member' && (
-                <button onClick={() => changeRole('Elder')} className="rounded-md border border-orange-300/30 px-3 py-2 text-[10px] font-bold text-orange-300 hover:bg-orange-300/10">↑ Promote Elder</button>
-              )}
-              {canRole && member.role === 'Elder' && (
-                <>
-                  <button onClick={() => changeRole('Member')} className="rounded-md border border-yellow-300/30 px-3 py-2 text-[10px] font-bold text-yellow-300 hover:bg-yellow-300/10">↓ Demote Member</button>
-                  {isMaster && <button onClick={() => changeRole('Master')} className="rounded-md border border-gold/35 px-3 py-2 text-[10px] font-bold text-gold-bright hover:bg-gold/10">★ Promote Master</button>}
-                </>
-              )}
-              {canRole && member.role === 'Master' && isAdmin && (
-                <button onClick={() => changeRole('Elder')} className="rounded-md border border-orange-300/30 px-3 py-2 text-[10px] font-bold text-orange-300 hover:bg-orange-300/10">↓ Demote to Elder</button>
-              )}
-              {canRole && isAdmin && member.role !== 'Admin' && (
-                <button onClick={() => changeRole('Admin')} className="rounded-md border border-red-400/30 px-3 py-2 text-[10px] font-bold text-red-300 hover:bg-red-400/10">⚠ Make Admin</button>
-              )}
-              {canRole && isAdmin && member.role === 'Admin' && (
-                <button onClick={() => changeRole('Master')} className="rounded-md border border-yellow-400/30 px-3 py-2 text-[10px] font-bold text-yellow-300 hover:bg-yellow-400/10">↓ Demote Admin</button>
-              )}
-              {canReset && (
-                <button onClick={() => { onClose(); onResetPassword(member) }} className="rounded-md border border-gold/30 px-3 py-2 text-[10px] font-bold text-gold-light hover:bg-gold/10">🔑 Reset Password</button>
-              )}
-            </div>
-          </div>
-        )}
+  const roleActions = []
+  if (canRole) {
+    if (member.role === 'Member') roleActions.push(['Elder', '↑ Promote to Elder', 'text-orange-300'])
+    if (member.role === 'Elder') {
+      roleActions.push(['Member', '↓ Demote to Member', 'text-yellow-300'])
+      if (isMaster) roleActions.push(['Master', '★ Promote to Master', 'text-gold-bright'])
+    }
+    if (member.role === 'Master' && isAdmin) roleActions.push(['Elder', '↓ Demote to Elder', 'text-orange-300'])
+    if (isAdmin && member.role !== 'Admin') roleActions.push(['Admin', '⚠ Make Admin', 'text-red-300'])
+    if (isAdmin && member.role === 'Admin') roleActions.push(['Master', '↓ Demote Admin', 'text-yellow-300'])
+  }
 
-        <div className="mt-5 flex flex-wrap justify-between gap-2">
+  return (
+    <Modal
+      title={member.name}
+      eyebrow={isSelf ? 'Manage My Character' : 'Staff Controls'}
+      onClose={onClose}
+      busy={busy}
+      size="max-w-xl"
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
           {canRemove ? (
-            <button onClick={remove} className="rounded-md border border-red-500/35 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-red-300 hover:bg-red-500/10">Remove Member</button>
+            <button type="button" onClick={remove} disabled={busy} className="h-10 rounded-full px-4 text-[12px] font-bold text-red-300 hover:bg-red-500/[.1] disabled:opacity-40">
+              Remove Member
+            </button>
           ) : <span />}
           <div className="flex gap-2">
-            <button onClick={onClose} className="rounded-md border border-white/10 px-4 py-2 text-xs text-text-dim hover:text-white">Cancel</button>
-            <button onClick={save} disabled={saving || !canManage} className="btn-gold text-xs px-4 py-2">{saving ? 'Saving...' : 'Save Changes'}</button>
+            <button type="button" onClick={onClose} disabled={busy} className="mb-chip h-10 flex-1 rounded-full px-5 text-[13px] font-semibold text-text-bright disabled:opacity-40 sm:flex-none">
+              Cancel
+            </button>
+            <button type="button" onClick={save} disabled={busy} className="btn-gold h-10 flex-1 px-5 text-[13px] sm:flex-none">
+              {busy ? 'Saving…' : 'Save Changes'}
+            </button>
           </div>
         </div>
+      }
+    >
+      <div className="space-y-4 p-4 sm:p-5">
+        <section>
+          <h3 className="mb-2.5 text-[12px] font-bold uppercase tracking-[.12em] text-gold-dim">Character</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Class">
+              <select className="input h-10 px-3 text-[13px]" value={form.cls} onChange={set('cls')} disabled={busy}>
+                {CLASS_NAMES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+            <Field label="Card Grade">
+              <select className="input h-10 px-3 text-[13px]" value={form.grade} onChange={set('grade')} disabled={busy}>
+                {Object.entries(GRADE_META).map(([key, g]) => <option key={key} value={key}>{g.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Level">
+              <input
+                className="input h-10 px-3 font-mono text-[13px]"
+                inputMode="numeric"
+                value={form.level}
+                onChange={e => setForm(f => ({ ...f, level: digitsOnly(e.target.value).slice(0, 4) }))}
+                disabled={busy}
+              />
+            </Field>
+            <Field label="Awakening">
+              <select className="input h-10 px-3 text-[13px]" value={form.awakening} onChange={set('awakening')} disabled={busy}>
+                {AWAKENING_OPTIONS.map(o => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
+              </select>
+            </Field>
+          </div>
+        </section>
+
+        <section>
+          <h3 className="mb-2.5 text-[12px] font-bold uppercase tracking-[.12em] text-gold-dim">Power & Coins</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="⚡ Growth Power" hint="Exact in-game value. 100000 shows as 100.000.">
+              <input
+                className="input h-10 px-3 font-mono text-[14px] font-bold"
+                inputMode="numeric"
+                value={form.power}
+                onChange={e => setForm(f => ({ ...f, power: formatPowerInput(e.target.value) }))}
+                disabled={busy}
+                placeholder="100.000"
+              />
+            </Field>
+            <Field label="🪙 Coins">
+              <input
+                className="input h-10 px-3 font-mono text-[14px] font-bold"
+                inputMode="numeric"
+                value={form.coins}
+                onChange={e => setForm(f => ({ ...f, coins: digitsOnly(e.target.value) }))}
+                disabled={busy || !canManage}
+              />
+            </Field>
+          </div>
+        </section>
+
+        {(roleActions.length > 0 || canReset || !isSelf) && (
+          <section className="mb-inset rounded-2xl p-3.5">
+            <h3 className="mb-2.5 text-[12px] font-bold uppercase tracking-[.12em] text-text-dim">Role & Access</h3>
+            <div className="flex flex-wrap gap-2">
+              {roleActions.map(([target, label, tone]) => (
+                <button key={label} type="button" onClick={() => changeRole(target)} disabled={busy} className={`mb-chip rounded-full px-3.5 py-2 text-[12px] font-bold ${tone} disabled:opacity-40`}>
+                  {label}
+                </button>
+              ))}
+              {canReset && (
+                <button type="button" onClick={() => { onClose(); onResetPassword(member) }} disabled={busy} className="mb-chip mb-chip-gold rounded-full px-3.5 py-2 text-[12px] font-bold text-gold-light disabled:opacity-40">
+                  🔑 Reset Password
+                </button>
+              )}
+              {!isSelf && (
+                <button type="button" onClick={() => onResetPowerWindow(member)} disabled={busy} className="mb-chip rounded-full px-3.5 py-2 text-[12px] font-bold text-text-bright disabled:opacity-40">
+                  ↻ Reset Power Window
+                </button>
+              )}
+            </div>
+            {!isSelf && powerLockedFor > 0 && (
+              <p className="mt-2 text-[11px] text-text-dim">Power window currently locked until {formatDate(member.power_next_update_at)}.</p>
+            )}
+          </section>
+        )}
       </div>
-    </div>
+    </Modal>
   )
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Add member
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function AddMemberModal({ isMaster, isAdmin, busy, onSubmit, onClose }) {
+  const [form, setForm] = useState(EMPTY_NEW_MEMBER)
+  const set = key => e => setForm(f => ({ ...f, [key]: e.target.value }))
+
+  return (
+    <Modal
+      title="Add New Character"
+      eyebrow="Clan Administration"
+      onClose={onClose}
+      busy={busy}
+      size="max-w-xl"
+      footer={
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={busy} className="mb-chip h-10 rounded-full px-5 text-[13px] font-semibold text-text-bright disabled:opacity-40">Cancel</button>
+          <button type="button" onClick={() => onSubmit(form)} disabled={busy} className="btn-gold h-10 px-5 text-[13px]">
+            {busy ? 'Adding…' : 'Add Character'}
+          </button>
+        </div>
+      }
+    >
+      <form
+        className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5"
+        onSubmit={e => { e.preventDefault(); if (!busy) onSubmit(form) }}
+      >
+        <Field label="Character Name">
+          <input className="input h-10 px-3 text-[13px]" value={form.name} onChange={set('name')} disabled={busy} autoComplete="off" />
+        </Field>
+        <Field label="Username">
+          <input className="input h-10 px-3 text-[13px]" value={form.username} onChange={set('username')} disabled={busy} autoComplete="off" autoCapitalize="none" spellCheck={false} />
+        </Field>
+        <Field label="Password">
+          <input className="input h-10 px-3 text-[13px]" type="password" value={form.password} onChange={set('password')} disabled={busy} autoComplete="new-password" />
+        </Field>
+        <Field label="Role">
+          <select className="input h-10 px-3 text-[13px]" value={form.role} onChange={set('role')} disabled={busy}>
+            <option value="Member">Member</option>
+            {isMaster && <option value="Elder">Elder</option>}
+            {isMaster && <option value="Master">Master</option>}
+            {isAdmin && <option value="Admin">Admin (hidden)</option>}
+          </select>
+        </Field>
+        <Field label="Class">
+          <select className="input h-10 px-3 text-[13px]" value={form.cls} onChange={set('cls')} disabled={busy}>
+            {CLASS_NAMES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+        <Field label="Card Grade">
+          <select className="input h-10 px-3 text-[13px]" value={form.profile_grade} onChange={set('profile_grade')} disabled={busy}>
+            {Object.entries(GRADE_META).map(([key, g]) => <option key={key} value={key}>{g.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Growth Power">
+          <input
+            className="input h-10 px-3 font-mono text-[13px]"
+            inputMode="numeric"
+            value={form.power}
+            onChange={e => setForm(f => ({ ...f, power: formatPowerInput(e.target.value) }))}
+            disabled={busy}
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Level">
+            <input
+              className="input h-10 px-3 font-mono text-[13px]"
+              inputMode="numeric"
+              value={form.character_level}
+              onChange={e => setForm(f => ({ ...f, character_level: digitsOnly(e.target.value).slice(0, 4) }))}
+              disabled={busy}
+            />
+          </Field>
+          <Field label="Awakening">
+            <select className="input h-10 px-3 text-[13px]" value={String(form.awakening_stage)} onChange={e => setForm(f => ({ ...f, awakening_stage: Number(e.target.value) }))} disabled={busy}>
+              {AWAKENING_OPTIONS.map(o => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
+            </select>
+          </Field>
+        </div>
+        {/* lets Enter submit the form */}
+        <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
+      </form>
+    </Modal>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Page
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 export default function Members({ ctx }) {
-  const { members = [], allMembers: ctxAllMembers = [], saveMember, updateMember, deleteMember, resetMemberPowerCooldown, currentUser, addToast } = ctx
+  const {
+    members = [], allMembers: ctxAllMembers = [], saveMember,
+    resetMemberPowerCooldown, currentUser, addToast,
+  } = ctx
+
+  const [ask, confirmDialog] = useConfirm()
   const [search, setSearch] = useState('')
   const [classFilter, setClassFilter] = useState('All')
+  const deferredSearch = useDeferredValue(search)
+  const [shownCount, setShownCount] = useState(CARD_BATCH)
+  const searchRef = useRef(null)
+  const sentinelRef = useRef(null)
   const [sortBy, setSortBy] = useState('power')
+  const [viewingId, setViewingId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
   const [showRanking, setShowRanking] = useState(false)
-  const [selected, setSelected] = useState(null)
   const [showStaffPanel, setShowStaffPanel] = useState(false)
-  const [staffEditing, setStaffEditing] = useState(null)
   const [resetTarget, setResetTarget] = useState(null)
-  const [coinActionBusy, setCoinActionBusy] = useState(false)
-  const [coinResetConfirmOpen, setCoinResetConfirmOpen] = useState(false)
-  const [coinResetConfirmation, setCoinResetConfirmation] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [newMember, setNewMember] = useState({
-    name: '', username: '', password: '', cls: 'Berserker', power: 10000, character_level: 1, awakening_stage: 0, role: 'Member', profile_grade: 'Legendary',
-  })
-  const isAdmin = currentUser?.role === 'Admin'
-  const isMaster = currentUser?.role === 'Master' || isAdmin
-  const isElder = currentUser?.role === 'Elder' || isMaster
-  const visibleMembers = useMemo(() => isAdmin ? members : members.filter(m => m.role !== 'Admin'), [members, isAdmin])
+  const [adding, setAdding] = useState(false)
+  const [coinBusy, setCoinBusy] = useState(false)
 
-  const ranked = useMemo(() => [...visibleMembers].sort((a, b) => Number(b.power || 0) - Number(a.power || 0)), [visibleMembers])
-  const rankMap = useMemo(() => new Map(ranked.map((m, i) => [m.id, i + 1])), [ranked])
+  const role = currentUser?.role
+  const isAdmin = role === 'Admin'
+  const isMaster = isAdmin || role === 'Master'
+  const isElder = isMaster || role === 'Elder'
+
+  const visibleMembers = useMemo(
+    () => (isAdmin ? members : members.filter(m => m.role !== 'Admin')),
+    [members, isAdmin]
+  )
+  const ranked = useMemo(
+    () => [...visibleMembers].sort((a, b) => toNumber(b.power) - toNumber(a.power)),
+    [visibleMembers]
+  )
+  const rankMap = useMemo(() => new Map(ranked.map((m, i) => [String(m.id), i + 1])), [ranked])
+
+  const classes = useMemo(
+    () => ['All', ...new Set(visibleMembers.map(m => m.cls).filter(Boolean))],
+    [visibleMembers]
+  )
+
+  // Number of members per class, for the filter chips.
+  const classCounts = useMemo(() => {
+    const counts = new Map()
+    for (const m of visibleMembers) if (m.cls) counts.set(m.cls, (counts.get(m.cls) || 0) + 1)
+    return counts
+  }, [visibleMembers])
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    const list = visibleMembers.filter(m => {
-      const matchesSearch = !q || `${m.name || ''} ${m.username || ''} ${m.cls || ''}`.toLowerCase().includes(q)
-      const matchesClass = classFilter === 'All' || m.cls === classFilter
-      return matchesSearch && matchesClass
-    })
-    return [...list].sort((a, b) => {
+    const q = deferredSearch.trim().toLowerCase()
+    const list = visibleMembers.filter(m =>
+      (!q || `${m.name || ''} ${m.username || ''} ${m.cls || ''}`.toLowerCase().includes(q)) &&
+      (classFilter === 'All' || m.cls === classFilter)
+    )
+    return list.sort((a, b) => {
       if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''))
       if (sortBy === 'role') return String(a.role || '').localeCompare(String(b.role || ''))
-      return Number(b.power || 0) - Number(a.power || 0)
+      return toNumber(b.power) - toNumber(a.power)
     })
-  }, [visibleMembers, search, classFilter, sortBy])
+  }, [visibleMembers, deferredSearch, classFilter, sortBy])
 
-  const classes = useMemo(() => ['All', ...new Set(visibleMembers.map(m => m.cls).filter(Boolean))], [visibleMembers])
+  // Start from the first batch whenever the filters change.
+  useEffect(() => { setShownCount(CARD_BATCH) }, [deferredSearch, classFilter, sortBy])
+  const shownMembers = useMemo(() => filtered.slice(0, shownCount), [filtered, shownCount])
+  const hasMore = shownCount < filtered.length
 
-  const ownMember = members.find(m => m.id === currentUser?.id) || visibleMembers.find(m => m.username && m.username === currentUser?.username)
+  // Load the next batch shortly before the end of the grid scrolls into view.
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !hasMore || typeof IntersectionObserver === 'undefined') return undefined
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) setShownCount(c => c + CARD_BATCH)
+    }, { rootMargin: '600px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [hasMore, shownMembers.length])
 
-  const handleCoinDecay = async (selectedMemberIds = []) => {
-    if (!currentUser || !isElder) {
-      addToast('Only Admin, Master, and Elder can use Global Coin Controls.', 'red', 'Not Allowed')
-      return false
+  // Press "/" anywhere on the page to jump to the search box.
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      e.preventDefault()
+      searchRef.current?.focus()
     }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
-    // Use the complete member list from App.jsx so Admin accounts are included
-    // even when the current viewer normally has hidden Admin visibility.
-    const allMemberRows = Array.isArray(ctxAllMembers) && ctxAllMembers.length > 0
-      ? ctxAllMembers
-      : (Array.isArray(members) ? members : [])
+  const isFiltering = search.trim() !== '' || classFilter !== 'All'
+  const clearFilters = useCallback(() => { setSearch(''); setClassFilter('All') }, [])
 
-    const selectedKeys = new Set((Array.isArray(selectedMemberIds) ? selectedMemberIds : []).map(id => String(id)))
-    const targetRows = selectedKeys.size > 0
-      ? allMemberRows.filter(member => selectedKeys.has(String(member.id)))
-      : []
-    const memberCount = targetRows.length
+  const ownMember = useMemo(
+    () => members.find(m => sameId(m.id, currentUser?.id)) ||
+      visibleMembers.find(m => m.username && m.username === currentUser?.username),
+    [members, visibleMembers, currentUser?.id, currentUser?.username]
+  )
 
-    if (memberCount === 0) {
-      addToast('Select at least one member for Coin Decay.', 'red', 'No Members Selected')
-      return false
-    }
+  // Look modals up by id so they always show the latest member data after a save.
+  const allList = allRows(ctxAllMembers, members)
+  const viewing = viewingId != null ? allList.find(m => sameId(m.id, viewingId)) : null
+  const editing = editingId != null ? allList.find(m => sameId(m.id, editingId)) : null
 
-    const confirmed = window.confirm(
-      `⚠️ APPLY 25% COIN DECAY?\n\nThis will reduce the Coin balances of ${memberCount} selected member${memberCount === 1 ? '' : 's'} to 75% of their current amount.\n\nAdmin, Master, and Elder can be included.\n\nThis changes the live Coin balances immediately.`
+  // Close a modal whose member no longer exists (e.g. removed).
+  useEffect(() => {
+    if (viewingId != null && !viewing) setViewingId(null)
+    if (editingId != null && !editing) setEditingId(null)
+  }, [viewingId, viewing, editingId, editing])
+
+  const openProfile = useCallback(member => {
+    setShowRanking(false)
+    setViewingId(member.id)
+  }, [])
+
+  const browseProfile = useCallback(member => setViewingId(member.id), [])
+
+  const openEditor = useCallback(member => {
+    setViewingId(null)
+    setShowStaffPanel(false)
+    setEditingId(member.id)
+  }, [])
+
+  /* ── Coin economy ─────────────────────────────────────────────────────── */
+
+  // Runs one update per member and reports partial failures instead of
+  // stopping silently halfway. Always reloads so the page shows the truth.
+  const updateCoinsFor = async (rows, coinsFor) => {
+    const results = await Promise.allSettled(
+      rows.map(m => ctx.supabase.from('members').update({ coins: coinsFor(m) }).eq('id', m.id))
     )
-    if (!confirmed) return false
+    const failed = results.filter(r => r.status === 'rejected' || r.value?.error)
+    await ctx.reloadMembers?.()
+    return { failed: failed.length, firstError: failed[0]?.reason || failed[0]?.value?.error }
+  }
 
-    setCoinActionBusy(true)
+  const handleCoinDecay = async selectedIds => {
+    if (!isElder) {
+      addToast('Only Admin, Master, and Elder can use coin controls.', 'red', 'Not Allowed')
+      return false
+    }
+    const keys = new Set(selectedIds.map(String))
+    const targets = allRows(ctxAllMembers, members).filter(m => keys.has(String(m.id)))
+    if (!targets.length) {
+      addToast('Select at least one member for coin decay.', 'red', 'No Members Selected')
+      return false
+    }
+
+    const ok = await ask({
+      title: 'Apply 25% coin decay?',
+      body: `${targets.length} member${targets.length === 1 ? '' : 's'} will keep 75% of their current coins.`,
+      details: [
+        ...targets.slice(0, 8).map(m => `${m.name}: ${formatNumber(m.coins)} → ${formatNumber(Math.floor(Math.max(0, toNumber(m.coins)) * 0.75))}`),
+        ...(targets.length > 8 ? [`+${targets.length - 8} more`] : []),
+      ],
+      note: 'Balances change immediately.',
+      confirmLabel: 'Apply decay',
+      tone: 'danger',
+    })
+    if (!ok) return false
+
+    setCoinBusy(true)
     try {
-      // Do the update directly through the existing members UPDATE path.
-      // This avoids the RPC 400 error and uses the same database permission
-      // path already used elsewhere by this application.
-      const results = await Promise.all(
-        targetRows.map(member => {
-          const currentCoins = Math.max(0, Number(member.coins) || 0)
-          const newCoins = Math.floor(currentCoins * 0.75)
-
-          return ctx.supabase
-            .from('members')
-            .update({ coins: newCoins })
-            .eq('id', member.id)
-        })
-      )
-
-      const failed = results.find(result => result.error)
-      if (failed?.error) throw failed.error
-
-      await ctx.reloadMembers?.()
-      addToast(`25% Coin decay applied to ${memberCount} selected member${memberCount === 1 ? '' : 's'}.`, 'gold', 'Coin Decay Applied')
+      const { failed, firstError } = await updateCoinsFor(targets, m => Math.floor(Math.max(0, toNumber(m.coins)) * 0.75))
+      if (failed) {
+        console.error('[Coin Decay] failed rows:', firstError)
+        addToast(`${targets.length - failed} updated, ${failed} failed. ${firstError?.message || ''}`.trim(), 'red', 'Coin Decay Incomplete')
+        return false
+      }
+      addToast(`25% coin decay applied to ${targets.length} member${targets.length === 1 ? '' : 's'}.`, 'gold', 'Coin Decay Applied')
       return true
     } catch (error) {
-      console.error('[Coin Decay] FAILED:', error)
-      addToast(error?.message || 'Failed to apply Coin decay.', 'red', 'Coin Decay Failed')
+      console.error('[Coin Decay] failed:', error)
+      addToast(error?.message || 'Failed to apply coin decay.', 'red', 'Coin Decay Failed')
       return false
     } finally {
-      setCoinActionBusy(false)
+      setCoinBusy(false)
     }
   }
 
   const handleCoinReset = async () => {
-    if (!currentUser || !isElder) {
-      addToast('Only Admin, Master, and Elder can use Global Coin Controls.', 'red', 'Not Allowed')
-      return false
+    if (!isElder) {
+      addToast('Only Admin, Master, and Elder can use coin controls.', 'red', 'Not Allowed')
+      return
     }
-
-    const allMemberRows = Array.isArray(ctxAllMembers) && ctxAllMembers.length > 0
-      ? ctxAllMembers
-      : (Array.isArray(members) ? members : [])
-    const memberCount = allMemberRows.length
-
-    if (memberCount === 0) {
+    const targets = allRows(ctxAllMembers, members)
+    if (!targets.length) {
       addToast('No members were found.', 'red', 'Coin Reset Failed')
-      return false
+      return
     }
 
-    const firstWarning = window.confirm(
-      `🚨 FINAL WARNING — RESET EVERYONE'S COINS TO 0\n\nThis will permanently set ALL ${memberCount} member Coin balances to ZERO.\n\nAdmin, Master, Elder, and regular Members are ALL included.\n\nThere is NO undo, restore, or in-website backup for this action.\n\nContinue to the final confirmation?`
-    )
-    if (!firstWarning) return false
+    const ok = await ask({
+      title: "Reset everyone's coins to 0?",
+      body: `All ${targets.length} members, including Admin, Master and Elder, will have 0 coins.`,
+      note: 'There is no undo or backup for this.',
+      confirmLabel: 'Reset all coins',
+      tone: 'danger',
+      requireText: 'RESET',
+    })
+    if (!ok) {
+      addToast('Coin reset cancelled. Nothing was changed.', 'blue', 'Reset Cancelled')
+      return
+    }
 
-    setCoinResetConfirmation('')
-    setCoinResetConfirmOpen(true)
-    return true
-  }
-
-  const confirmCoinReset = async () => {
-    if (coinResetConfirmation !== 'RESET') return false
-
-    const allMemberRows = Array.isArray(ctxAllMembers) && ctxAllMembers.length > 0
-      ? ctxAllMembers
-      : (Array.isArray(members) ? members : [])
-    const memberCount = allMemberRows.length
-
-    setCoinResetConfirmOpen(false)
-    setCoinResetConfirmation('')
-    setCoinActionBusy(true)
+    setCoinBusy(true)
     try {
-      // Direct update through the existing members UPDATE path. No RPC is
-      // required, so an RPC schema/signature problem cannot block the reset.
-      const results = await Promise.all(
-        allMemberRows.map(member =>
-          ctx.supabase
-            .from('members')
-            .update({ coins: 0 })
-            .eq('id', member.id)
-        )
-      )
-
-      const failed = results.find(result => result.error)
-      if (failed?.error) throw failed.error
-
-      await ctx.reloadMembers?.()
-      addToast(`All Coins were permanently reset to 0 for ${memberCount} members.`, 'red', 'Coins Reset')
-      return true
+      const { failed, firstError } = await updateCoinsFor(targets, () => 0)
+      if (failed) {
+        console.error('[Coin Reset] failed rows:', firstError)
+        addToast(`${targets.length - failed} reset, ${failed} failed. ${firstError?.message || ''}`.trim(), 'red', 'Coin Reset Incomplete')
+        return
+      }
+      addToast(`All coins were reset to 0 for ${targets.length} members.`, 'red', 'Coins Reset')
     } catch (error) {
-      console.error('[Coin Reset] FAILED:', error)
-      addToast(error?.message || 'Failed to reset all Coins.', 'red', 'Coin Reset Failed')
-      return false
+      console.error('[Coin Reset] failed:', error)
+      addToast(error?.message || 'Failed to reset all coins.', 'red', 'Coin Reset Failed')
     } finally {
-      setCoinActionBusy(false)
+      setCoinBusy(false)
     }
   }
 
-  const handleProfileUpdate = async (member, updates) => {
-    if (!currentUser || !isStaffRole(currentUser.role)) {
-      addToast('Only Admin, Master, and Elder can edit character profiles.', 'red', 'Not Allowed')
-      return false
-    }
+  /* ── Power window reset ───────────────────────────────────────────────── */
 
-    const ok = await updateMember(member.id, updates)
-    if (ok) {
-      const gradeChanged = Object.prototype.hasOwnProperty.call(updates || {}, 'profile_grade')
-      addToast(
-        member.id === currentUser.id
-          ? (gradeChanged ? 'Your character profile and Card Grade were updated.' : 'Your character profile was updated.')
-          : (gradeChanged ? `${member.name}'s character profile and Card Grade were updated.` : `${member.name}'s character profile was updated.`),
-        'gold',
-        'Character Updated'
-      )
-      return true
+  const handlePowerWindowReset = async member => {
+    if (!isElder) {
+      addToast('Only Admin, Master, and Elder can reset a Power window.', 'red', 'Not Allowed')
+      return
     }
-    return false
+    const ok = await ask({
+      title: `Reset ${member.name}'s Power window?`,
+      body: `${member.name} gets 3 fresh Power updates immediately.`,
+      confirmLabel: 'Reset window',
+    })
+    if (!ok) return
+    try {
+      const done = await resetMemberPowerCooldown?.(member.id)
+      if (done) addToast(`${member.name} can now update Power 3 times.`, 'gold', 'Power Window Reset')
+    } catch (error) {
+      addToast(error?.message || 'Could not reset the Power window.', 'red', 'Reset Failed')
+    }
   }
 
-  const handlePowerCooldownReset = async (member) => {
-    if (!currentUser || !['Admin', 'Master', 'Elder'].includes(currentUser.role)) {
-      addToast('Only Admin, Master, and Elder can reset a Power cooldown.', 'red', 'Not Allowed')
-      return false
-    }
+  /* ── Add member ───────────────────────────────────────────────────────── */
 
-    const confirmed = window.confirm(
-      `Reset the Power cooldown for ${member.name}?\n\nThis will give ${member.name} 3 fresh Power updates immediately.`
-    )
-    if (!confirmed) return false
+  const addMember = async form => {
+    const name = form.name.trim()
+    const username = form.username.trim()
+    const password = form.password.trim()
+    if (!name) { addToast('Character name is required.', 'red', 'Error'); return }
+    if (!username) { addToast('Username is required.', 'red', 'Error'); return }
+    if (!password) { addToast('Password is required.', 'red', 'Error'); return }
 
-    const ok = await resetMemberPowerCooldown?.(member.id)
-    if (ok) {
-      addToast(`${member.name} can now update Power 3 times.`, 'gold', 'Power Cooldown Reset')
-      return true
-    }
-    return false
-  }
-
-  const handlePowerUpdate = async (member, newPower) => {
-    const viewerIsStaff = isStaffRole(currentUser?.role)
-
-    // Power can only be changed by Admin, Master, or Elder.
-    // Staff can change their own Power or any other member's Power.
-    if (!currentUser || !viewerIsStaff) {
-      addToast('Only Admin, Master, and Elder can update Power.', 'red', 'Not Allowed')
-      return false
-    }
-
-    const updates = { power: newPower }
-    const ok = await updateMember(member.id, updates)
-    if (ok) {
-      addToast(
-        member.id === currentUser.id
-          ? `Power updated to ${formatNumber(newPower)}. Staff Power updates are unlimited.`
-          : `${member.name}'s Power updated to ${formatNumber(newPower)}.`,
-        'gold',
-        'Power Updated'
-      )
-      return true
-    }
-    return false
-  }
-
-  const addMember = async () => {
-    if (!newMember.name.trim()) { addToast('Character name is required.', 'red', 'Error'); return }
-    if (!newMember.username.trim()) { addToast('Username is required.', 'red', 'Error'); return }
-    if (!newMember.password.trim()) { addToast('Password is required.', 'red', 'Error'); return }
-    if (visibleMembers.some(m => m.username && m.username.toLowerCase() === newMember.username.toLowerCase())) {
-      addToast('Username already taken.', 'red', 'Error'); return
-    }
+    // Check every account (hidden Admin accounts included) so usernames stay unique.
+    const taken = allRows(ctxAllMembers, members)
+      .some(m => m.username && m.username.toLowerCase() === username.toLowerCase())
+    if (taken) { addToast('Username already taken.', 'red', 'Error'); return }
 
     let finalRole = 'Member'
-    if (isAdmin) finalRole = newMember.role
-    else if (isMaster && ['Elder', 'Master'].includes(newMember.role)) finalRole = newMember.role
-    else if (isElder && newMember.role !== 'Member') {
+    if (isAdmin) finalRole = form.role
+    else if (isMaster && ['Elder', 'Master'].includes(form.role)) finalRole = form.role
+    else if (form.role !== 'Member') {
       addToast('Only Master or Admin can add Elders or Masters.', 'red', 'Not Allowed')
       return
     }
 
-    if (finalRole === 'Master' && !isAdmin && !window.confirm(`Create ${newMember.name.trim()} as a MASTER?`)) return
-    if (finalRole === 'Admin' && !window.confirm(`Create ${newMember.name.trim()} as an ADMIN?`)) return
+    if (finalRole === 'Admin' || (finalRole === 'Master' && !isAdmin)) {
+      const ok = await ask({
+        title: `Create ${name} as ${finalRole === 'Admin' ? 'an Admin' : 'a Master'}?`,
+        confirmLabel: `Create ${finalRole}`,
+        tone: finalRole === 'Admin' ? 'danger' : 'gold',
+      })
+      if (!ok) return
+    }
 
-    setLoading(true)
+    const power = parsePowerInput(form.power)
     const member = {
       id: Date.now(),
-      name: newMember.name.trim(),
-      username: newMember.username.trim(),
-      password: newMember.password.trim(),
-      cls: newMember.cls,
-      power: Number.parseInt(newMember.power, 10) || 10000,
-      character_level: Number.parseInt(newMember.character_level, 10) || 1,
-      awakening_stage: Number.parseInt(newMember.awakening_stage, 10) || 0,
+      name,
+      username,
+      password,
+      cls: form.cls,
+      power: Number.isFinite(power) ? power : 10000,
+      character_level: Math.max(1, Number.parseInt(form.character_level, 10) || 1),
+      awakening_stage: Math.min(1, Math.max(0, toNumber(form.awakening_stage))),
       coins: 100,
       attendance: 0,
       role: finalRole,
       region: PROFILE_REGION,
       server: PROFILE_SERVER,
-      profile_grade: newMember.profile_grade || 'Legendary',
+      profile_grade: form.profile_grade || 'Legendary',
     }
-    const saved = await saveMember(member)
-    setLoading(false)
-    if (saved) {
-      addToast(`${member.name} added as ${finalRole}!`, 'gold', 'Member Added')
-      setNewMember({ name: '', username: '', password: '', cls: 'Berserker', power: 10000, character_level: 1, awakening_stage: 0, role: 'Member', profile_grade: 'Legendary' })
-      setShowAdd(false)
+
+    setAdding(true)
+    try {
+      const saved = await saveMember(member)
+      if (saved) {
+        addToast(`${member.name} added as ${finalRole}!`, 'gold', 'Member Added')
+        setShowAdd(false)
+      }
+    } catch (error) {
+      console.error('[Members] add failed:', error)
+      addToast(error?.message || 'Could not add member.', 'red', 'Add Failed')
+    } finally {
+      setAdding(false)
     }
   }
 
+  /* ── Render ───────────────────────────────────────────────────────────── */
+
+  const ownRank = ownMember ? rankMap.get(String(ownMember.id)) : null
+
   return (
-    <div className="w-full pb-8">
-      <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <div className="mb-1 flex items-center gap-2">
-            <span className="h-px w-7 bg-gold/60" />
-            <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-gold-light">Clan Character Index</span>
-          </div>
-          <h1 className="font-spectral text-3xl font-black tracking-tight text-white">Members</h1>
-          <p className="mt-1 text-xs text-text-dim">{visibleMembers.length} warriors · Growth Power ranking · player profiles</p>
-        </div>
+    <div className="mb-root min-w-0 space-y-4">
+      <style>{MB_STYLES}</style>
+      {confirmDialog}
 
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setShowRanking(true)} className="rounded-md border border-gold/30 bg-gold/5 px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-gold-light hover:bg-gold/10">⚡ Power Ranking</button>
-          {isElder && (
-            <>
-              <button
-                onClick={() => setShowStaffPanel(true)}
-                className="rounded-md border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-text-dim hover:border-gold/25 hover:bg-gold/[0.05] hover:text-gold-light"
-              >
-                ⚙ Staff Controls
-              </button>
-              <button onClick={() => setShowAdd(x => !x)} className="btn-gold px-4 py-2.5 text-[10px]">
-                {showAdd ? '✕ Close' : '+ Add Member'}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="mb-5 rounded-xl border border-white/[0.07] bg-[#0b0c0f]/80 p-3 shadow-[0_10px_35px_rgba(0,0,0,.18)]">
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">
-          <span className="rounded border border-gold/25 bg-gold/5 px-2 py-1 text-gold-light">Region · STEAM</span>
-          <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-1">Server · 005</span>
-          <span className="text-text-dim">Legendary-default character profiles</span>
-        </div>
-        <div className="flex flex-col gap-2 lg:flex-row">
-          <div className="relative flex-1">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-dim">⌕</span>
-            <input className="input w-full pl-8" placeholder="Search character, username or class..." value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-          <select className="input lg:w-44" value={classFilter} onChange={e => setClassFilter(e.target.value)}>
-            {classes.map(c => <option key={c}>{c}</option>)}
-          </select>
-          <select className="input lg:w-44" value={sortBy} onChange={e => setSortBy(e.target.value)}>
-            <option value="power">Highest Power</option>
-            <option value="name">Name</option>
-            <option value="role">Role</option>
-          </select>
-        </div>
-      </div>
-
-      {showAdd && isElder && (
-        <div className="mb-5 rounded-xl border border-gold/25 bg-gradient-to-br from-gold/[0.07] to-transparent p-5">
-          <div className="mb-4">
-            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-gold-light">Clan Administration</div>
-            <h2 className="font-spectral text-xl font-bold text-white">Add New Character</h2>
-          </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <Field label="Character Name *"><input className="input" placeholder="e.g. Arthur Shelby" value={newMember.name} onChange={e => setNewMember({ ...newMember, name: e.target.value })} disabled={loading} /></Field>
-            <Field label="Username *"><input className="input" placeholder="Login username" value={newMember.username} onChange={e => setNewMember({ ...newMember, username: e.target.value })} disabled={loading} /></Field>
-            <Field label="Password *"><input className="input" type="password" placeholder="Initial password" value={newMember.password} onChange={e => setNewMember({ ...newMember, password: e.target.value })} disabled={loading} /></Field>
-            <Field label="Class"><select className="input" value={newMember.cls} onChange={e => setNewMember({ ...newMember, cls: e.target.value })} disabled={loading}>{Object.keys(CLASS_META).map(c => <option key={c}>{c}</option>)}</select></Field>
-            <Field label="Power"><input className="input font-mono" type="number" min="0" value={newMember.power} onChange={e => setNewMember({ ...newMember, power: Number.parseInt(e.target.value, 10) || 0 })} disabled={loading} /></Field>
-            <Field label="Level"><input className="input font-mono" type="number" min="1" value={newMember.character_level} onChange={e => setNewMember({ ...newMember, character_level: e.target.value })} disabled={loading} /></Field>
-            <Field label="Awakening"><select className="input" value={newMember.awakening_stage} onChange={e => setNewMember({ ...newMember, awakening_stage: Number(e.target.value) })} disabled={loading}>{AWAKENING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
-            <Field label="Card Grade"><select className="input" value={newMember.profile_grade} onChange={e => setNewMember({ ...newMember, profile_grade: e.target.value })} disabled={loading}>{Object.keys(GRADE_META).map(g => <option key={g} value={g}>{GRADE_META[g].label}</option>)}</select></Field>
-            <Field label="Role"><select className="input" value={newMember.role} onChange={e => setNewMember({ ...newMember, role: e.target.value })} disabled={loading}><option value="Member">Member</option>{isMaster && <><option value="Elder">Elder</option><option value="Master">Master</option></>}{isAdmin && <option value="Admin">Admin (hidden)</option>}</select></Field>
-          </div>
-          <div className="mt-3 text-[9px] text-text-dim">
-            Card Grade is staff-managed. New characters default to <span className="font-bold text-gold-light">Legendary</span>, but staff can choose the grade when creating the character.
-          </div>
-          <button onClick={addMember} disabled={loading} className="btn-gold mt-4 w-full">{loading ? 'Adding...' : 'Add Character'}</button>
-        </div>
-      )}
-
-      {ownMember && (
-        <div className="mb-5 grid gap-3 md:grid-cols-[1.25fr_.75fr]">
-          <div className="rounded-xl border border-gold/20 bg-gradient-to-r from-gold/[0.08] to-transparent p-4">
-            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-              <div>
-                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-gold-light">Your Character</div>
-                <div className="mt-1 flex items-center gap-3">
-                  <div className="font-spectral text-xl font-bold text-white">{ownMember.name}</div>
-                  <span className="rounded border border-gold/25 bg-gold/5 px-2 py-1 text-[9px] font-bold uppercase text-gold-light">#{rankMap.get(ownMember.id) || '—'}</span>
-                </div>
-                <div className="mt-1 text-xs text-text-dim">{ownMember.cls} · {formatNumber(ownMember.power)} Power</div>
-              </div>
-              {isStaffRole(currentUser?.role) && (
-                <button onClick={() => setSelected(ownMember)} className="rounded-md border border-gold/35 bg-gold/5 px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-gold-light hover:bg-gold/10">Manage My Power</button>
-              )}
+      {/* Header */}
+      <header className="mb-glass rounded-[22px] px-4 py-4 sm:px-6 sm:py-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim">
+              <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_8px_rgba(242,204,96,.7)]" aria-hidden="true" />
+              Clan Character Index
             </div>
+            <h1 className="mt-1 font-spectral text-[2rem] font-bold leading-none text-text-bright sm:text-[2.3rem]">Members</h1>
+            <p className="mt-1.5 text-[13px] text-text-dim">
+              {visibleMembers.length} warriors · Region {PROFILE_REGION} · Server {PROFILE_SERVER}
+            </p>
           </div>
-          <div className="rounded-xl border border-white/[0.07] bg-[#0b0c0f] p-4">
-            <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-text-dim">Power Updates</div>
-            <div className="mt-1 font-mono text-xl font-black text-white">STAFF MANAGED</div>
-            <div className="mt-1 text-[12px] leading-relaxed text-text-dim">Need to update your Power? Please ask an <strong className="font-bold text-white/75">Master, or Elder</strong> to update it for you.</div>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setShowRanking(true)} className="mb-chip mb-chip-gold h-10 rounded-full px-4 text-[12px] font-bold text-gold-light">
+              ⚡ Power Ranking
+            </button>
+            {isElder && (
+              <>
+                <button type="button" onClick={() => setShowStaffPanel(true)} className="mb-chip h-10 rounded-full px-4 text-[12px] font-bold text-text-bright">
+                  ⚙ Staff Controls
+                </button>
+                <button type="button" onClick={() => setShowAdd(true)} className="btn-gold h-10 px-4 text-[12px]">
+                  + Add Member
+                </button>
+              </>
+            )}
           </div>
         </div>
+      </header>
+
+      {/* Your character */}
+      {ownMember && (
+        <button
+          type="button"
+          onClick={() => openProfile(ownMember)}
+          className="mb-glass mb-lift flex w-full items-center gap-3.5 rounded-[20px] px-4 py-3 text-left sm:px-5"
+          style={{ '--mb-rim': `${gradeOf(ownMember).color}80` }}
+        >
+          <span className="mb-emblem flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-spectral text-[15px] font-bold text-gold-light">
+            {initials(ownMember.name)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-bold uppercase tracking-[.12em] text-gold-dim">Your Character</span>
+            <span className="block truncate text-[15px] font-semibold text-text-bright">
+              {ownMember.name} <span className="text-text-dim">· {ownMember.cls || 'Berserker'} · Lv. {levelOf(ownMember)}</span>
+            </span>
+          </span>
+          <span className="shrink-0 text-right">
+            <span className="block font-mono text-[15px] font-bold text-gold-bright">{formatNumber(ownMember.power)}</span>
+            <span className="block text-[12px] text-text-dim">Rank #{ownRank || '—'}</span>
+          </span>
+        </button>
       )}
 
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-text-dim">{filtered.length} Characters</div>
-        <div className="text-[9px] uppercase tracking-wider text-text-dim">Cards ranked by Growth Power</div>
+      {/* Filters */}
+      <div className="mb-glass mb-solid space-y-2.5 rounded-[18px] p-2.5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-text-dim" aria-hidden="true">⌕</span>
+            <input
+              ref={searchRef}
+              type="search"
+              className="input h-10 pl-9 pr-16 text-[13px]"
+              placeholder="Search name, username or class…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape' && search) { e.stopPropagation(); setSearch('') } }}
+              aria-label="Search members"
+              autoComplete="off"
+            />
+            {search ? (
+              <button
+                type="button"
+                onClick={() => { setSearch(''); searchRef.current?.focus() }}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-[16px] text-text-dim hover:bg-white/10 hover:text-text-bright"
+              >
+                ×
+              </button>
+            ) : (
+              <span className="mb-kbd pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded px-1.5 font-mono text-[11px] text-text-dim sm:block" aria-hidden="true">/</span>
+            )}
+          </div>
+
+          <div className="mb-seg flex shrink-0 items-center gap-0.5 rounded-full p-1" role="group" aria-label="Sort members by">
+            <span className="px-2 text-[11px] font-bold uppercase tracking-[.1em] text-text-dim">Sort</span>
+            {SORT_OPTIONS.map(o => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setSortBy(o.value)}
+                aria-pressed={sortBy === o.value}
+                className="h-8 rounded-full px-3.5 text-[12px] font-semibold text-text-dim transition-colors hover:text-text-bright"
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="group" aria-label="Filter by class">
+          {classes.map(c => {
+            const count = c === 'All' ? visibleMembers.length : (classCounts.get(c) || 0)
+            const icon = c === 'All' ? '◇' : (CLASS_META[c]?.icon || '•')
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setClassFilter(c)}
+                aria-pressed={classFilter === c}
+                className="mb-pill flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-semibold"
+              >
+                <span aria-hidden="true">{icon}</span>
+                {c === 'All' ? 'All' : c}
+                <span className="font-mono text-[11px] opacity-70">{count}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
+      <div className="flex items-baseline justify-between gap-3 px-1">
+        <h2 className="font-spectral text-[1.3rem] font-bold text-text-bright">
+          {filtered.length} {filtered.length === 1 ? 'Character' : 'Characters'}
+          {isFiltering && <span className="ml-2 font-sans text-[12px] font-normal text-text-dim">of {visibleMembers.length}</span>}
+        </h2>
+        {isFiltering && (
+          <button type="button" onClick={clearFilters} className="mb-chip h-8 rounded-full px-3 text-[12px] font-semibold text-gold-light">
+            Clear filters ×
+          </button>
+        )}
+      </div>
+
+      {/* Grid */}
       {filtered.length === 0 ? (
-        <div className="rounded-xl border border-white/[0.07] bg-[#0b0c0f] py-16 text-center text-sm text-text-dim">No members found.</div>
+        <div className="mb-glass mb-solid rounded-[20px] px-4 py-14 text-center">
+          <div className="text-[15px] font-semibold text-text-bright">No members found</div>
+          <div className="mt-1 text-[13px] text-text-dim">
+            {search.trim() ? <>Nothing matches “{search.trim()}”{classFilter !== 'All' ? ` in ${classFilter}` : ''}.</> : 'Try a different class.'}
+          </div>
+          <button type="button" onClick={clearFilters} className="mb-chip mt-4 h-9 rounded-full px-4 text-[12px] font-semibold text-gold-light">
+            Show all members
+          </button>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {filtered.map(member => (
-            <PlayerCard
+        <>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+          {shownMembers.map(member => (
+            <MemberCard
               key={member.id}
               member={member}
-              rank={rankMap.get(member.id)}
-              isSelf={member.id === currentUser?.id}
-              onView={setSelected}
+              rank={rankMap.get(String(member.id))}
+              isSelf={sameId(member.id, currentUser?.id)}
+              onOpen={openProfile}
             />
           ))}
         </div>
+        {hasMore && (
+          <div ref={sentinelRef} className="flex justify-center pt-1">
+            <button
+              type="button"
+              onClick={() => setShownCount(c => c + CARD_BATCH)}
+              className="mb-chip h-10 rounded-full px-5 text-[12px] font-semibold text-text-bright"
+            >
+              Show more · {filtered.length - shownCount} left
+            </button>
+          </div>
+        )}
+        </>
       )}
 
-      {selected && (
+      {/* Modals */}
+      {viewing && (
         <ProfileModal
-          key={`${selected.id}-${selected.power}-${selected.power_next_update_at || ''}-${selected.power_updates_used || 0}`}
-          member={selected}
-          members={ranked}
-          isSelf={selected.id === currentUser?.id}
-          currentUser={currentUser}
-          onClose={() => setSelected(null)}
-          onPowerUpdate={handlePowerUpdate}
-          onPowerCooldownReset={() => handlePowerCooldownReset(selected)}
-          onProfileUpdate={handleProfileUpdate}
-          canResetPowerCooldown={Boolean(currentUser && ['Admin', 'Master', 'Elder'].includes(currentUser.role))}
+          member={viewing}
+          ranked={ranked}
+          list={filtered}
+          isSelf={sameId(viewing.id, currentUser?.id)}
+          canManage={isElder}
+          onManage={openEditor}
+          onNavigate={browseProfile}
+          onClose={() => setViewingId(null)}
         />
       )}
 
-      {showRanking && <RankingPanel members={ranked} onClose={() => setShowRanking(false)} />}
+      {showRanking && (
+        <RankingModal ranked={ranked} currentUserId={currentUser?.id} onOpen={openProfile} onClose={() => setShowRanking(false)} />
+      )}
 
-      {showStaffPanel && (
-        <StaffControlPanel
-          members={members}
-          currentUser={currentUser}
+      {showStaffPanel && isElder && (
+        <StaffPanel
+          members={visibleMembers}
+          currentUserId={currentUser?.id}
+          busy={coinBusy}
+          onManage={openEditor}
           onCoinDecay={handleCoinDecay}
           onCoinReset={handleCoinReset}
-          coinActionBusy={coinActionBusy}
-          onSelectMember={member => {
-            setShowStaffPanel(false)
-            setStaffEditing(member)
-          }}
           onClose={() => setShowStaffPanel(false)}
         />
       )}
 
-      {staffEditing && (
-        <StaffEditor member={staffEditing} ctx={ctx} onClose={() => setStaffEditing(null)} onResetPassword={setResetTarget} />
+      {editing && isElder && (
+        <StaffEditor
+          key={editing.id}
+          member={editing}
+          ctx={ctx}
+          ask={ask}
+          onClose={() => setEditingId(null)}
+          onResetPassword={setResetTarget}
+          onResetPowerWindow={handlePowerWindowReset}
+        />
       )}
 
-      {coinResetConfirmOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-red-500/25 bg-[#0b0c0f] p-6 shadow-2xl">
-            <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-red-300">Final Confirmation</div>
-            <div className="mt-3 text-sm text-white">
-              This will permanently set every member's Coins to <span className="font-black text-red-300">0</span>.
-            </div>
-            <label className="mt-3 block">
-              <span className="mb-2 block text-xs text-text-dim">Type <span className="font-black text-white">RESET</span> exactly to continue.</span>
-              <input
-                type="text"
-                value={coinResetConfirmation}
-                onChange={event => setCoinResetConfirmation(event.target.value)}
-                onKeyDown={event => {
-                  if (event.key === 'Enter' && coinResetConfirmation === 'RESET') confirmCoinReset()
-                }}
-                placeholder="Type RESET"
-                autoFocus
-                className="w-full rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-sm font-bold uppercase tracking-wider text-white outline-none placeholder:text-text-dim focus:border-red-400/50"
-              />
-            </label>
-            <div className="mt-5 flex gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setCoinResetConfirmOpen(false)
-                  setCoinResetConfirmation('')
-                  addToast('Coin reset cancelled. Nothing was changed.', 'blue', 'Reset Cancelled')
-                }}
-                className="flex-1 rounded-lg border border-white/10 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-dim hover:bg-white/5"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmCoinReset}
-                disabled={coinResetConfirmation !== 'RESET' || coinActionBusy}
-                className="flex-1 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-red-300 hover:bg-red-500/20"
-              >
-                <span className="font-black">RESET</span>
-              </button>
-            </div>
-          </div>
-        </div>
+      {showAdd && isElder && (
+        <AddMemberModal
+          isMaster={isMaster}
+          isAdmin={isAdmin}
+          busy={adding}
+          onSubmit={addMember}
+          onClose={() => setShowAdd(false)}
+        />
       )}
 
       {resetTarget && (
-        <ResetPasswordModal ctx={ctx} member={resetTarget} onClose={() => setResetTarget(null)} />
+        <ResetPasswordModal
+          ctx={ctx}
+          member={resetTarget}
+          target={resetTarget}
+          onClose={() => setResetTarget(null)}
+        />
       )}
     </div>
-  )
-}
-
-function Field({ label, children }) {
-  return (
-    <label>
-      <span className="mb-1.5 block text-[9px] font-bold uppercase tracking-wider text-text-dim">{label}</span>
-      {children}
-    </label>
   )
 }

@@ -1,6 +1,115 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 const STAFF_ROLES = ['Admin', 'Master', 'Elder']
+
+// Scoped styles for this page (glass look shared with the other portal pages)
+const LR_STYLES = `
+  .lr-root { font-variant-numeric: tabular-nums; }
+  .lr-root .lr-glass {
+    position: relative;
+    background:
+      radial-gradient(120% 70% at 0% 0%, rgba(255,255,255,.07) 0%, transparent 50%),
+      linear-gradient(160deg, rgba(34,28,22,.58) 0%, rgba(12,10,8,.66) 100%);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 22px 60px -30px rgba(0,0,0,.85);
+  }
+  /* Same look without live blur, for repeated cards and modals */
+  .lr-root .lr-solid, .lr-modal .lr-solid {
+    background:
+      radial-gradient(120% 70% at 0% 0%, rgba(255,255,255,.05) 0%, transparent 50%),
+      linear-gradient(160deg, rgba(30,25,20,.96) 0%, rgba(13,11,9,.98) 100%);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 22px 60px -30px rgba(0,0,0,.9);
+  }
+  .lr-root .lr-inset, .lr-modal .lr-inset {
+    background: rgba(0,0,0,.24);
+    border: 1px solid rgba(255,255,255,.07);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+  }
+  .lr-root .lr-btn, .lr-modal .lr-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 40px; padding: 0 14px; border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.03);
+    font-size: 12px; font-weight: 700; color: rgb(var(--lr-dim, 167 156 138));
+    transition: border-color .2s ease, color .2s ease, background .2s ease;
+  }
+  .lr-root .lr-btn:hover:not(:disabled), .lr-modal .lr-btn:hover:not(:disabled) {
+    border-color: rgba(212,175,55,.3); color: #f4ebd9; background: rgba(212,175,55,.05);
+  }
+  .lr-root .lr-btn:disabled, .lr-modal .lr-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .lr-root .lr-btn-danger, .lr-modal .lr-btn-danger { color: #fca5a5; border-color: rgba(248,113,113,.22); background: rgba(248,113,113,.05); }
+  .lr-root .lr-btn-danger:hover:not(:disabled), .lr-modal .lr-btn-danger:hover:not(:disabled) { border-color: rgba(248,113,113,.4); color: #fecaca; background: rgba(248,113,113,.09); }
+
+  /* Segmented control (Single event / Weekly) */
+  .lr-root .lr-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; border-radius: 14px; background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.07); }
+  .lr-root .lr-seg button { min-height: 40px; border-radius: 10px; font-size: 13px; font-weight: 700; color: #a79c8a; transition: background .2s ease, color .2s ease, box-shadow .2s ease; }
+  .lr-root .lr-seg button:hover { color: #f4ebd9; }
+  .lr-root .lr-seg button[aria-pressed="true"] {
+    color: #1a1206;
+    background: linear-gradient(180deg, #f2d27a 0%, #d4af37 55%, #b38d2a 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 6px 18px -8px rgba(212,175,55,.6);
+  }
+
+  /* Week chips */
+  .lr-root .lr-week { flex: 0 0 auto; min-width: 150px; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.025); transition: border-color .2s ease, background .2s ease; }
+  .lr-root .lr-week:hover { border-color: rgba(212,175,55,.28); }
+  .lr-root .lr-week[aria-pressed="true"] { border-color: rgba(212,175,55,.5); background: rgba(212,175,55,.08); box-shadow: 0 0 0 1px rgba(212,175,55,.15), 0 10px 26px -16px rgba(212,175,55,.6); }
+
+  /* Run rows with tick boxes */
+  .lr-root .lr-run { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.018); transition: border-color .2s ease, background .2s ease, opacity .2s ease; }
+  .lr-root .lr-run:hover:not(:disabled) { border-color: rgba(212,175,55,.22); }
+  .lr-root .lr-run[aria-checked="true"] { border-color: rgba(212,175,55,.24); background: rgba(212,175,55,.045); }
+  .lr-root .lr-run:disabled { opacity: .5; cursor: not-allowed; }
+  .lr-root .lr-tick { display: flex; height: 20px; width: 20px; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 6px; border: 1.5px solid rgba(255,255,255,.22); font-size: 12px; font-weight: 900; color: transparent; transition: all .15s ease; }
+  .lr-root .lr-run[aria-checked="true"] .lr-tick { border-color: #d4af37; background: #d4af37; color: #1a1206; }
+
+  .lr-root .lr-field, .lr-modal .lr-field {
+    width: 100%; border-radius: 14px; border: 1px solid rgba(255,255,255,.09); background: rgba(0,0,0,.3);
+    color: #f4ebd9; outline: none; transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .lr-root .lr-field::placeholder, .lr-modal .lr-field::placeholder { color: rgba(167,156,138,.55); }
+  .lr-root .lr-field:focus, .lr-modal .lr-field:focus { border-color: rgba(212,175,55,.45); box-shadow: 0 0 0 3px rgba(212,175,55,.1); }
+
+  /* Items vs players balance bar */
+  .lr-root .lr-bar { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.06); }
+  .lr-root .lr-bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #b38d2a, #f2d27a); transition: width .35s cubic-bezier(.2,.8,.2,1); }
+
+  /* Roll modal */
+  .lr-modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(4,3,2,.78); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  @media (min-width: 640px) { .lr-modal { padding: 20px; } }
+  .lr-modal .lr-stage {
+    position: relative; overflow: hidden; border-radius: 24px; border: 1px solid rgba(212,175,55,.18);
+    background: radial-gradient(circle at 50% 0%, rgba(212,175,55,.14), transparent 60%), rgba(0,0,0,.32);
+  }
+  .lr-modal .lr-rays {
+    position: absolute; left: 50%; top: 50%; width: 900px; height: 900px; margin: -450px 0 0 -450px; pointer-events: none;
+    background: repeating-conic-gradient(from 0deg, transparent 0deg 9deg, rgba(212,175,55,.07) 12deg, transparent 15deg 24deg);
+    -webkit-mask: radial-gradient(circle, #000 8%, transparent 55%); mask: radial-gradient(circle, #000 8%, transparent 55%);
+    animation: lr-spin 50s linear infinite; will-change: transform;
+  }
+  .lr-modal .lr-name { transition: transform .25s cubic-bezier(.2,.8,.2,1), text-shadow .25s ease, color .25s ease; }
+  .lr-modal .lr-name[data-locked="true"] { color: #f2cc60; transform: scale(1.06); text-shadow: 0 0 28px rgba(242,204,96,.45); }
+  .lr-modal .lr-name[data-locked="false"] { color: rgba(244,235,217,.78); }
+  .lr-modal .lr-progress { height: 4px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+  .lr-modal .lr-progress > span { display: block; height: 100%; background: linear-gradient(90deg, #b38d2a, #f2d27a); transition: width .4s ease; }
+  .lr-modal .lr-pop { animation: lr-pop .45s cubic-bezier(.2,.9,.3,1.3) both; }
+  @keyframes lr-spin { to { rotate: 360deg; } }
+  @keyframes lr-pop { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+
+  /* History status accent */
+  .lr-root .lr-hist { position: relative; overflow: hidden; }
+  .lr-root .lr-hist::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--lr-accent, rgba(255,255,255,.12)); }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .lr-root .lr-glass { background: rgba(16,13,11,.96); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lr-modal .lr-rays, .lr-modal .lr-pop { animation: none; }
+  }
+`
+
 const SERVER_TZ = 'Asia/Singapore'
 
 function formatDate(value) {
@@ -104,11 +213,65 @@ function getRunLabel(sessionName) {
 }
 
 function runBadgeClass(run) {
+  if (run === 'Weekly') return 'border-amber-300/30 bg-amber-300/[.08] text-amber-200'
   if (run === 'First Run') return 'border-sky-400/25 bg-sky-400/[.06] text-sky-300'
   if (run === 'Second Run') return 'border-violet-400/25 bg-violet-400/[.06] text-violet-300'
   return 'border-white/10 bg-white/[.03] text-text-dim'
 }
 
+/* ── Weekly roulette (Tuesday → Saturday, server calendar) ───────────── */
+
+const WEEK_DAY_MS = 24 * 60 * 60 * 1000
+
+// Calendar day of an Attendance log as a UTC-midnight Date (no timezone shifting)
+function getLogCalendarDay(log) {
+  const text = String(log?.date || '').trim()
+  let y, m, d
+  let match = text.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (match) {
+    [, y, m, d] = match
+  } else if ((match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) {
+    [, m, d, y] = match
+    if (Number(m) > 12) [m, d] = [d, m]
+  }
+  if (!y && log?.ts) {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: SERVER_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Number(log.ts)))
+    ;[y, m, d] = parts.split('-')
+  }
+  if (!y) return null
+  const day = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)))
+  return Number.isNaN(day.getTime()) ? null : day
+}
+
+function isoDay(date) {
+  return date.toISOString().slice(0, 10)
+}
+
+// Tuesday that starts the Tue–Sat week of this day, or null for Sunday/Monday
+function getWeekStart(day) {
+  if (!day) return null
+  const weekday = day.getUTCDay() // 0 Sun … 6 Sat
+  if (weekday < 2) return null
+  return new Date(day.getTime() - (weekday - 2) * WEEK_DAY_MS)
+}
+
+function formatWeekRange(startIso) {
+  const start = new Date(`${startIso}T00:00:00Z`)
+  const end = new Date(start.getTime() + 4 * WEEK_DAY_MS)
+  const f = opts => new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', ...opts })
+  const sameMonth = start.getUTCMonth() === end.getUTCMonth()
+  return sameMonth
+    ? `${f({ day: 'numeric' }).format(start)}–${f({ day: 'numeric', month: 'short', year: 'numeric' }).format(end)}`
+    : `${f({ day: 'numeric', month: 'short' }).format(start)} – ${f({ day: 'numeric', month: 'short', year: 'numeric' }).format(end)}`
+}
+
+function isWeeklyRoulette(r) {
+  return r?.roulette_type === 'weekly' || (Array.isArray(r?.attendance_log_ids) && r.attendance_log_ids.length > 1)
+}
+
+function displayRunLabel(r) {
+  return isWeeklyRoulette(r) ? 'Weekly' : getRunLabel(r?.session_display_name)
+}
 
 function parseLootInput(value) {
   const name = String(value || '').trim()
@@ -156,18 +319,23 @@ function AttendancePicker({ options, value, onChange, activeAttendanceIds }) {
       <button
         type="button"
         onClick={() => setOpen(prev => !prev)}
-        className="flex min-h-[46px] w-full items-center justify-between gap-3 rounded-xl border border-gold/15 bg-[#151210] px-3 py-2.5 text-left text-sm text-text-bright outline-none transition hover:border-gold/30 focus:border-gold/40 focus:ring-2 focus:ring-gold/10"
+        className="lr-field flex min-h-[52px] items-center justify-between gap-3 px-3.5 py-2.5 text-left"
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <span className="min-w-0 truncate">
-          {selected ? `${selected.event} · ${selected._sessionName} · ${selected._date}` : 'Select attendance record...'}
-        </span>
-        <span className={`shrink-0 text-text-dim transition ${open ? 'rotate-180' : ''}`}>⌄</span>
+        {selected ? (
+          <span className="min-w-0">
+            <span className="block truncate text-[14px] font-bold text-text-bright">{selected.event}</span>
+            <span className="mt-0.5 block truncate text-[12px] text-text-dim">{selected._sessionName} · {selected._date}</span>
+          </span>
+        ) : (
+          <span className="text-[14px] text-text-dim">Select an attendance run…</span>
+        )}
+        <span className={`shrink-0 text-text-dim transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true">⌄</span>
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-2 max-h-80 w-full overflow-auto rounded-xl border border-gold/20 bg-[#151210] p-1.5 shadow-2xl shadow-black/50" role="listbox">
+        <div className="lr-solid absolute z-50 mt-2 max-h-80 w-full overflow-auto rounded-2xl p-1.5" role="listbox">
           {options.map(log => {
             const used = activeAttendanceIds.has(String(log.id))
             const isSelected = String(log.id) === String(value)
@@ -177,31 +345,40 @@ function AttendancePicker({ options, value, onChange, activeAttendanceIds }) {
                 type="button"
                 disabled={used}
                 onClick={() => { onChange(String(log.id)); setOpen(false) }}
-                className={`mb-1 w-full rounded-lg border px-3 py-2.5 text-left transition last:mb-0 ${
+                className={`mb-1 w-full rounded-xl border px-3 py-2.5 text-left transition last:mb-0 ${
                   used
-                    ? 'cursor-not-allowed border-white/[.04] bg-white/[.02] opacity-50'
+                    ? 'cursor-not-allowed border-transparent opacity-45'
                     : isSelected
-                      ? 'border-gold/25 bg-gold/[.08]'
-                      : 'border-transparent bg-transparent hover:border-white/[.07] hover:bg-white/[.05]'
+                      ? 'border-gold/30 bg-gold/[.08]'
+                      : 'border-transparent hover:border-white/[.08] hover:bg-white/[.04]'
                 }`}
                 role="option"
                 aria-selected={isSelected}
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate text-xs font-bold text-white">{log.event}</div>
-                    <div className="mt-0.5 truncate text-[10px] text-white/65">{log._sessionName} · {log._date}</div>
+                    <div className="truncate text-[13px] font-bold text-text-bright">{log.event}</div>
+                    <div className="mt-0.5 truncate text-[11px] text-text-dim">{log._sessionName} · {log._date}</div>
                   </div>
-                  <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-bold ${used ? 'border-emerald-400/15 bg-emerald-400/[.04] text-emerald-300' : 'border-gold/15 bg-gold/[.04] text-gold-light'}`}>
-                    {used ? 'ROULETTE EXISTS' : `${log._participants.length} PLAYERS`}
+                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${used ? 'border-emerald-400/20 bg-emerald-400/[.05] text-emerald-300' : 'border-gold/20 bg-gold/[.05] text-gold-light'}`}>
+                    {used ? 'Has roulette' : `${log._participants.length} players`}
                   </span>
                 </div>
               </button>
             )
           })}
-          {!options.length && <div className="px-3 py-4 text-center text-xs text-white/55">No Attendance records with participants.</div>}
+          {!options.length && <div className="px-3 py-5 text-center text-[13px] text-text-dim">No Attendance runs with players yet.</div>}
         </div>
       )}
+    </div>
+  )
+}
+
+function StatTile({ label, value, tone = 'plain' }) {
+  return (
+    <div className={`rounded-2xl px-3.5 py-3 ${tone === 'gold' ? 'border border-gold/20 bg-gold/[.05]' : 'lr-inset'}`}>
+      <div className={`text-[10px] font-bold uppercase tracking-[.14em] ${tone === 'gold' ? 'text-gold-dim' : 'text-text-dim'}`}>{label}</div>
+      <div className={`mt-1 text-[22px] font-bold leading-none ${tone === 'gold' ? 'text-gold-light' : 'text-text-bright'}`}>{value}</div>
     </div>
   )
 }
@@ -250,6 +427,9 @@ export default function LootRoulette({ ctx }) {
   const [rollRecovery, setRollRecovery] = useState(false)
   const [activeMenuOpen, setActiveMenuOpen] = useState(false)
   const [rollPanelOpen, setRollPanelOpen] = useState(false)
+  const [createMode, setCreateMode] = useState('single') // 'single' | 'weekly'
+  const [selectedWeekKey, setSelectedWeekKey] = useState('')
+  const [excludedWeekLogIds, setExcludedWeekLogIds] = useState(() => new Set())
   const [reducedMotion] = useState(() => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
 
   useEffect(() => {
@@ -264,6 +444,51 @@ export default function LootRoulette({ ctx }) {
   ), [attendanceLogs])
 
   const selectedAttendance = attendanceOptions.find(log => String(log.id) === String(selectedAttendanceId)) || null
+
+  // Attendance runs grouped into Tuesday–Saturday weeks (newest first)
+  const weekGroups = useMemo(() => {
+    const map = new Map()
+    attendanceOptions.forEach(log => {
+      const start = getWeekStart(getLogCalendarDay(log))
+      if (!start) return
+      const key = isoDay(start)
+      if (!map.has(key)) map.set(key, { key, label: formatWeekRange(key), logs: [] })
+      map.get(key).logs.push(log)
+    })
+    return [...map.values()].sort((a, b) => b.key.localeCompare(a.key))
+  }, [attendanceOptions])
+
+  const selectedWeek = weekGroups.find(w => w.key === selectedWeekKey) || null
+  const weekRuns = useMemo(() => (selectedWeek?.logs || []).map(log => ({
+    log,
+    used: activeAttendanceIds.has(String(log.id)),
+    included: !activeAttendanceIds.has(String(log.id)) && !excludedWeekLogIds.has(String(log.id)),
+  })), [selectedWeek, activeAttendanceIds, excludedWeekLogIds])
+  const weekIncludedLogs = weekRuns.filter(r => r.included).map(r => r.log)
+  // One entry per player, however many runs they attended
+  const weekPlayers = useMemo(() => {
+    const map = new Map()
+    weekIncludedLogs.forEach(log => log._participants.forEach(p => {
+      const key = String(p.memberId)
+      if (!map.has(key)) map.set(key, { memberId: p.memberId, name: p.name, runs: 0 })
+      map.get(key).runs += 1
+    }))
+    return [...map.values()].sort((a, b) => b.runs - a.runs || String(a.name).localeCompare(String(b.name)))
+  }, [weekIncludedLogs.map(l => l.id).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!weekGroups.length) return
+    if (selectedWeekKey && weekGroups.some(w => w.key === selectedWeekKey)) return
+    setSelectedWeekKey(weekGroups[0].key)
+  }, [weekGroups, selectedWeekKey])
+
+  const toggleWeekRun = id => setExcludedWeekLogIds(prev => {
+    const next = new Set(prev)
+    const key = String(id)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
   const eligibleParticipants = participants.filter(p => !results.some(r => String(r.winner_member_id) === String(p.member_id)))
   const remainingLootUnits = rouletteItems.reduce((sum, item) => sum + getResultItemQuantity(item, results), 0)
   const completedParticipants = participants.length - eligibleParticipants.length
@@ -344,12 +569,16 @@ export default function LootRoulette({ ctx }) {
     try {
       const [{ data: rows, error }, { data: activeRows, error: activeError }] = await Promise.all([
         supabase.from('loot_roulettes').select('*').order('created_at', { ascending: false }).limit(nextLimit),
-        supabase.from('loot_roulettes').select('attendance_log_id').neq('status', 'void'),
+        supabase.from('loot_roulettes').select('attendance_log_id, attendance_log_ids').neq('status', 'void')
+          .then(res => res.error ? supabase.from('loot_roulettes').select('attendance_log_id').neq('status', 'void') : res),
       ])
       if (error) throw error
       if (activeError) console.error('Failed to load active attendance usage:', activeError)
 
-      setActiveAttendanceIds(new Set((activeRows || []).map(row => String(row.attendance_log_id))))
+      setActiveAttendanceIds(new Set((activeRows || []).flatMap(row => [
+        String(row.attendance_log_id),
+        ...(Array.isArray(row.attendance_log_ids) ? row.attendance_log_ids.map(String) : []),
+      ])))
 
       const rouletteRows = rows || []
       if (!rouletteRows.length) {
@@ -411,6 +640,18 @@ export default function LootRoulette({ ctx }) {
 
   const requestCreateRoulette = () => {
     if (!isStaff) return
+    if (createMode === 'weekly') {
+      if (!selectedWeek || !weekIncludedLogs.length) {
+        addToast('Pick a week and at least one Attendance run.', 'red', 'Runs Required')
+        return
+      }
+      if (!getCreatePayload().length) {
+        addToast('Add at least one loot item, for example “Dragon Scale”.', 'red', 'Loot Required')
+        return
+      }
+      setConfirmCreate(true)
+      return
+    }
     if (!selectedAttendance) {
       addToast('Select an attendance event first.', 'red', 'Event Required')
       return
@@ -427,7 +668,42 @@ export default function LootRoulette({ ctx }) {
     setConfirmCreate(true)
   }
 
+  const createWeeklyRoulette = async () => {
+    const payload = getCreatePayload()
+    if (!selectedWeek || !weekIncludedLogs.length || !payload.length) return
+    setConfirmCreate(false)
+    setCreating(true)
+    try {
+      const actorId = Number(currentUser?.id) || null
+      const actorPassword = currentUser?.password || ''
+      const weekEnd = isoDay(new Date(new Date(`${selectedWeek.key}T00:00:00Z`).getTime() + 4 * WEEK_DAY_MS))
+      const { data, error } = await supabase.rpc('create_weekly_loot_roulette', {
+        p_attendance_log_ids: weekIncludedLogs.map(log => Number(log.id)),
+        p_items: payload,
+        p_actor_id: actorId,
+        p_actor_password: actorPassword,
+        p_week_start: selectedWeek.key,
+        p_week_end: weekEnd,
+      })
+      if (error) throw error
+
+      resetCreateForm()
+      setExcludedWeekLogIds(new Set())
+      setCreateOpen(false)
+      await openRoulette(data.id)
+      setRollPanelOpen(true)
+      await loadHistory()
+      addToast(`Weekly Loot Roulette created with ${weekPlayers.length} players from ${weekIncludedLogs.length} runs.`, 'gold', 'Roulette Ready')
+    } catch (error) {
+      console.error('Create weekly loot roulette failed:', error)
+      addToast(error?.message || 'Could not create the weekly Loot Roulette.', 'red', 'Create Failed')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const createRoulette = async () => {
+    if (createMode === 'weekly') return createWeeklyRoulette()
     const payload = getCreatePayload()
     if (!selectedAttendance || !payload.length) return
     setConfirmCreate(false)
@@ -808,6 +1084,14 @@ export default function LootRoulette({ ctx }) {
 
   const startReplacement = () => {
     if (!roulette || roulette.status !== 'void') return
+    if (isWeeklyRoulette(roulette)) {
+      const start = getWeekStart(getLogCalendarDay({ date: roulette.event_date }))
+      setCreateMode('weekly')
+      if (start) setSelectedWeekKey(isoDay(start))
+      setExcludedWeekLogIds(new Set())
+    } else {
+      setCreateMode('single')
+    }
     setSelectedAttendanceId(String(roulette.attendance_log_id))
     resetCreateForm()
     setCreateOpen(true)
@@ -854,8 +1138,16 @@ export default function LootRoulette({ ctx }) {
 
   const createPayload = getCreatePayload()
   const createUnitCount = createPayload.reduce((sum, item) => sum + item.quantity, 0)
-  const createPlayerCount = selectedSummary?.participants || 0
-  const createBlockedReason = !selectedAttendance
+  const createPlayerCount = createMode === 'weekly' ? weekPlayers.length : (selectedSummary?.participants || 0)
+  const createBlockedReason = createMode === 'weekly'
+    ? (!selectedWeek
+        ? 'Pick a week.'
+        : !weekIncludedLogs.length
+          ? 'Tick at least one Attendance run.'
+          : !createUnitCount
+            ? 'Add at least one loot item to continue.'
+            : '')
+    : !selectedAttendance
     ? 'Select an attendance event.'
     : selectedSummary?.used
       ? 'This event already has a roulette. Void it first to create a replacement.'
@@ -881,227 +1173,447 @@ export default function LootRoulette({ ctx }) {
     return map
   }, [results])
 
-  const selectClass = 'min-h-[44px] w-full rounded-xl border border-gold/15 bg-[#151210] px-3 py-2.5 text-sm text-white outline-none transition focus:border-gold/40 focus:ring-2 focus:ring-gold/10 [color-scheme:dark]'
-  const inputClass = 'min-h-[44px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-text-bright placeholder:text-text-dim/60 outline-none transition focus:border-gold/40 focus:ring-2 focus:ring-gold/10'
-
-  const textareaClass = 'w-full resize-y rounded-xl border border-white/10 bg-black/30 px-3 py-3 text-[14px] leading-6 text-text-bright placeholder:text-text-dim/40 outline-none transition focus:border-gold/40 focus:ring-2 focus:ring-gold/10'
 
   const statusLabel = roulette?.status === 'completed' ? 'Completed' : roulette?.status === 'void' ? 'Void' : 'Ready'
 
-  return (
-    <div className="min-w-0 space-y-4">
-      <header className="rounded-2xl border border-gold/15 bg-[#0c0a09]/95 p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="font-spectral text-2xl font-bold text-text-bright sm:text-3xl">Loot Roulette</h1>
-            <p className="mt-1 max-w-2xl text-[14px] leading-6 text-text/80">Loot is rolled among the players who attended the event. The server decides every result.</p>
-          </div>
+  // ── Display-only helpers ──────────────────────────────────────────────
+  const statusPill = status => status === 'completed'
+    ? 'border-emerald-400/25 bg-emerald-400/[.06] text-emerald-300'
+    : status === 'void'
+      ? 'border-red-400/25 bg-red-400/[.06] text-red-300'
+      : 'border-gold/25 bg-gold/[.06] text-gold-light'
+  const statusAccent = status => status === 'completed' ? 'rgba(52,211,153,.55)' : status === 'void' ? 'rgba(248,113,113,.5)' : 'rgba(212,175,55,.6)'
+  const rouletteDateText = r => isWeeklyRoulette(r) && /^\d{4}-\d{2}-\d{2}$/.test(String(r?.event_date || '')) ? formatWeekRange(r.event_date) : formatDate(r?.event_date)
 
+  const pageStats = useMemo(() => {
+    const live = history.filter(r => r.status !== 'void')
+    const lootRows = live.flatMap(r => (r.results || []).filter(row => String(row.item_name || '').toLowerCase() !== 'nothing'))
+    const me = currentUser?.id == null ? null : String(currentUser.id)
+    return {
+      roulettes: live.length,
+      loot: lootRows.length,
+      winners: new Set(lootRows.map(row => String(row.winner_member_id))).size,
+      mine: me ? lootRows.filter(row => String(row.winner_member_id) === me).length : 0,
+      ready: live.filter(r => r.status === 'ready').length,
+    }
+  }, [history, currentUser?.id])
+
+  const balancePct = createPlayerCount ? Math.min(100, Math.round((Math.min(createUnitCount, createPlayerCount) / createPlayerCount) * 100)) : 0
+  const totalLootUnits = rouletteItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
+  const revealLocked = Boolean(animationWinner && animationWinner._displayName && animationWinner._displayName === animationWinner.winner_name)
+  const revealPct = animationTotal ? Math.round((animationIndex / animationTotal) * 100) : 0
+
+  return (
+    <div className="lr-root min-w-0 space-y-4">
+      <style>{LR_STYLES}</style>
+
+      {/* ── Header ─────────────────────────────────────────────────── */}
+      <header className="lr-glass rounded-[24px] p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">
+              <span className="h-1.5 w-1.5 rounded-full bg-gold" aria-hidden="true" /> Clan rewards
+            </div>
+            <h1 className="mt-1 font-spectral text-[28px] font-bold leading-tight text-text-bright sm:text-[32px]">Loot Roulette</h1>
+            <p className="mt-1 max-w-2xl text-[14px] leading-6 text-text/80">
+              Loot is shared among players who attended: one event, or a whole <span className="font-semibold text-gold-light">Tuesday–Saturday week</span>. The server picks every winner.
+            </p>
+          </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             {isStaff && !createOpen && (
-              <button type="button" onClick={() => setCreateOpen(true)} className="btn-gold min-h-10 px-4 text-xs font-bold">+ New Roulette</button>
+              <button type="button" onClick={() => setCreateOpen(true)} className="btn-gold min-h-10 px-5 text-[13px] font-bold">+ New Roulette</button>
             )}
-            <button type="button" onClick={() => loadHistory()} className="min-h-10 rounded-xl border border-white/[.08] bg-white/[.02] px-3 text-xs font-bold text-text-dim transition hover:border-gold/20 hover:text-text-bright">↻ Refresh</button>
-            <button type="button" onClick={exportAllCsv} disabled={!hasExportableResults} className="min-h-10 rounded-xl border border-white/[.08] bg-white/[.02] px-3 text-xs font-bold text-text-dim transition hover:border-gold/20 hover:text-text-bright disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-white/[.08] disabled:hover:text-text-dim">↓ Export All</button>
+            <button type="button" onClick={() => loadHistory()} className="lr-btn">↻ Refresh</button>
+            <button type="button" onClick={exportAllCsv} disabled={!hasExportableResults} className="lr-btn">↓ Export all</button>
           </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <StatTile label="Roulettes" value={pageStats.roulettes} />
+          <StatTile label="Loot given" value={pageStats.loot} tone="gold" />
+          <StatTile label="Players rewarded" value={pageStats.winners} />
+          <StatTile label="Your wins" value={pageStats.mine} />
         </div>
       </header>
 
+      {/* ── Create ─────────────────────────────────────────────────── */}
       {isStaff && createOpen && (
-        <section id="loot-roulette-create" className="rounded-2xl border border-gold/15 bg-[#0c0a09]/95 p-4 sm:p-5">
+        <section id="loot-roulette-create" className="lr-glass rounded-[24px] p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="font-spectral text-xl font-bold text-text-bright sm:text-2xl">New Loot Roulette</h2>
-              <p className="mt-1 text-[14px] leading-6 text-text/80">Choose the event, then list the loot, one item per line.</p>
+              <h2 className="font-spectral text-[22px] font-bold text-text-bright sm:text-[24px]">New Loot Roulette</h2>
+              <p className="mt-0.5 text-[13px] text-text-dim">Choose who can win, then list the loot.</p>
             </div>
-            <button type="button" onClick={() => setCreateOpen(false)} className="min-h-10 shrink-0 rounded-xl border border-white/[.08] px-3 text-xs font-bold text-text-dim transition hover:text-text-bright" aria-label="Close new roulette form">✕ Close</button>
+            <button type="button" onClick={() => setCreateOpen(false)} className="lr-btn shrink-0" aria-label="Close new roulette form">✕ Close</button>
           </div>
 
-          <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-            <div>
-              <label className="mb-2 block text-[13px] font-semibold text-text-bright">Attendance event</label>
-              <AttendancePicker options={attendanceOptions} value={selectedAttendanceId} onChange={setSelectedAttendanceId} activeAttendanceIds={activeAttendanceIds} />
-              {selectedSummary && (
-                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-white/[.07] bg-black/20 px-3 py-2.5 text-[13px] text-text-dim">
-                  <span className="font-bold text-text-bright">{selectedSummary.participants} players</span>
-                  <span className="text-white/20">•</span>
-                  <span>{selectedSummary.run}</span>
-                  {selectedSummary.used && <span className="rounded-md border border-amber-400/25 bg-amber-400/[.06] px-1.5 py-0.5 text-[11px] font-bold text-amber-300">Roulette exists</span>}
+          <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+            {/* Step 1: who can win */}
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-text-bright">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gold/[.12] text-[12px] font-bold text-gold-light">1</span>
+                Who can win
+              </div>
+
+              <div className="lr-seg" role="group" aria-label="Roulette type">
+                <button type="button" aria-pressed={createMode === 'single'} onClick={() => setCreateMode('single')}>One event</button>
+                <button type="button" aria-pressed={createMode === 'weekly'} onClick={() => setCreateMode('weekly')}>Whole week · Tue–Sat</button>
+              </div>
+
+              {createMode === 'single' ? (
+                <div className="mt-3">
+                  <AttendancePicker options={attendanceOptions} value={selectedAttendanceId} onChange={setSelectedAttendanceId} activeAttendanceIds={activeAttendanceIds} />
+                  {selectedSummary && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-text-dim">
+                      <span className="rounded-full border border-gold/20 bg-gold/[.05] px-2.5 py-1 font-bold text-gold-light">{selectedSummary.participants} players</span>
+                      <span className={`rounded-full border px-2.5 py-1 font-bold ${runBadgeClass(selectedSummary.run)}`}>{selectedSummary.run}</span>
+                      <span>{selectedSummary.date}</span>
+                      {selectedSummary.used && <span className="rounded-full border border-amber-400/25 bg-amber-400/[.06] px-2.5 py-1 font-bold text-amber-300">Already has a roulette</span>}
+                    </div>
+                  )}
+                  <p className="mt-2 text-[12px] leading-5 text-text-dim">Runs that already have a roulette are locked. Void the old one first to make a replacement.</p>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  {weekGroups.length === 0 ? (
+                    <div className="lr-inset rounded-2xl px-4 py-6 text-center text-[13px] text-text-dim">No Tuesday–Saturday attendance runs yet.</div>
+                  ) : (
+                    <>
+                      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="group" aria-label="Pick a week">
+                        {weekGroups.slice(0, 10).map(week => {
+                          const free = week.logs.filter(log => !activeAttendanceIds.has(String(log.id))).length
+                          return (
+                            <button
+                              key={week.key}
+                              type="button"
+                              aria-pressed={week.key === selectedWeekKey}
+                              onClick={() => { setSelectedWeekKey(week.key); setExcludedWeekLogIds(new Set()) }}
+                              className="lr-week"
+                            >
+                              <div className="text-[13px] font-bold text-text-bright">{week.label}</div>
+                              <div className="mt-0.5 text-[11px] text-text-dim">
+                                {week.logs.length} {week.logs.length === 1 ? 'run' : 'runs'}{free < week.logs.length ? ` · ${week.logs.length - free} used` : ''}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      <div className="mt-3 space-y-1.5">
+                        {weekRuns.map(({ log, used, included }) => (
+                          <button
+                            key={log.id}
+                            type="button"
+                            role="checkbox"
+                            aria-checked={included}
+                            disabled={used}
+                            onClick={() => toggleWeekRun(log.id)}
+                            className="lr-run"
+                          >
+                            <span className="lr-tick" aria-hidden="true">✓</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[13px] font-bold text-text-bright">{log.event}</span>
+                              <span className="mt-0.5 block truncate text-[11px] text-text-dim">{log._sessionName} · {log._date}</span>
+                            </span>
+                            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${used ? 'border-emerald-400/20 bg-emerald-400/[.05] text-emerald-300' : 'border-white/10 bg-white/[.03] text-text-dim'}`}>
+                              {used ? 'Has roulette' : `${log._participants.length} players`}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="lr-inset mt-3 rounded-2xl p-3">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <div className="text-[13px] text-text-dim">
+                            <span className="text-[18px] font-bold text-gold-light">{weekPlayers.length}</span> players from <span className="font-semibold text-text-bright">{weekIncludedLogs.length}</span> {weekIncludedLogs.length === 1 ? 'run' : 'runs'}
+                          </div>
+                          <div className="text-[11px] text-text-dim">Each player gets one chance</div>
+                        </div>
+                        {weekPlayers.length > 0 && (
+                          <div className="mt-2.5 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+                            {weekPlayers.map(p => (
+                              <span key={p.memberId} className="inline-flex items-center gap-1 rounded-full border border-white/[.08] bg-white/[.03] px-2 py-0.5 text-[11px] font-semibold text-text-bright">
+                                {p.name}
+                                {p.runs > 1 && <span className="text-[10px] font-bold text-gold-dim">×{p.runs}</span>}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
-              <p className="mt-2 text-[12px] leading-5 text-text-dim">Events that already have a roulette are locked. Void the old one first to make a replacement.</p>
             </div>
 
-            <div>
-              <div className="mb-2 flex items-baseline justify-between gap-3">
-                <label htmlFor="loot-pool-input" className="text-[13px] font-semibold text-text-bright">Loot items</label>
-                <span className="text-[13px] font-semibold text-gold-light">{createUnitCount} {createUnitCount === 1 ? 'item' : 'items'} · {createPlayerCount} players</span>
+            {/* Step 2: loot */}
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label htmlFor="loot-pool-input" className="flex items-center gap-2 text-[13px] font-semibold text-text-bright">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gold/[.12] text-[12px] font-bold text-gold-light">2</span>
+                  Loot items
+                </label>
+                <span className="text-[12px] font-semibold text-gold-light">{createUnitCount} {createUnitCount === 1 ? 'item' : 'items'}</span>
               </div>
               <textarea
                 id="loot-pool-input"
-                rows={Math.min(16, Math.max(8, items.length + 1))}
+                rows={Math.min(14, Math.max(8, items.length + 1))}
                 value={items.map(item => item.name).join('\n')}
                 onChange={event => {
                   const lines = event.target.value.split('\n')
                   setItems(lines.map(line => ({ name: line })).concat(lines.length ? [] : [{ name: '' }]))
                 }}
-                placeholder={'Silvarin x2\nMiddle Horn x5\nParchment x6'}
-                className={textareaClass}
+                placeholder={'Silvarin\nMiddle Horn\nParchment'}
+                className="lr-field resize-y px-3.5 py-3 text-[14px] leading-6"
               />
-              <p className="mt-2 text-[12px] leading-5 text-text-dim">One item per line. Repeat a line if you have extra copies.</p>
+              <p className="mt-2 text-[12px] leading-5 text-text-dim">One item per line. Repeat a line for extra copies.</p>
             </div>
           </div>
 
+          {/* Footer: balance + create */}
           <div className="mt-5 flex flex-col gap-3 border-t border-white/[.06] pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className={`text-[13px] ${createBlockedReason ? 'text-text-dim' : 'text-text/85'}`} aria-live="polite">{createBlockedReason || createBalanceText}</p>
-            <button type="button" disabled={creating || Boolean(createBlockedReason)} onClick={requestCreateRoulette} className="btn-gold min-h-11 w-full px-6 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[220px]">{creating ? 'Creating…' : 'Create Roulette'}</button>
+            <div className="min-w-0 flex-1 sm:max-w-md">
+              <div className="flex items-center justify-between gap-3 text-[12px]">
+                <span className={createBlockedReason ? 'text-text-dim' : 'font-semibold text-text-bright'} aria-live="polite">{createBlockedReason || createBalanceText}</span>
+                {!createBlockedReason && <span className="shrink-0 text-text-dim">{createUnitCount} / {createPlayerCount}</span>}
+              </div>
+              <div className="lr-bar mt-2" aria-hidden="true"><span style={{ width: `${balancePct}%` }} /></div>
+            </div>
+            <button type="button" disabled={creating || Boolean(createBlockedReason)} onClick={requestCreateRoulette} className="btn-gold min-h-11 w-full px-6 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[220px]">
+              {creating ? 'Creating…' : createMode === 'weekly' ? 'Create weekly roulette' : 'Create roulette'}
+            </button>
           </div>
         </section>
       )}
 
+      {/* ── Roll panel ─────────────────────────────────────────────── */}
       {roulette && rollPanelOpen && roulette.status === 'ready' && (
-        <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-5" role="dialog" aria-modal="true" aria-label="Loot Roulette roll panel" onMouseDown={event => { if (event.target === event.currentTarget && !spinning) setRollPanelOpen(false) }}>
-          <section id="loot-roulette-active" className="max-h-[94vh] w-full max-w-6xl overflow-y-auto overflow-x-hidden rounded-3xl border border-gold/15 bg-[linear-gradient(145deg,rgba(18,15,11,.99),rgba(8,8,8,.99))] shadow-[0_24px_100px_rgba(0,0,0,.55)]">
-          <div className="border-b border-white/[.06] px-4 py-4 sm:px-6 sm:py-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-spectral text-xl font-bold tracking-tight text-text-bright sm:text-2xl">{roulette.event}</h2>
-                  <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${runBadgeClass(getRunLabel(roulette.session_display_name))}`}>{getRunLabel(roulette.session_display_name)}</span>
-                  <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${roulette.status === 'completed' ? 'border-emerald-400/20 bg-emerald-400/[.05] text-emerald-300' : roulette.status === 'void' ? 'border-red-400/20 bg-red-400/[.05] text-red-300' : 'border-gold/20 bg-gold/[.05] text-gold-light'}`}>{statusLabel}</span>
+        <div className="lr-modal z-[180]" role="dialog" aria-modal="true" aria-label="Loot Roulette roll panel" onMouseDown={event => { if (event.target === event.currentTarget && !spinning) setRollPanelOpen(false) }}>
+          <section id="loot-roulette-active" className="lr-solid max-h-[94vh] w-full max-w-6xl overflow-y-auto overflow-x-hidden rounded-[28px]">
+            <div className="border-b border-white/[.06] px-4 py-4 sm:px-6 sm:py-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-spectral text-[22px] font-bold tracking-tight text-text-bright sm:text-[26px]">{roulette.event}</h2>
+                    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${runBadgeClass(displayRunLabel(roulette))}`}>{displayRunLabel(roulette)}</span>
+                    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${statusPill(roulette.status)}`}>{statusLabel}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-text-dim">
+                    <span>{roulette.session_display_name || 'Event Run'}</span><span className="text-white/20">•</span><span>{rouletteDateText(roulette)}</span>
+                    {!isWeeklyRoulette(roulette) && <><span className="text-white/20">•</span><span>{formatTime(roulette.event_ts)} GMT+8</span></>}
+                  </div>
                 </div>
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-text-dim">
-                  <span>{roulette.session_display_name || 'Event Run'}</span><span className="text-white/20">•</span><span>{formatDate(roulette.event_date)}</span><span className="text-white/20">•</span><span>{formatTime(roulette.event_ts)} GMT+8</span>
+
+                <div className="relative flex shrink-0 flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => exportRouletteCsv(roulette, results, rouletteItems)} className="lr-btn">CSV</button>
+                  {isStaff && (
+                    <>
+                      <button type="button" onClick={() => setActiveMenuOpen(v => !v)} aria-label="Roulette staff actions" aria-expanded={activeMenuOpen} className="lr-btn w-10 px-0 text-[16px]">⋯</button>
+                      {activeMenuOpen && (
+                        <div className="lr-solid absolute right-0 top-12 z-40 w-48 rounded-2xl p-1.5">
+                          {roulette.status !== 'void' && <button type="button" onClick={() => requestVoid(roulette)} className="min-h-10 w-full rounded-xl px-3 text-left text-[12px] font-bold text-red-300 transition hover:bg-red-400/[.07]">Void roulette</button>}
+                          <button type="button" onClick={event => { event.stopPropagation(); requestDelete(roulette) }} className="min-h-10 w-full rounded-xl px-3 text-left text-[12px] font-bold text-red-300 transition hover:bg-red-400/[.07]">Delete roulette</button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <button type="button" onClick={() => !spinning && setRollPanelOpen(false)} disabled={spinning} className="lr-btn">Close</button>
                 </div>
               </div>
+            </div>
 
-              <div className="relative flex shrink-0 items-center gap-2">
-                <button type="button" onClick={() => !spinning && setRollPanelOpen(false)} disabled={spinning} className="min-h-10 rounded-xl border border-white/[.08] bg-white/[.02] px-3 text-xs font-bold text-text-dim transition hover:border-gold/20 hover:text-text-bright disabled:cursor-not-allowed disabled:opacity-40">Close</button>
-                <div className="hidden rounded-xl border border-white/[.07] bg-white/[.02] px-3 py-2 sm:block">
-                  <div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Players</div>
-                  <div className="mt-0.5 text-sm font-black text-text-bright">{participants.length}</div>
+            {roulette.status === 'void' && (
+              <div className="mx-4 mt-4 rounded-2xl border border-red-400/20 bg-red-400/[.04] p-4 sm:mx-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-[12px] font-bold uppercase tracking-[.14em] text-red-300">Roulette voided</div>
+                    <div className="mt-1 text-[13px] leading-5 text-text-dim">Attendance is unchanged, so staff can create a replacement.</div>
+                    {roulette.void_reason && <div className="mt-2 text-[12px] text-text-dim">Reason: <span className="font-semibold text-text-bright">{roulette.void_reason}</span></div>}
+                  </div>
+                  {isStaff && <button type="button" onClick={startReplacement} className="lr-btn shrink-0 border-gold/25 text-gold-light">Create replacement</button>}
                 </div>
-                <div className="rounded-xl border border-gold/15 bg-gold/[.035] px-3 py-2">
-                  <div className="text-[9px] font-bold uppercase tracking-[.14em] text-gold-dim">Loot left</div>
-                  <div className="mt-0.5 text-sm font-black text-gold-light">{remainingLootUnits}</div>
-                </div>
-                <button type="button" onClick={() => exportRouletteCsv(roulette, results, rouletteItems)} className="min-h-10 rounded-xl border border-white/[.08] bg-white/[.02] px-3 text-xs font-bold text-text-dim transition hover:border-gold/20 hover:text-text-bright">CSV</button>
-                {isStaff && (
-                  <>
-                    <button type="button" onClick={() => setActiveMenuOpen(v => !v)} aria-label="Roulette staff actions" aria-expanded={activeMenuOpen} className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[.08] bg-white/[.02] text-lg font-black text-text-dim transition hover:border-gold/20 hover:text-text-bright">⋯</button>
-                    {activeMenuOpen && (
-                      <div className="absolute right-0 top-12 z-40 w-48 rounded-2xl border border-white/[.08] bg-[#151210] p-1.5 shadow-2xl shadow-black/60">
-                        {roulette.status !== 'void' && <button type="button" onClick={() => requestVoid(roulette)} className="min-h-10 w-full rounded-xl px-3 text-left text-xs font-bold text-red-300 transition hover:bg-red-400/[.05]">Void Roulette</button>}
-                        <button type="button" onClick={event => { event.stopPropagation(); requestDelete(roulette) }} className="min-h-10 w-full rounded-xl px-3 text-left text-xs font-bold text-red-300 transition hover:bg-red-400/[.05]">Delete Roulette</button>
+              </div>
+            )}
+
+            <div className="p-4 sm:p-6">
+              <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <StatTile label="Players" value={participants.length} />
+                <StatTile label="Loot left" value={remainingLootUnits} tone="gold" />
+                <StatTile label="Awarded" value={distributedLootUnits} />
+                <StatTile label="Progress" value={`${completedParticipants}/${participants.length}`} />
+              </div>
+
+              {/* Reveal stage */}
+              <div className="lr-stage px-4 py-6 sm:px-8 sm:py-8">
+                <div className="lr-rays" aria-hidden="true" />
+                <div className="relative">
+                  {spinning ? (
+                    <div className="mx-auto max-w-3xl text-center">
+                      <div className="flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-[.16em] text-text-dim">
+                        <span>Live reveal</span>
+                        <span className="text-gold-light">{animationIndex} / {animationTotal}</span>
                       </div>
-                    )}
-                  </>
-                )}
+                      <div className="lr-progress mt-2"><span style={{ width: `${revealPct}%` }} /></div>
+
+                      <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-gold/25 bg-gold/[.07] px-4 py-1.5 text-[12px] font-bold uppercase tracking-[.14em] text-gold-light">
+                        🎁 {animationItem?.name || animationItem?.item_name || 'Loot'}
+                      </div>
+                      <div
+                        className="lr-name mt-5 min-h-[56px] break-words font-spectral text-[36px] font-bold leading-tight sm:min-h-[76px] sm:text-[56px]"
+                        data-locked={revealLocked ? 'true' : 'false'}
+                        aria-live="polite"
+                      >
+                        {animationWinner?._displayName || animationWinner?.winner_name || '…'}
+                      </div>
+                      <div className="mx-auto mt-2 max-w-md text-[12px] leading-5 text-text-dim">The winner is already saved on the server. This only reveals it.</div>
+
+                      <div className="mt-6 flex flex-wrap justify-center gap-2">
+                        <button type="button" onClick={skipAnimation} className="lr-btn border-gold/25 text-gold-light">{skipRequested ? 'Finishing…' : 'Skip ⏭'}</button>
+                        <button type="button" onClick={togglePause} className="lr-btn">{paused ? '▶ Resume' : '❚❚ Pause'}</button>
+                      </div>
+                    </div>
+                  ) : batchSummary ? (
+                    <div className="lr-pop mx-auto max-w-2xl py-2 text-center">
+                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-emerald-400/25 bg-emerald-400/[.08] text-[20px] text-emerald-300">✓</div>
+                      <div className="mt-3 text-[11px] font-bold uppercase tracking-[.2em] text-emerald-300">Roll complete</div>
+                      <div className="mt-1 font-spectral text-[32px] font-bold text-text-bright sm:text-[40px]">{batchSummary.loot} loot revealed</div>
+                      <div className="mt-3 flex flex-wrap justify-center gap-2 text-[12px] font-bold">
+                        <span className="rounded-full border border-gold/25 bg-gold/[.06] px-3 py-1.5 text-gold-light">{batchSummary.loot} winners</span>
+                        <span className="rounded-full border border-white/[.09] bg-white/[.03] px-3 py-1.5 text-text-dim">{batchSummary.nothing} Nothing</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mx-auto max-w-2xl py-2 text-center">
+                      <div className="text-[11px] font-bold uppercase tracking-[.2em] text-gold-dim">Server-side roll</div>
+                      <div className="mt-2 font-spectral text-[30px] font-bold text-text-bright sm:text-[36px]">{roulette.status === 'completed' ? 'Roulette complete' : roulette.status === 'void' ? 'Roulette voided' : 'Ready to roll'}</div>
+                      <div className="mx-auto mt-2 max-w-xl text-[13px] leading-5 text-text-dim">Each loot unit goes to one player. A player can win at most one item. Players without loot get “Nothing”, which isn't animated.</div>
+                    </div>
+                  )}
+
+                  {isStaff && roulette.status === 'ready' && !spinning && (
+                    <button type="button" disabled={!eligibleParticipants.length || !remainingLootUnits} onClick={requestSpin} className="btn-gold mx-auto mt-6 flex min-h-12 w-full max-w-sm items-center justify-center text-[15px] font-bold tracking-wide disabled:cursor-not-allowed disabled:opacity-40">
+                      🎲 Start roll
+                    </button>
+                  )}
+                  {!isStaff && roulette.status === 'ready' && !spinning && <div className="mt-6 text-center text-[12px] font-bold uppercase tracking-[.14em] text-text-dim">Waiting for staff to start</div>}
+                  {rollRecovery && !spinning && roulette.status === 'ready' && (
+                    <div className="mx-auto mt-4 max-w-sm rounded-2xl border border-red-400/25 bg-red-400/[.05] p-3 text-left">
+                      <div className="text-[13px] font-bold text-red-200">Roll status needs checking</div>
+                      <p className="mt-1 text-[12px] leading-5 text-text-dim">The server may have finished the roll. Refresh before trying again.</p>
+                      <button type="button" onClick={async () => { setRollRecovery(false); await openRoulette(roulette.id); await loadHistory(historyLimit) }} className="lr-btn lr-btn-danger mt-2">Refresh roulette</button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
 
-          {roulette.status === 'void' && (
-            <div className="mx-4 mt-4 rounded-2xl border border-red-400/15 bg-red-400/[.035] p-4 sm:mx-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-xs font-black uppercase tracking-[.14em] text-red-300">Roulette voided</div>
-                  <div className="mt-1 text-[13px] leading-5 text-text-dim">Attendance remains unchanged, so staff can create a replacement from the same run.</div>
-                  {roulette.void_reason && <div className="mt-2 text-xs text-text-dim">Reason: <span className="font-semibold text-text-bright">{roulette.void_reason}</span></div>}
+              {/* Loot board */}
+              <div className="mt-5">
+                <div className="mb-3 flex items-end justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">Loot board</div>
+                    <div className="mt-0.5 text-[13px] text-text-dim">Winners appear under each item.</div>
+                  </div>
+                  <span className="text-[12px] font-bold text-gold-light">{distributedLootUnits}/{totalLootUnits} awarded</span>
                 </div>
-                {isStaff && <button type="button" onClick={startReplacement} className="min-h-10 shrink-0 rounded-xl border border-gold/20 bg-gold/[.05] px-3 text-xs font-bold text-gold-light">Create Replacement</button>}
+                <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+                  {rouletteItems.map((item, itemIndex) => {
+                    const winners = lootResultsByItem.get(String(item.id)) || []
+                    const totalUnits = Number(item.quantity) || 1
+                    const done = winners.length >= totalUnits
+                    return (
+                      <article key={item.id} className={`rounded-2xl border p-3.5 transition ${done ? 'border-gold/20 bg-gold/[.035]' : 'border-white/[.07] bg-white/[.02]'}`}>
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gold/20 bg-gold/[.06] text-[12px] font-bold text-gold-light">{String(itemIndex + 1).padStart(2, '0')}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[14px] font-bold text-text-bright">{item.name || item.item_name}</div>
+                            <div className="mt-0.5 text-[11px] text-text-dim">{winners.length}/{totalUnits} awarded</div>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-1.5">
+                          {Array.from({ length: totalUnits }).map((_, index) => {
+                            const winner = winners[index]
+                            return (
+                              <div key={`${item.id}-${index}`} className={`min-h-8 truncate rounded-lg border px-2 py-1.5 text-[12px] font-semibold ${winner ? 'border-gold/25 bg-gold/[.06] text-gold-light' : 'border-dashed border-white/[.08] text-text-dim/70'}`}>
+                                {winner?.winner_name || 'Not yet rolled'}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          )}
 
-          <div className="p-4 sm:p-6">
-            <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="rounded-2xl border border-white/[.06] bg-white/[.018] p-3 sm:p-3.5"><div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Participants</div><div className="mt-1 text-lg font-black text-text-bright">{participants.length}</div></div>
-              <div className="rounded-2xl border border-gold/10 bg-gold/[.025] p-3 sm:p-3.5"><div className="text-[9px] font-bold uppercase tracking-[.14em] text-gold-dim">Loot awarded</div><div className="mt-1 text-lg font-black text-gold-light">{distributedLootUnits}</div></div>
-              <div className="rounded-2xl border border-white/[.06] bg-white/[.018] p-3 sm:p-3.5"><div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Nothing</div><div className="mt-1 text-lg font-black text-text-bright">{nothingCount}</div></div>
-              <div className="rounded-2xl border border-white/[.06] bg-white/[.018] p-3 sm:p-3.5"><div className="text-[9px] font-bold uppercase tracking-[.14em] text-text-dim">Progress</div><div className="mt-1 text-lg font-black text-text-bright">{completedParticipants}/{participants.length}</div></div>
-            </div>
+              {currentUserResult ? (
+                <div className="lr-pop mt-4 flex items-center gap-3 rounded-2xl border border-gold/25 bg-gold/[.06] px-4 py-3 text-[14px] font-bold text-gold-light">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold/[.14]">🎁</span>
+                  <span>You won <span className="text-text-bright">{currentUserResult.item_name}</span></span>
+                </div>
+              ) : roulette.status === 'completed' ? (
+                <div className="lr-inset mt-4 flex items-center gap-3 rounded-2xl px-4 py-3 text-[13px] font-semibold text-text-dim">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[.05]">—</span>
+                  <span>No loot this time.</span>
+                </div>
+              ) : null}
 
-            <div className="rounded-3xl border border-gold/10 bg-[radial-gradient(circle_at_50%_0%,rgba(212,175,55,.08),transparent_55%)] p-4 sm:p-6">
-              {spinning ? (
-                <div className="mx-auto max-w-3xl text-center">
-                  <div className="flex items-center justify-between gap-3 text-left">
-                    <div><div className="text-[10px] font-black uppercase tracking-[.2em] text-gold-dim">Live reveal</div><div className="mt-1 text-xs text-text-dim">Item {animationIndex} of {animationTotal}</div></div>
+              <details className="lr-inset mt-5 rounded-2xl" open={participants.length <= 12}>
+                <summary className="cursor-pointer list-none px-4 py-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-bold uppercase tracking-[.16em] text-text-dim">Players</div>
+                      <div className="mt-0.5 text-[12px] text-text-dim">{isWeeklyRoulette(roulette) ? 'Everyone who attended this week, once each.' : 'Everyone from the Attendance run.'}</div>
+                    </div>
+                    <span className="rounded-full border border-gold/20 bg-gold/[.05] px-2.5 py-1 text-[11px] font-bold text-gold-light">{completedParticipants}/{participants.length}</span>
                   </div>
-                  <div className="mt-5 rounded-2xl border border-gold/15 bg-black/25 px-4 py-8 sm:px-8 sm:py-10">
-                    <div className="text-xs font-bold uppercase tracking-[.2em] text-text-dim">{animationItem?.name || 'Loot'}</div>
-                    <div className="mt-4 min-h-14 break-words text-3xl font-black tracking-tight text-gold-bright sm:min-h-20 sm:text-5xl">{animationWinner?._displayName || animationWinner?.winner_name || '…'}</div>
-                    <div className="mx-auto mt-3 max-w-md text-[11px] leading-5 text-text-dim">Winner is locked by the server. This animation only reveals the saved result.</div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap justify-center gap-2">
-                    <button type="button" onClick={skipAnimation} className="min-h-10 rounded-xl border border-gold/20 bg-gold/[.05] px-4 text-xs font-bold text-gold-light transition hover:bg-gold/[.09]">{skipRequested ? 'Finishing…' : 'Skip animation'}</button>
-                    <button type="button" onClick={togglePause} className="min-h-10 rounded-xl border border-white/[.08] px-4 text-xs font-bold text-text-dim transition hover:text-text-bright">{paused ? 'Next' : 'Pause'}</button>
+                </summary>
+                <div className="border-t border-white/[.06] p-3 sm:p-4">
+                  <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {participants.map(p => {
+                      const result = results.find(r => String(r.winner_member_id) === String(p.member_id))
+                      const nothing = String(result?.item_name || '').toLowerCase() === 'nothing'
+                      return (
+                        <div key={p.member_id} className={`flex min-w-0 items-center justify-between gap-2 rounded-xl border px-3 py-2.5 ${result && !nothing ? 'border-gold/20 bg-gold/[.045]' : 'border-white/[.06] bg-white/[.02]'}`}>
+                          <span className="min-w-0 truncate text-[13px] font-semibold text-text-bright">{p.player_name}</span>
+                          <span className={`max-w-[48%] shrink-0 truncate text-right text-[11px] font-bold ${nothing ? 'text-text-dim' : result ? 'text-gold-light' : 'text-white/35'}`}>{result ? (nothing ? 'Nothing' : result.item_name) : 'Waiting'}</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              ) : batchSummary ? (
-                <div className="mx-auto max-w-2xl py-4 text-center">
-                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-400/[.06] text-emerald-300">✓</div>
-                  <div className="mt-3 text-[10px] font-black uppercase tracking-[.22em] text-emerald-300">Roll complete</div>
-                  <div className="mt-1 text-3xl font-black tracking-tight text-text-bright sm:text-4xl">{batchSummary.loot} loot revealed</div>
-                  <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs font-bold"><span className="rounded-full border border-gold/20 bg-gold/[.05] px-3 py-1.5 text-gold-light">{batchSummary.loot} winners</span><span className="rounded-full border border-white/[.08] bg-white/[.03] px-3 py-1.5 text-text-dim">{batchSummary.nothing} Nothing</span></div>
-                </div>
-              ) : (
-                <div className="mx-auto max-w-2xl py-4 text-center">
-                  <div className="text-[10px] font-black uppercase tracking-[.2em] text-gold-dim">Server-side distribution</div>
-                  <div className="mt-2 text-2xl font-black tracking-tight text-text-bright sm:text-3xl">{roulette.status === 'completed' ? 'Roulette Complete' : roulette.status === 'void' ? 'Roulette Voided' : 'Ready to Roll'}</div>
-                  <div className="mx-auto mt-2 max-w-xl text-[13px] leading-5 text-text-dim">Each loot unit is assigned once. A player can win at most one item. Nothing results are recorded, but never animated.</div>
-                </div>
-              )}
-
-              {isStaff && roulette.status === 'ready' && !spinning && <button type="button" disabled={!eligibleParticipants.length || !remainingLootUnits} onClick={requestSpin} className="btn-gold mx-auto mt-5 flex min-h-12 w-full max-w-sm items-center justify-center text-sm font-black shadow-[0_8px_30px_rgba(212,175,55,.12)] disabled:cursor-not-allowed disabled:opacity-40">START ROLL</button>}
-              {!isStaff && roulette.status === 'ready' && !spinning && <div className="mt-5 text-center text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Waiting for staff to start</div>}
-              {rollRecovery && !spinning && roulette.status === 'ready' && <div className="mx-auto mt-4 max-w-sm rounded-2xl border border-red-400/20 bg-red-400/[.035] p-3 text-left"><div className="text-xs font-bold text-red-200">Roll status needs confirmation</div><p className="mt-1 text-[11px] leading-5 text-text-dim">The server may have completed the roll. Refresh before trying again.</p><button type="button" onClick={async () => { setRollRecovery(false); await openRoulette(roulette.id); await loadHistory(historyLimit) }} className="mt-2 min-h-10 rounded-xl border border-red-400/20 bg-red-400/[.06] px-3 text-xs font-bold text-red-200">Refresh Roulette</button></div>}
+              </details>
             </div>
-
-            <div className="mt-5">
-              <div className="mb-3 flex items-end justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-[.18em] text-gold-dim">Loot board</div><div className="mt-1 text-[13px] text-text-dim">Every unit stays visible. Winners are recorded below each item.</div></div><span className="text-xs font-bold text-gold-light">{distributedLootUnits}/{rouletteItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)} awarded</span></div>
-              <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-                {rouletteItems.map((item, itemIndex) => {
-                  const winners = lootResultsByItem.get(String(item.id)) || []
-                  const totalUnits = Number(item.quantity) || 1
-                  return (
-                    <article key={item.id} className="group rounded-2xl border border-white/[.07] bg-white/[.018] p-3.5 transition hover:border-gold/15 hover:bg-gold/[.018]">
-                      <div className="flex items-start gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[.04] text-[10px] font-black text-gold-light">{String(itemIndex + 1).padStart(2, '0')}</div><div className="min-w-0 flex-1"><div className="truncate text-[14px] font-bold text-text-bright">{item.name}</div><div className="mt-1 text-[11px] text-text-dim">{winners.length}/{totalUnits} awarded</div></div></div>
-                      <div className="mt-3 grid grid-cols-2 gap-1.5">{Array.from({ length: totalUnits }).map((_, index) => { const winner = winners[index]; return <div key={`${item.id}-${index}`} className={`min-h-8 rounded-lg border px-2 py-1.5 text-[11px] font-semibold ${winner ? 'border-gold/20 bg-gold/[.045] text-gold-light' : 'border-white/[.06] bg-black/15 text-text-dim'}`}><span className="mr-1 text-[9px] opacity-50">#{index + 1}</span>{winner?.winner_name || '?'}</div> })}</div>
-                    </article>
-                  )
-                })}
-              </div>
-            </div>
-
-            {currentUserResult ? <div className="mt-4 flex items-center gap-3 rounded-2xl border border-gold/20 bg-gold/[.045] px-4 py-3 text-[13px] font-bold text-gold-light"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-gold/[.10]">✓</span><span>You won <span className="text-text-bright">{currentUserResult.item_name}</span></span></div> : roulette.status === 'completed' ? <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/[.07] bg-white/[.018] px-4 py-3 text-[13px] font-semibold text-text-dim"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[.04]">—</span><span>No loot this time.</span></div> : null}
-
-            <details className="mt-5 rounded-2xl border border-white/[.06] bg-black/15" open={participants.length <= 12}>
-              <summary className="cursor-pointer list-none px-4 py-3.5"><div className="flex items-center justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-[.18em] text-text-dim">Participants</div><div className="mt-1 text-[12px] text-text-dim">Attendance players stay visible here.</div></div><span className="rounded-full border border-gold/15 bg-gold/[.035] px-2.5 py-1 text-[11px] font-bold text-gold-light">{completedParticipants}/{participants.length}</span></div></summary>
-              <div className="border-t border-white/[.06] p-3 sm:p-4"><div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{participants.map(p => { const result = results.find(r => String(r.winner_member_id) === String(p.member_id)); const nothing = String(result?.item_name || '').toLowerCase() === 'nothing'; return <div key={p.member_id} className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-white/[.06] bg-white/[.018] px-3 py-2.5"><span className="min-w-0 truncate text-[12px] font-semibold text-text-bright">{p.player_name}</span><span className={`shrink-0 max-w-[48%] truncate text-right text-[10px] font-bold ${nothing ? 'text-text-dim' : result ? 'text-gold-light' : 'text-white/30'}`}>{result ? (nothing ? 'Nothing' : result.item_name) : 'Waiting'}</span></div> })}</div></div>
-            </details>
-          </div>
           </section>
         </div>
       )}
 
-      <section className="overflow-hidden rounded-3xl border border-gold/15 bg-[#0c0a09]/95 shadow-[0_14px_50px_rgba(0,0,0,.18)] p-4 sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div><h2 className="font-spectral text-xl font-bold text-text-bright sm:text-2xl">Loot History</h2><p className="mt-1 text-[14px] leading-6 text-text/80">Open an entry to see every winner.</p></div>
-          <div className="relative w-full sm:max-w-sm"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-dim">⌕</span><input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Search player, item or event..." className={`${inputClass} pl-9`} aria-label="Search loot history" /></div>
+      {/* ── History ────────────────────────────────────────────────── */}
+      <section className="lr-glass rounded-[24px] p-4 sm:p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="font-spectral text-[22px] font-bold text-text-bright sm:text-[24px]">Loot history</h2>
+            <p className="mt-0.5 text-[13px] text-text-dim">Open an entry to see every player's result.</p>
+          </div>
+          <div className="relative w-full sm:max-w-sm">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-text-dim" aria-hidden="true">⌕</span>
+            <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Search player, item or event…" className="lr-field min-h-[44px] py-2.5 pl-9 pr-3 text-[14px]" aria-label="Search loot history" />
+          </div>
         </div>
 
-        <div className="mt-5 space-y-2.5">
-          {historyLoading ? <div className="py-12 text-center text-[13px] text-text-dim">Loading loot history...</div> : filteredHistory.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/[.09] bg-black/20 px-4 py-12 text-center">
-              <div className="text-[15px] font-semibold text-text-bright">{historySearch.trim() ? 'No matching results' : 'No loot roulette yet'}</div>
+        <div className="mt-4 space-y-2.5">
+          {historyLoading ? (
+            <div className="py-12 text-center text-[13px] text-text-dim">Loading loot history…</div>
+          ) : filteredHistory.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/[.1] bg-black/20 px-4 py-12 text-center">
+              <div className="text-[30px]" aria-hidden="true">🎲</div>
+              <div className="mt-2 text-[15px] font-semibold text-text-bright">{historySearch.trim() ? 'No matching results' : 'No loot roulette yet'}</div>
               <p className="mx-auto mt-1 max-w-sm text-[13px] leading-5 text-text-dim">
-                {historySearch.trim() ? `Nothing matches “${historySearch.trim()}”.` : isStaff ? 'Create one after an event ends. Attendance is imported automatically.' : 'Results will appear here after staff rolls loot for an event.'}
+                {historySearch.trim() ? `Nothing matches “${historySearch.trim()}”.` : isStaff ? 'Create one after an event or at the end of the week. Attendance is imported automatically.' : 'Results appear here after staff rolls the loot.'}
               </p>
               {historySearch.trim() ? (
-                <button type="button" onClick={() => setHistorySearch('')} className="mt-4 min-h-10 rounded-xl border border-white/[.08] px-4 text-xs font-bold text-text-dim hover:text-text-bright">Clear search</button>
+                <button type="button" onClick={() => setHistorySearch('')} className="lr-btn mt-4">Clear search</button>
               ) : isStaff && !createOpen ? (
-                <button type="button" onClick={() => setCreateOpen(true)} className="btn-gold mt-4 min-h-10 px-4 text-xs font-bold">+ New Roulette</button>
+                <button type="button" onClick={() => setCreateOpen(true)} className="btn-gold mt-4 min-h-10 px-5 text-[13px] font-bold">+ New Roulette</button>
               ) : null}
             </div>
           ) : filteredHistory.map(r => {
@@ -1111,28 +1623,45 @@ export default function LootRoulette({ ctx }) {
             const lootCount = (r.results || []).filter(row => String(row.item_name || '').toLowerCase() !== 'nothing').length
             const nothing = (r.results || []).filter(row => String(row.item_name || '').toLowerCase() === 'nothing').length
             const winnerChips = [...new Set((r.results || []).filter(row => String(row.item_name || '').toLowerCase() !== 'nothing').map(row => row.winner_name).filter(Boolean))]
+            const run = displayRunLabel(r)
             return (
-              <article key={r.id} className={`overflow-hidden rounded-2xl border bg-black/20 transition ${expanded ? 'border-gold/15' : 'border-white/[.07] hover:border-white/[.12]'}`}>
-                <div className="flex flex-col gap-3 px-4 py-3.5 lg:flex-row lg:items-center lg:justify-between">
+              <article key={r.id} className={`lr-hist lr-solid rounded-2xl transition ${expanded ? 'border-gold/20' : ''}`} style={{ '--lr-accent': statusAccent(r.status) }}>
+                <div className="flex flex-col gap-3 py-3.5 pl-5 pr-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><div className="truncate text-[14px] font-bold text-text-bright">{r.event}</div><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${r.status === 'void' ? 'border-red-400/20 bg-red-400/[.04] text-red-300' : r.status === 'completed' ? 'border-emerald-400/20 bg-emerald-400/[.04] text-emerald-300' : 'border-gold/15 bg-gold/[.04] text-gold-light'}`}>{r.status}</span></div>
-                    <div className="mt-1 text-[12px] text-text-dim">{formatDate(r.event_date)} <span className="text-white/20">•</span> {r.session_display_name || 'Event Run'} <span className="text-white/20">•</span> {itemsTotal} items <span className="text-white/20">•</span> {playerCount} players <span className="text-white/20">•</span> <span className="text-gold-light">{lootCount} loot</span> <span className="text-white/20">•</span> {nothing} nothing</div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">{winnerChips.slice(0, 8).map(name => <span key={`${r.id}-${name}`} className="rounded-full border border-gold/15 bg-gold/[.035] px-2 py-1 text-[10px] font-semibold text-gold-light">{name}</span>)}{winnerChips.length > 8 && <span className="rounded-full border border-white/[.07] px-2 py-1 text-[10px] text-text-dim">+{winnerChips.length - 8} more</span>}{nothing > 0 && <span className="rounded-full border border-white/[.07] bg-white/[.02] px-2 py-1 text-[10px] font-semibold text-text-dim">{nothing} Nothing</span>}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="truncate text-[15px] font-bold text-text-bright">{r.event}</div>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${runBadgeClass(run)}`}>{run}</span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${statusPill(r.status)}`}>{r.status}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-dim">
+                      <span>{rouletteDateText(r)}</span>
+                      <span className="text-white/20">•</span><span>{r.session_display_name || 'Event Run'}</span>
+                      <span className="text-white/20">•</span><span>{playerCount} players</span>
+                      <span className="text-white/20">•</span><span>{itemsTotal} items</span>
+                    </div>
+                    {(winnerChips.length > 0 || nothing > 0) && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {winnerChips.slice(0, 8).map(name => <span key={`${r.id}-${name}`} className="rounded-full border border-gold/20 bg-gold/[.05] px-2 py-0.5 text-[11px] font-semibold text-gold-light">{name}</span>)}
+                        {winnerChips.length > 8 && <span className="rounded-full border border-white/[.08] px-2 py-0.5 text-[11px] text-text-dim">+{winnerChips.length - 8} more</span>}
+                        {nothing > 0 && <span className="rounded-full border border-white/[.08] bg-white/[.02] px-2 py-0.5 text-[11px] font-semibold text-text-dim">{nothing} Nothing</span>}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex shrink-0 gap-2"><button type="button" onClick={() => toggleHistoryFull(r.id)} className="min-h-10 rounded-xl border border-gold/20 bg-gold/[.045] px-3.5 text-xs font-bold text-gold-light transition hover:bg-gold/[.08]">{expanded ? 'Hide Details' : 'View Full'}</button><button type="button" onClick={() => exportRouletteCsv(r)} className="min-h-10 rounded-xl border border-white/[.08] px-3.5 text-xs font-bold text-text-dim transition hover:border-white/[.14] hover:text-text-bright">CSV</button></div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {r.status !== 'void' && <span className="hidden text-right text-[12px] text-text-dim sm:block"><span className="block text-[16px] font-bold text-gold-light">{lootCount}</span>loot</span>}
+                    <button type="button" onClick={() => toggleHistoryFull(r.id)} className="lr-btn border-gold/25 text-gold-light" aria-expanded={expanded}>{expanded ? 'Hide' : 'View'}</button>
+                    <button type="button" onClick={() => exportRouletteCsv(r)} className="lr-btn">CSV</button>
+                  </div>
                 </div>
 
-                {expanded && <div className="border-t border-white/[.06] bg-black/10 p-3 sm:p-4">
-                  {r.status === 'void' && <div className="mb-3 rounded-xl border border-red-400/15 bg-red-400/[.035] px-3 py-2.5 text-[12px] text-text-dim">Void reason: <span className="font-semibold text-red-200">{r.void_reason || 'Voided by staff'}</span></div>}
-                  <div className="mb-4 rounded-2xl border border-white/[.06] bg-white/[.012] p-3.5 sm:p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-[.18em] text-gold-dim">All Participants</div>
-                        <div className="mt-1 text-[12px] text-text-dim">Every Attendance player is listed with their final result.</div>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
-                        <span className="rounded-full border border-gold/15 bg-gold/[.04] px-2 py-1 text-gold-light">{lootCount} Loot</span>
-                        <span className="rounded-full border border-white/[.08] bg-white/[.025] px-2 py-1 text-text-dim">{nothing} Nothing</span>
+                {expanded && (
+                  <div className="border-t border-white/[.06] bg-black/15 p-3 sm:p-4">
+                    {r.status === 'void' && <div className="mb-3 rounded-xl border border-red-400/20 bg-red-400/[.04] px-3 py-2.5 text-[12px] text-text-dim">Void reason: <span className="font-semibold text-red-200">{r.void_reason || 'Voided by staff'}</span></div>}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">All players</div>
+                      <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
+                        <span className="rounded-full border border-gold/20 bg-gold/[.05] px-2 py-0.5 text-gold-light">{lootCount} loot</span>
+                        <span className="rounded-full border border-white/[.08] bg-white/[.03] px-2 py-0.5 text-text-dim">{nothing} Nothing</span>
                       </div>
                     </div>
                     <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -1141,116 +1670,126 @@ export default function LootRoulette({ ctx }) {
                         const isNothing = String(result?.item_name || '').toLowerCase() === 'nothing'
                         const isLoot = Boolean(result) && !isNothing
                         return (
-                          <div key={player.member_id} className={`flex min-h-10 items-center justify-between gap-2 rounded-xl border px-3 py-2 ${isLoot ? 'border-gold/15 bg-gold/[.035]' : isNothing ? 'border-white/[.06] bg-black/15' : 'border-white/[.05] bg-white/[.012]'}`}>
-                            <span className="min-w-0 truncate text-[12px] font-semibold text-text-bright">{player.player_name}</span>
-                            <span className={`shrink-0 max-w-[52%] truncate text-right text-[10px] font-bold ${isLoot ? 'text-gold-light' : isNothing ? 'text-text-dim' : 'text-white/35'}`}>
-                              {isLoot ? `🎁 ${result.item_name}` : isNothing ? 'Nothing' : 'No Result'}
+                          <div key={player.member_id} className={`flex min-h-10 items-center justify-between gap-2 rounded-xl border px-3 py-2 ${isLoot ? 'border-gold/20 bg-gold/[.045]' : 'border-white/[.06] bg-white/[.015]'}`}>
+                            <span className="min-w-0 truncate text-[13px] font-semibold text-text-bright">{player.player_name}</span>
+                            <span className={`max-w-[52%] shrink-0 truncate text-right text-[11px] font-bold ${isLoot ? 'text-gold-light' : isNothing ? 'text-text-dim' : 'text-white/35'}`}>
+                              {isLoot ? `🎁 ${result.item_name}` : isNothing ? 'Nothing' : 'No result'}
                             </span>
                           </div>
                         )
                       })}
                     </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/[.06] bg-white/[.012] p-3.5 sm:p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-[.18em] text-gold-dim">Distribution Summary</div>
-                        <div className="mt-1 text-[12px] text-text-dim">Each player is listed once above with their final reward. Item-level cards are intentionally omitted to avoid duplicate information.</div>
-                      </div>
-                      <div className="flex shrink-0 flex-wrap gap-1.5">
-                        <span className="rounded-full border border-gold/15 bg-gold/[.04] px-2.5 py-1 text-[10px] font-bold text-gold-light">{lootCount} Loot</span>
-                        <span className="rounded-full border border-white/[.08] bg-white/[.025] px-2.5 py-1 text-[10px] font-bold text-text-dim">{nothing} Nothing</span>
-                      </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {r.status === 'ready' && <button type="button" onClick={async () => { await openRoulette(r.id); setRollPanelOpen(true) }} className="btn-gold min-h-10 px-4 text-[12px] font-bold">Open roll</button>}
+                      {isStaff && r.status !== 'void' && <button type="button" onClick={() => requestVoid(r)} className="lr-btn lr-btn-danger">Void</button>}
+                      {isStaff && <button type="button" onClick={event => { event.stopPropagation(); requestDelete(r) }} className="lr-btn lr-btn-danger">Delete</button>}
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">{r.status === 'ready' && <button type="button" onClick={async () => { await openRoulette(r.id); setRollPanelOpen(true) }} className="min-h-10 rounded-xl border border-gold/20 bg-gold/[.045] px-3 text-xs font-bold text-gold-light">Start Roll</button>}{isStaff && r.status !== 'void' && <button type="button" onClick={() => requestVoid(r)} className="min-h-10 rounded-xl border border-red-400/20 bg-red-400/[.04] px-3 text-xs font-bold text-red-300">Void</button>}{isStaff && <button type="button" onClick={event => { event.stopPropagation(); requestDelete(r) }} className="min-h-10 rounded-xl border border-red-400/20 bg-red-400/[.04] px-3 text-xs font-bold text-red-300">Delete</button>}</div>
-                </div>}
+                )}
               </article>
             )
           })}
         </div>
 
-        {hasMoreHistory && !historyLoading && <div className="mt-4 flex justify-center"><button type="button" onClick={() => { const next = historyLimit + 100; setHistoryLimit(next); loadHistory(next) }} className="min-h-10 rounded-xl border border-gold/20 bg-gold/[.04] px-4 text-xs font-bold text-gold-light">Load More History</button></div>}
+        {hasMoreHistory && !historyLoading && (
+          <div className="mt-4 flex justify-center">
+            <button type="button" onClick={() => { const next = historyLimit + 100; setHistoryLimit(next); loadHistory(next) }} className="lr-btn border-gold/25 text-gold-light">Load more</button>
+          </div>
+        )}
       </section>
+
+      {/* ── Void / delete ──────────────────────────────────────────── */}
       {actionTarget && actionType && (
-        <div className="fixed inset-0 z-[230] flex items-center justify-center bg-black/75 p-4 backdrop-blur-[3px]" role="dialog" aria-modal="true" aria-label={actionType === 'void' ? 'Void loot roulette' : 'Delete loot roulette'} onMouseDown={e => e.target === e.currentTarget && closeStaffAction()}>
-          <div ref={modalRef} tabIndex={-1} className="w-full max-w-md overflow-hidden rounded-2xl border border-red-400/20 bg-[#0c0a09] shadow-2xl outline-none">
+        <div className="lr-modal z-[230]" role="dialog" aria-modal="true" aria-label={actionType === 'void' ? 'Void loot roulette' : 'Delete loot roulette'} onMouseDown={e => e.target === e.currentTarget && closeStaffAction()}>
+          <div ref={modalRef} tabIndex={-1} className="lr-solid w-full max-w-md overflow-hidden rounded-[22px] outline-none" style={{ borderColor: 'rgba(248,113,113,.25)' }}>
             <div className="border-b border-white/[.07] px-4 py-4 sm:px-5">
-              <div className="text-[11px] font-bold uppercase tracking-[.18em] text-red-300">Staff Action</div>
-              <h3 className="mt-1 text-lg font-bold text-text-bright">{actionType === 'void' ? 'Void Loot Roulette?' : 'Delete Loot Roulette?'}</h3>
-              <p className="mt-1 text-[13px] leading-5 text-text-dim">{actionTarget.event} · {actionTarget.session_display_name || 'Event Run'} · {formatDate(actionTarget.event_date)}</p>
+              <div className="text-[11px] font-bold uppercase tracking-[.16em] text-red-300">Staff action</div>
+              <h3 className="mt-1 text-[18px] font-bold text-text-bright">{actionType === 'void' ? 'Void this roulette?' : 'Delete this roulette?'}</h3>
+              <p className="mt-1 text-[13px] leading-5 text-text-dim">{actionTarget.event} · {actionTarget.session_display_name || 'Event Run'} · {rouletteDateText(actionTarget)}</p>
             </div>
             <div className="space-y-3 p-4 sm:p-5">
-              <div className="rounded-xl border border-red-400/10 bg-red-400/[.025] p-3 text-[12px] leading-5 text-text-dim">
-                {actionType === 'void' ? 'Void keeps the Attendance record and allows a replacement roulette.' : 'Delete permanently removes this roulette, its participants, loot items, and results. Attendance is not changed.'}
+              <div className="rounded-xl border border-red-400/15 bg-red-400/[.04] p-3 text-[12px] leading-5 text-text-dim">
+                {actionType === 'void' ? 'Void keeps the Attendance runs and lets you create a replacement.' : 'Delete permanently removes this roulette, its players, loot and results. Attendance is not changed.'}
               </div>
               {actionType === 'void' && (
                 <div>
                   <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Reason (optional)</label>
-                  <textarea value={voidReason} onChange={e => setVoidReason(e.target.value)} rows={3} className="w-full resize-none rounded-xl border border-white/[.08] bg-black/20 px-3 py-2.5 text-[13px] text-text-bright outline-none focus:border-gold/30" placeholder="Why is this roulette being voided?" />
+                  <textarea value={voidReason} onChange={e => setVoidReason(e.target.value)} rows={3} className="lr-field resize-none px-3 py-2.5 text-[13px]" placeholder="Why is this roulette being voided?" />
                 </div>
               )}
               <div>
-                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Staff Password</label>
-                <input autoFocus type="password" value={actionPassword} onChange={e => setActionPassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') confirmStaffAction() }} className="w-full rounded-xl border border-white/[.08] bg-black/20 px-3 py-2.5 text-[13px] text-text-bright outline-none focus:border-gold/30" placeholder="Enter your current login password" />
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Staff password</label>
+                <input autoFocus type="password" value={actionPassword} onChange={e => setActionPassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') confirmStaffAction() }} className="lr-field min-h-[44px] px-3 text-[13px]" placeholder="Your current login password" />
               </div>
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button type="button" onClick={closeStaffAction} disabled={deleting || voiding} className="min-h-10 rounded-lg border border-white/[.08] px-4 text-xs font-bold text-text-dim hover:text-text-bright disabled:opacity-50">Cancel</button>
-                <button type="button" onClick={confirmStaffAction} disabled={deleting || voiding || !actionPassword.trim()} className="min-h-10 rounded-lg border border-red-400/20 bg-red-500/[.08] px-4 text-xs font-bold text-red-200 disabled:cursor-not-allowed disabled:opacity-50">{deleting ? 'Deleting…' : voiding ? 'Voiding…' : actionType === 'void' ? 'Void Roulette' : 'Delete Permanently'}</button>
+                <button type="button" onClick={closeStaffAction} disabled={deleting || voiding} className="lr-btn">Cancel</button>
+                <button type="button" onClick={confirmStaffAction} disabled={deleting || voiding || !actionPassword.trim()} className="lr-btn lr-btn-danger">{deleting ? 'Deleting…' : voiding ? 'Voiding…' : actionType === 'void' ? 'Void roulette' : 'Delete permanently'}</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {confirmCreate && selectedAttendance && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/75 p-4 backdrop-blur-[3px]" role="dialog" aria-modal="true" aria-label="Confirm create loot roulette" onMouseDown={e => e.target === e.currentTarget && setConfirmCreate(false)}>
-          <div ref={modalRef} tabIndex={-1} className="w-full max-w-lg overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl outline-none">
+      {/* ── Confirm create ─────────────────────────────────────────── */}
+      {confirmCreate && (createMode === 'weekly' ? selectedWeek : selectedAttendance) && (
+        <div className="lr-modal z-[220]" role="dialog" aria-modal="true" aria-label="Confirm create loot roulette" onMouseDown={e => e.target === e.currentTarget && setConfirmCreate(false)}>
+          <div ref={modalRef} tabIndex={-1} className="lr-solid w-full max-w-lg overflow-hidden rounded-[22px] outline-none">
             <div className="border-b border-white/[.07] px-4 py-4 sm:px-5">
-              <div className="text-[11px] font-bold uppercase tracking-[.18em] text-gold-dim">Final Check</div>
-              <h3 className="mt-1 text-lg font-bold text-text-bright">Create Loot Roulette?</h3>
-              <p className="mt-1 text-[13px] leading-5 text-text-dim">Review the Attendance run and loot pool before creating it.</p>
+              <div className="text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">Final check</div>
+              <h3 className="mt-1 text-[18px] font-bold text-text-bright">{createMode === 'weekly' ? 'Create weekly roulette?' : 'Create roulette?'}</h3>
             </div>
-            <div className="space-y-3 p-4 sm:p-5">
-              <div className="rounded-xl border border-white/[.07] bg-white/[.02] p-3">
-                <div className="text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Attendance</div>
-                <div className="mt-1 text-[14px] font-bold text-text-bright">{selectedAttendance.event}</div>
-                <div className="mt-0.5 text-[12px] text-text-dim">{selectedAttendance._sessionName} · {selectedAttendance._date} · {selectedAttendance._participants.length} players</div>
+            <div className="max-h-[70vh] space-y-3 overflow-y-auto p-4 sm:p-5">
+              <div className="lr-inset rounded-xl p-3">
+                <div className="text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">{createMode === 'weekly' ? 'Week' : 'Attendance'}</div>
+                {createMode === 'weekly' ? (
+                  <>
+                    <div className="mt-1 text-[15px] font-bold text-text-bright">{selectedWeek.label} <span className="text-[12px] font-semibold text-text-dim">(Tue–Sat)</span></div>
+                    <div className="mt-0.5 text-[12px] text-text-dim">{weekIncludedLogs.length} {weekIncludedLogs.length === 1 ? 'run' : 'runs'} · <span className="font-semibold text-gold-light">{weekPlayers.length} players</span>, one chance each</div>
+                    <ul className="mt-2 space-y-1">
+                      {weekIncludedLogs.map(log => <li key={log.id} className="truncate text-[12px] text-text-dim">• {log.event} · {log._sessionName} · {log._date}</li>)}
+                    </ul>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-1 text-[15px] font-bold text-text-bright">{selectedAttendance.event}</div>
+                    <div className="mt-0.5 text-[12px] text-text-dim">{selectedAttendance._sessionName} · {selectedAttendance._date} · {selectedAttendance._participants.length} players</div>
+                  </>
+                )}
               </div>
-              <div className="rounded-xl border border-white/[.07] bg-white/[.02] p-3">
-                <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-[.14em] text-text-dim"><span>Loot Pool</span><span className="text-gold-light">{createUnitCount} {createUnitCount === 1 ? 'item' : 'items'}</span></div>
-                <div className="space-y-1.5">
-                  {createPayload.map((item, index) => <div key={`${item.name}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-black/20 px-3 py-2"><span className="truncate text-[13px] font-semibold text-text-bright">{item.name}</span></div>)}
+              <div className="lr-inset rounded-xl p-3">
+                <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-[.14em] text-text-dim"><span>Loot</span><span className="text-gold-light">{createUnitCount} {createUnitCount === 1 ? 'item' : 'items'}</span></div>
+                <div className="flex flex-wrap gap-1.5">
+                  {createPayload.map((item, index) => <span key={`${item.name}-${index}`} className="rounded-lg border border-white/[.08] bg-black/25 px-2.5 py-1 text-[12px] font-semibold text-text-bright">{item.name}</span>)}
                 </div>
               </div>
+              <div className="text-[12px] text-text-dim">{createBalanceText}</div>
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button type="button" onClick={() => setConfirmCreate(false)} className="min-h-10 rounded-lg border border-white/[.08] px-4 text-xs font-bold text-text-dim hover:text-text-bright">Cancel</button>
-                <button type="button" onClick={createRoulette} className="btn-gold min-h-10 px-4 text-xs font-bold">Create Roulette</button>
+                <button type="button" onClick={() => setConfirmCreate(false)} className="lr-btn">Cancel</button>
+                <button type="button" onClick={createRoulette} className="btn-gold min-h-10 px-5 text-[13px] font-bold">{createMode === 'weekly' ? 'Create weekly roulette' : 'Create roulette'}</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── Confirm roll ───────────────────────────────────────────── */}
       {confirmRoll && roulette && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/75 p-4 backdrop-blur-[3px]" role="dialog" aria-modal="true" aria-label="Confirm loot roll" onMouseDown={e => e.target === e.currentTarget && setConfirmRoll(false)}>
-          <div ref={modalRef} tabIndex={-1} className="w-full max-w-md overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl outline-none">
+        <div className="lr-modal z-[220]" role="dialog" aria-modal="true" aria-label="Confirm loot roll" onMouseDown={e => e.target === e.currentTarget && setConfirmRoll(false)}>
+          <div ref={modalRef} tabIndex={-1} className="lr-solid w-full max-w-md overflow-hidden rounded-[22px] outline-none">
             <div className="border-b border-white/[.07] px-4 py-4 sm:px-5">
-              <div className="text-[11px] font-bold uppercase tracking-[.18em] text-gold-dim">Final Check</div>
-              <h3 className="mt-1 text-lg font-bold text-text-bright">Start the roll?</h3>
-              <p className="mt-1 text-[13px] leading-5 text-text-dim">The server will decide every remaining result in one call. The animation only reveals those saved results.</p>
+              <div className="text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">Final check</div>
+              <h3 className="mt-1 text-[18px] font-bold text-text-bright">Start the roll?</h3>
+              <p className="mt-1 text-[13px] leading-5 text-text-dim">The server decides every result in one go. The animation just reveals them.</p>
             </div>
             <div className="p-4 sm:p-5">
               <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-xl border border-white/[.07] bg-black/20 p-3 text-center"><div className="text-[10px] uppercase tracking-wider text-text-dim">Players</div><div className="mt-1 text-lg font-black text-text-bright">{eligibleParticipants.length}</div></div>
-                <div className="rounded-xl border border-gold/15 bg-gold/[.03] p-3 text-center"><div className="text-[10px] uppercase tracking-wider text-text-dim">Loot Units</div><div className="mt-1 text-lg font-black text-gold-light">{remainingLootUnits}</div></div>
-                <div className="rounded-xl border border-white/[.07] bg-black/20 p-3 text-center"><div className="text-[10px] uppercase tracking-wider text-text-dim">Nothing</div><div className="mt-1 text-lg font-black text-text-bright">{Math.max(0, eligibleParticipants.length - remainingLootUnits)}</div></div>
+                <StatTile label="Players" value={eligibleParticipants.length} />
+                <StatTile label="Loot" value={remainingLootUnits} tone="gold" />
+                <StatTile label="Nothing" value={Math.max(0, eligibleParticipants.length - remainingLootUnits)} />
               </div>
-              <div className="mt-3 rounded-xl border border-gold/10 bg-gold/[.025] px-3 py-2.5 text-[12px] leading-5 text-text-dim">Each eligible player can receive at most one result. Nothing is never animated.</div>
               <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button type="button" onClick={() => setConfirmRoll(false)} className="min-h-10 rounded-lg border border-white/[.08] px-4 text-xs font-bold text-text-dim hover:text-text-bright">Cancel</button>
-                <button type="button" onClick={spin} className="btn-gold min-h-10 px-4 text-xs font-bold">START ROLL</button>
+                <button type="button" onClick={() => setConfirmRoll(false)} className="lr-btn">Cancel</button>
+                <button type="button" onClick={spin} className="btn-gold min-h-10 px-5 text-[13px] font-bold">🎲 Start roll</button>
               </div>
             </div>
           </div>
@@ -1259,4 +1798,3 @@ export default function LootRoulette({ ctx }) {
     </div>
   )
 }
-

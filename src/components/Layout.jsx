@@ -17,7 +17,8 @@ const navItems = [
 
 // Desktop nav sizing. NAV_ITEM_BASE is shared by real buttons and the hidden
 // measuring row so the measured widths always match what is rendered.
-const NAV_ITEM_BASE = 'flex h-10 items-center gap-2 rounded-lg px-3 text-[13px] font-semibold'
+// (border-transparent is included so the active glass border never changes width.)
+const NAV_ITEM_BASE = 'flex h-10 items-center gap-2 rounded-xl border border-transparent px-3 text-[13px] font-semibold'
 const NAV_GAP = 2            // gap-0.5
 const NAV_PILL_CHROME = 16   // pill padding + border + small safety margin
 
@@ -25,6 +26,64 @@ const NAV_PILL_CHROME = 16   // pill padding + border + small safety margin
 const CREATOR_NAME = 'Ryuji / MiaKhalifa'
 const SUPPORT_URL = 'https://discord.com/users/703295552821133324'
 const SUPPORT_LINK_LABEL = 'message me on Discord'
+
+// ---------------------------------------------------------------------------
+// Supabase egress settings for the notification bell
+// ---------------------------------------------------------------------------
+// Realtime: only receive INSERTs for the signed-in member. Without a filter,
+// every browser receives every member's notifications. If live notifications
+// ever stop arriving on your setup, flip this to false (the local user_id
+// check below still keeps other members' rows out of the list).
+const REALTIME_FILTER_BY_USER = true
+// Fallback poll, only used while Realtime is NOT connected and the tab is visible.
+const POLL_FALLBACK_MS = 5 * 60 * 1000
+// While Realtime is healthy, opening the bell only re-queries after this long.
+const OPEN_REFRESH_MS = 10 * 60 * 1000
+// Auction / marketplace item names + images, cached in the browser so each id
+// is fetched once per week instead of once per page load.
+const LOOKUP_CACHE_KEY = 'pb-notif-lookups-v1'
+const LOOKUP_CACHE_TTL = 7 * 24 * 60 * 60 * 1000
+const LOOKUP_CACHE_MAX = 200
+
+const emptyLookupCache = () => ({ createdAt: Date.now(), auctions: {}, items: {} })
+
+function readLookupCache() {
+  try {
+    const raw = localStorage.getItem(LOOKUP_CACHE_KEY)
+    if (!raw) return emptyLookupCache()
+    const parsed = JSON.parse(raw)
+    if (!parsed || Date.now() - Number(parsed.createdAt || 0) > LOOKUP_CACHE_TTL) {
+      return emptyLookupCache()
+    }
+    return {
+      createdAt: Number(parsed.createdAt),
+      auctions: parsed.auctions || {},
+      items: parsed.items || {},
+    }
+  } catch {
+    return emptyLookupCache()
+  }
+}
+
+function trimLookupMap(map) {
+  const keys = Object.keys(map)
+  if (keys.length <= LOOKUP_CACHE_MAX) return map
+  const out = {}
+  for (const key of keys.slice(-LOOKUP_CACHE_MAX)) out[key] = map[key]
+  return out
+}
+
+function writeLookupCache(cache) {
+  try {
+    localStorage.setItem(LOOKUP_CACHE_KEY, JSON.stringify({
+      createdAt: cache.createdAt,
+      auctions: trimLookupMap(cache.auctions),
+      items: trimLookupMap(cache.items),
+    }))
+  } catch {
+    // Storage full or blocked: the in-memory cache still works for this session.
+  }
+}
 
 const FALLBACK_REGIONS = [
   { id: 'ph', code: 'ph', flag: '🇵🇭', name: 'Philippines', tz: 'Asia/Manila',       label: 'GMT+8' },
@@ -59,6 +118,17 @@ function getLocalZoneLabel() {
   }
 }
 
+// Same original crest used on the login page.
+function CrestIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+      <path d="M12 2.5l7.5 3v6c0 4.5-3.3 8.1-7.5 10-4.2-1.9-7.5-5.5-7.5-10v-6z" />
+      <path d="M12 5.2l1.1 1.9L12 9l-1.1-1.9z" fill="currentColor" stroke="none" />
+      <path d="M7.8 10.6L12 13l4.2-2.4" />
+      <path d="M7.8 14L12 16.4l4.2-2.4" />
+    </svg>
+  )
+}
 
 /**
  * Flag image from flagcdn.com.
@@ -113,8 +183,6 @@ function FlagIcon({ code, name, width = 20, height = 15, fallbackFlag }) {
     />
   )
 }
-
-
 
 // CSS "hidden"/"md:hidden" only hides an element - it stays mounted and keeps
 // querying + subscribing. This hook lets us mount a single NotificationBell.
@@ -237,9 +305,11 @@ function NotificationBell({ ctx, onNavigate }) {
   const panelRef = useRef(null)
   const loadRequestRef = useRef(0)
   const lastLoadedRef = useRef(0)
-  // Auction / marketplace names + images rarely change; look each id up once
-  // per session instead of on every notification load.
-  const lookupCacheRef = useRef({ auctions: {}, items: {} })
+  const realtimeLiveRef = useRef(false)
+  // Auction / marketplace names + images rarely change; cached in memory and
+  // in localStorage so each id is looked up once instead of on every load.
+  const lookupCacheRef = useRef(null)
+  if (lookupCacheRef.current === null) lookupCacheRef.current = readLookupCache()
 
   const memberId = currentUser?.id
   const isGuest = !memberId || currentUser?.name === 'Guest'
@@ -254,14 +324,17 @@ function NotificationBell({ ctx, onNavigate }) {
 
     setLoading(true)
     try {
+      // Only the columns the bell actually renders.
       const { data, error } = await supabase
         .from('notifications')
-        .select('id, user_id, type, title, message, auction_id, marketplace_item_id, is_read, created_at')
+        .select('id, type, title, message, auction_id, marketplace_item_id, is_read, created_at')
         .eq('user_id', memberId)
         .order('created_at', { ascending: false })
         .limit(30)
 
       if (error) throw error
+
+      let cacheChanged = false
 
       const auctionIds = [...new Set(
         (data || [])
@@ -282,6 +355,7 @@ function NotificationBell({ ctx, onNavigate }) {
           console.warn('Load notification auction data failed:', auctionError)
         } else {
           for (const auction of auctions || []) auctionMap[String(auction.id)] = auction
+          cacheChanged = true
         }
       }
 
@@ -304,8 +378,11 @@ function NotificationBell({ ctx, onNavigate }) {
           console.warn('Load notification marketplace item data failed:', marketplaceError)
         } else {
           for (const item of marketplaceItems || []) marketplaceItemMap[String(item.id)] = item
+          cacheChanged = true
         }
       }
+
+      if (cacheChanged) writeLookupCache(lookupCacheRef.current)
 
       // Ignore an older request if Clear All (or a newer load) happened
       // while this query was still in flight.
@@ -342,22 +419,37 @@ function NotificationBell({ ctx, onNavigate }) {
     loadNotifications()
     if (!supabase || isGuest) return
 
-    const poll = setInterval(loadNotifications, 5 * 60 * 1000)
+    // Fallback poll: skipped while the tab is hidden or Realtime is connected.
+    const poll = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      if (realtimeLiveRef.current) return
+      loadNotifications()
+    }, POLL_FALLBACK_MS)
+
+    // Coming back to the tab: refresh only if we likely missed something.
+    const handleVisibility = () => {
+      if (document.hidden) return
+      const stale = Date.now() - lastLoadedRef.current
+      if ((!realtimeLiveRef.current && stale > POLL_FALLBACK_MS) || stale > OPEN_REFRESH_MS * 3) {
+        loadNotifications()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
 
     let channel = null
     try {
-      // Subscribe without a user_id filter. Some custom-auth setups can
-      // prevent filtered Realtime events from reaching the browser.
-      // We filter by memberId locally instead.
+      const changeFilter = {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+      }
+      if (REALTIME_FILTER_BY_USER) changeFilter.filter = `user_id=eq.${memberId}`
+
       channel = supabase
         .channel(`notifications-live-${memberId}-${Date.now()}`)
         .on(
           'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications',
-          },
+          changeFilter,
           async payload => {
             const incomingRow = payload?.new
             if (!incomingRow) return
@@ -373,6 +465,7 @@ function NotificationBell({ ctx, onNavigate }) {
             ) return
 
             let incoming = incomingRow
+            let cacheChanged = false
 
             if (incoming.type === 'auction_won' && incoming.auction_id) {
               const cacheKey = String(incoming.auction_id)
@@ -390,6 +483,7 @@ function NotificationBell({ ctx, onNavigate }) {
                 } else if (data) {
                   auction = data
                   lookupCacheRef.current.auctions[cacheKey] = data
+                  cacheChanged = true
                 }
               }
 
@@ -415,6 +509,7 @@ function NotificationBell({ ctx, onNavigate }) {
                 } else if (data) {
                   marketplaceItem = data
                   lookupCacheRef.current.items[cacheKey] = data
+                  cacheChanged = true
                 }
               }
 
@@ -424,6 +519,8 @@ function NotificationBell({ ctx, onNavigate }) {
               }
             }
 
+            if (cacheChanged) writeLookupCache(lookupCacheRef.current)
+
             setNotifications(prev => [
               incoming,
               ...prev.filter(n => n.id !== incoming.id),
@@ -431,7 +528,17 @@ function NotificationBell({ ctx, onNavigate }) {
           }
         )
         .subscribe(status => {
-          console.log('[Notifications Realtime]', status)
+          const wasLive = realtimeLiveRef.current
+          realtimeLiveRef.current = status === 'SUBSCRIBED'
+          // After a reconnect, catch up once if the list is old.
+          if (
+            !wasLive &&
+            realtimeLiveRef.current &&
+            lastLoadedRef.current &&
+            Date.now() - lastLoadedRef.current > 2 * 60 * 1000
+          ) {
+            loadNotifications()
+          }
         })
     } catch (err) {
       console.warn('Notification realtime setup failed:', err)
@@ -439,6 +546,8 @@ function NotificationBell({ ctx, onNavigate }) {
 
     return () => {
       clearInterval(poll)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      realtimeLiveRef.current = false
       if (channel) {
         try { supabase.removeChannel(channel) } catch {}
       }
@@ -449,8 +558,12 @@ function NotificationBell({ ctx, onNavigate }) {
   useEffect(() => {
     if (!open) return
 
-    // Realtime already keeps the list current; only re-query if it is stale.
-    if (Date.now() - lastLoadedRef.current > 60 * 1000) loadNotifications()
+    // Realtime already keeps the list current; only re-query when it is down
+    // or the list is genuinely old.
+    const stale = Date.now() - lastLoadedRef.current
+    if ((!realtimeLiveRef.current && stale > 60 * 1000) || stale > OPEN_REFRESH_MS) {
+      loadNotifications()
+    }
 
     const handleOutside = e => {
       if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false)
@@ -493,12 +606,15 @@ function NotificationBell({ ctx, onNavigate }) {
   const markRead = async id => {
     if (!supabase || !id) return
 
+    const target = notifications.find(n => n.id === id)
+    if (target?.is_read) return // already read: skip the network call
+
     const previous = notifications
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
 
     const { error } = await supabase
       .from('notifications')
-      .update({ is_read: true })
+      .update({ is_read: true }, { returning: 'minimal' })
       .eq('id', id)
 
     if (error) {
@@ -515,7 +631,7 @@ function NotificationBell({ ctx, onNavigate }) {
 
     const { error } = await supabase
       .from('notifications')
-      .update({ is_read: true })
+      .update({ is_read: true }, { returning: 'minimal' })
       .eq('user_id', memberId)
       .eq('is_read', false)
 
@@ -538,7 +654,7 @@ function NotificationBell({ ctx, onNavigate }) {
 
     const { error } = await supabase
       .from('notifications')
-      .delete()
+      .delete({ returning: 'minimal' })
       .eq('user_id', memberId)
 
     if (error) {
@@ -569,10 +685,8 @@ function NotificationBell({ ctx, onNavigate }) {
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
-        className={`relative flex h-10 w-10 items-center justify-center rounded-xl border transition-all ${
-          open
-            ? 'border-gold/40 bg-gold/[.10] text-gold-bright shadow-[0_0_18px_rgba(212,175,55,.08)]'
-            : 'border-gold/15 bg-black/15 text-gold-light hover:border-gold/30 hover:bg-gold/[.06]'
+        className={`lg-chip relative flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+          open ? 'lg-chip-active text-gold-bright' : 'text-gold-light'
         }`}
         aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
         aria-expanded={open}
@@ -594,11 +708,9 @@ function NotificationBell({ ctx, onNavigate }) {
       </button>
 
       {open && (
-        <div className="fixed left-2.5 right-2.5 top-[82px] z-[120] w-auto max-w-none overflow-hidden rounded-[14px] border border-gold/25 bg-[#0a0807] shadow-[0_28px_90px_rgba(0,0,0,.88)] md:absolute md:left-auto md:right-0 md:top-full md:mt-3 md:w-[380px] md:max-w-[calc(100vw-20px)]">
+        <div className="lg-panel lg-pop fixed left-2.5 right-2.5 top-[82px] z-[120] w-auto max-w-none overflow-hidden rounded-[20px] md:absolute md:left-auto md:right-0 md:top-full md:mt-3 md:w-[380px] md:max-w-[calc(100vw-20px)]">
           {/* Header */}
-          <div className="relative border-b border-white/[.07] px-4 pb-2.5 pt-3.5">
-            <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-gold/55 to-transparent" />
-
+          <div className="relative border-b border-white/[.08] px-4 pb-2.5 pt-3.5">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-[9px] font-bold uppercase tracking-[.22em] text-gold-dim">
@@ -615,7 +727,7 @@ function NotificationBell({ ctx, onNavigate }) {
                     <button
                       type="button"
                       onClick={markAllRead}
-                      className="rounded-lg border border-gold/15 bg-gold/[.035] px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.13em] text-gold-light transition-all hover:border-gold/30 hover:bg-gold/[.08]"
+                      className="lg-chip rounded-full px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.13em] text-gold-light"
                     >
                       Mark all read
                     </button>
@@ -624,7 +736,7 @@ function NotificationBell({ ctx, onNavigate }) {
                     <button
                       type="button"
                       onClick={() => setConfirmClear(true)}
-                      className="rounded-lg border border-red-400/15 bg-red-400/[.025] px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.13em] text-text-dim transition-all hover:border-red-400/30 hover:bg-red-400/[.07] hover:text-red-300"
+                      className="lg-chip rounded-full px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.13em] text-text-dim hover:text-red-300"
                     >
                       Clear all
                     </button>
@@ -644,7 +756,7 @@ function NotificationBell({ ctx, onNavigate }) {
           </div>
 
           {confirmClear && (
-            <div className="border-b border-red-400/10 bg-red-950/[.12] px-4 py-3">
+            <div className="border-b border-red-400/10 bg-red-500/[.08] px-4 py-3">
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <div className="text-[10px] font-semibold text-text-bright">
@@ -658,14 +770,14 @@ function NotificationBell({ ctx, onNavigate }) {
                   <button
                     type="button"
                     onClick={() => setConfirmClear(false)}
-                    className="rounded-lg border border-white/[.08] bg-white/[.025] px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.12em] text-text-dim hover:bg-white/[.05] hover:text-text"
+                    className="lg-chip rounded-full px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.12em] text-text-dim"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={clearAllNotifications}
-                    className="rounded-lg border border-red-400/25 bg-red-400/[.08] px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.12em] text-red-300 hover:bg-red-400/[.14]"
+                    className="rounded-full border border-red-400/30 bg-red-400/[.12] px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[.12em] text-red-300 shadow-[inset_0_1px_0_rgba(255,255,255,.12)] hover:bg-red-400/[.2]"
                   >
                     Clear all
                   </button>
@@ -678,13 +790,13 @@ function NotificationBell({ ctx, onNavigate }) {
           <div className="max-h-[min(420px,calc(100vh-145px))] overflow-y-auto overscroll-contain">
             {loading && notifications.length === 0 ? (
               <div className="px-5 py-12 text-center">
-                <div className="mx-auto h-8 w-8 animate-pulse rounded-xl border border-gold/20 bg-gold/[.04]" />
+                <div className="lg-emblem mx-auto h-8 w-8 animate-pulse rounded-xl" />
                 <div className="mt-3 text-[10px] text-text-dim">Loading activity…</div>
               </div>
             ) : notifications.length === 0 ? (
               <div className="px-5 py-14 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-gold/15 bg-gold/[.035]">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-gold-dim">
+                <div className="lg-emblem mx-auto flex h-14 w-14 items-center justify-center rounded-2xl text-gold-light">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                     <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                   </svg>
                 </div>
@@ -716,10 +828,10 @@ function NotificationBell({ ctx, onNavigate }) {
                       key={notification.id}
                       type="button"
                       onClick={() => handleNotificationClick(notification)}
-                      className={`group relative mb-1 flex w-full gap-2 overflow-hidden rounded-lg border p-2 text-left transition-all last:mb-0 ${
+                      className={`group relative mb-1.5 flex w-full gap-2 overflow-hidden rounded-xl border p-2 text-left transition-all last:mb-0 ${
                         unread
-                          ? 'border-white/[.07] bg-gold/[.045] hover:border-white/[.12] hover:bg-gold/[.06]'
-                          : 'border-white/[.035] bg-white/[.018] hover:border-white/[.08] hover:bg-white/[.035]'
+                          ? 'border-white/[.10] bg-gradient-to-br from-gold/[.10] to-white/[.03] shadow-[inset_0_1px_0_rgba(255,255,255,.08)] hover:border-white/[.16]'
+                          : 'border-white/[.05] bg-white/[.025] hover:border-white/[.10] hover:bg-white/[.05]'
                       }`}
                     >
                       {/* unread rail */}
@@ -729,7 +841,7 @@ function NotificationBell({ ctx, onNavigate }) {
 
                       {isAuctionWin || isMarketplace ? (
                         <span
-                          className={`relative flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center overflow-hidden rounded-[9px] border bg-black/35 ${
+                          className={`relative flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border bg-black/30 ${
                             rarity?.border || 'border-white/[.08]'
                           } ${rarity?.glow || ''}`}
                         >
@@ -741,8 +853,9 @@ function NotificationBell({ ctx, onNavigate }) {
                                 ? getNotificationAuctionImage(notification.auction)
                                 : getNotificationMarketplaceImage(notification.marketplaceItem)}
                               alt={notificationItem?.name || 'Notification item'}
-                              className="h-full w-full rounded-[7px] object-cover"
+                              className="h-full w-full rounded-[8px] object-cover"
                               loading="lazy"
+                              decoding="async"
                             />
                           ) : (
                             <div className={`flex h-full w-full items-center justify-center rounded-[8px] text-[8px] font-bold uppercase tracking-[.12em] ${rarity?.text || 'text-text-dim/40'}`}>
@@ -751,7 +864,7 @@ function NotificationBell({ ctx, onNavigate }) {
                           )}
                         </span>
                       ) : (
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-white/[.025] text-text-dim">
+                        <span className="lg-chip flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-text-dim">
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                           </svg>
@@ -886,17 +999,15 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
     Number(liveCurrentUser?.coins || 0)
   )
 
-  // Keep the Layout coin balance live from shared context.
-  // Supabase Realtime below handles cross-page/cross-browser coin changes
-  // without polling or forcing a page refresh.
+  // Keep the Layout coin balance live from shared context (no extra queries).
   useEffect(() => {
     if (liveCurrentUser?.id) {
       setDisplayCoins(Number(liveCurrentUser?.coins || 0))
     }
   }, [liveCurrentUser?.id, liveCurrentUser?.coins])
 
-  // NOTE: no separate Realtime channel here any more. App.jsx already listens
-  // to the members table and updates allMembers/currentUser, which feeds
+  // NOTE: no separate Realtime channel here. App.jsx already listens to the
+  // members table and updates allMembers/currentUser, which feeds
   // liveCurrentUser above. A second subscription only duplicated the traffic.
 
   useEffect(() => {
@@ -944,8 +1055,15 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
     if (role === 'Admin') return 'bg-red-500/15 text-red-300 border border-red-500/30'
     if (role === 'Master') return 'bg-gold/15 text-gold-light border border-gold/35'
     if (role === 'Elder') return 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
-    return 'bg-white/[0.04] text-text-dim border border-white/[0.08]'
+    return 'bg-white/[0.05] text-text-dim border border-white/[0.1]'
   }
+
+  const hasCoins = Number(displayCoins || 0) > 0
+
+  const toastAccent = type =>
+    type === 'red' ? 'bg-red-400' :
+    type === 'blue' ? 'bg-blue-400' :
+    'bg-gold-bright'
 
   const NavButton = ({ item, mobile = false }) => {
     const active = page === item.id
@@ -954,21 +1072,21 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
         type="button"
         onClick={() => navigate(item.id)}
         className={mobile
-          ? `group flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-all ${
+          ? `group flex w-full items-center gap-3 rounded-2xl border px-3.5 py-3 text-left transition-all ${
               active
-                ? 'border-gold/30 bg-gold/[0.09] text-gold-bright shadow-[0_8px_25px_rgba(212,175,55,.06)]'
-                : 'border-transparent text-text-dim hover:border-white/[0.07] hover:bg-white/[0.03] hover:text-text-bright'
+                ? 'lg-chip lg-chip-active text-gold-bright'
+                : 'border-transparent text-text-dim hover:border-white/[0.08] hover:bg-white/[0.04] hover:text-text-bright'
             }`
           : `group relative transition-all ${NAV_ITEM_BASE} ${
               active
-                ? 'bg-gold/[0.09] text-gold-bright'
-                : 'text-text-dim hover:bg-white/[0.035] hover:text-gold-light'
+                ? 'lg-tab-active text-gold-bright'
+                : 'text-text-dim hover:bg-white/[0.05] hover:text-gold-light'
             }`
         }
         aria-current={active ? 'page' : undefined}
       >
         <span className={mobile
-          ? `flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-[16px] ${active ? 'border-gold/25 bg-gold/[0.08]' : 'border-white/[0.06] bg-black/20'}`
+          ? `flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-[16px] ${active ? 'border-gold/30 bg-gold/[0.1]' : 'border-white/[0.07] bg-white/[0.03]'}`
           : `text-[14px] leading-none transition-transform group-hover:scale-105 ${active ? 'opacity-100' : 'opacity-65'}`
         }>
           {item.icon}
@@ -979,22 +1097,26 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
         {mobile && active && (
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-bright shadow-[0_0_9px_rgba(212,175,55,.6)]" />
         )}
-        {!mobile && active && (
-          <span className="absolute bottom-0.5 left-3 right-3 h-px rounded-full bg-gold-bright/70" />
-        )}
       </button>
     )
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-transparent text-text-bright">
-      <nav className="fixed inset-x-0 top-0 z-50 border-b border-gold/15 bg-[#080706]/95 shadow-[0_8px_35px_rgba(0,0,0,.35)] backdrop-blur-xl">
+    <div className="relative flex min-h-screen flex-col bg-transparent text-text-bright">
+      {/* Ambient light for the glass to refract */}
+      <div className="lg-ambient" aria-hidden="true">
+        <div className="lg-orb lg-orb--1" />
+        <div className="lg-orb lg-orb--2" />
+        <div className="lg-orb lg-orb--3" />
+      </div>
+
+      <nav className="lg-bar fixed inset-x-0 top-0 z-50">
         <div className="mx-auto flex h-[64px] w-full max-w-[1900px] items-center gap-2 overflow-hidden px-2 md:h-[72px] md:gap-3 md:overflow-visible md:px-5 lg:px-7 2xl:px-6">
           <div className="flex w-auto min-w-0 shrink-0 items-center gap-2.5">
             <button
               type="button"
               onClick={() => setMobileOpen(value => !value)}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gold/20 bg-gold/[0.045] text-lg text-gold-light transition hover:border-gold/35 hover:bg-gold/[0.09] md:hidden"
+              className="lg-chip flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg text-gold-light md:hidden"
               aria-label="Toggle navigation"
               aria-expanded={mobileOpen}
             >
@@ -1007,8 +1129,8 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               className="group flex min-w-0 items-center gap-3"
               aria-label="Go to Dashboard"
             >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-gold/[0.07] text-xl shadow-[0_0_24px_rgba(212,175,55,.06)] transition group-hover:border-gold/50">
-                🪙
+              <span className="lg-emblem flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gold-light transition group-hover:text-gold-bright">
+                <CrestIcon width="22" height="22" />
               </span>
               <span className="hidden min-w-0 md:block">
                 <span className="block font-spectral text-[18px] font-bold tracking-wide text-gold-light group-hover:text-gold-bright">PeakyBlinder</span>
@@ -1017,7 +1139,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
             </button>
           </div>
 
-          <div className="hidden h-8 w-px bg-white/[0.07] md:block" />
+          <div className="hidden h-8 w-px bg-gradient-to-b from-transparent via-white/15 to-transparent md:block" />
 
           <div ref={navWrapRef} className="relative hidden min-w-0 flex-1 items-center md:flex">
             {/* Invisible row used only to measure each item's natural width. */}
@@ -1039,7 +1161,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
               </span>
             </div>
 
-            <div className="flex min-w-0 items-center gap-0.5 rounded-2xl border border-white/[0.055] bg-white/[0.018] p-1">
+            <div className="lg-track flex min-w-0 items-center gap-0.5 rounded-2xl p-1">
               {primaryNavItems.map(item => <NavButton key={item.id} item={item} />)}
 
               {overflowNavItems.length > 0 && (
@@ -1049,8 +1171,8 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                     onClick={() => setMoreOpen(value => !value)}
                     className={`transition ${NAV_ITEM_BASE} ${
                       activeOverflow || moreOpen
-                        ? 'bg-gold/[0.09] text-gold-bright'
-                        : 'text-text-dim hover:bg-white/[0.035] hover:text-gold-light'
+                        ? 'lg-tab-active text-gold-bright'
+                        : 'text-text-dim hover:bg-white/[0.05] hover:text-gold-light'
                     }`}
                     aria-expanded={moreOpen}
                   >
@@ -1060,7 +1182,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                   </button>
 
                   {moreOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-xl border border-gold/20 bg-[#0b0908] p-1.5 shadow-[0_20px_60px_rgba(0,0,0,.8)]">
+                    <div className="lg-panel lg-pop absolute right-0 top-full mt-2 w-60 overflow-hidden rounded-2xl p-1.5">
                       {overflowNavItems.map(item => <NavButton key={item.id} item={item} mobile />)}
                     </div>
                   )}
@@ -1071,15 +1193,9 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
 
           <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
             {currentUser && (
-              <div className={`flex h-10 shrink-0 items-center gap-1 rounded-xl border px-2 md:hidden ${
-                Number(displayCoins || 0) > 0
-                  ? 'border-gold/10 bg-gold/[0.025]'
-                  : 'border-white/[0.06] bg-white/[0.015]'
-              }`}>
-                <span className={`text-[13px] ${Number(displayCoins || 0) > 0 ? '' : 'opacity-40 grayscale'}`}>🪙</span>
-                <span className={`font-mono text-[12px] font-semibold ${
-                  Number(displayCoins || 0) > 0 ? 'text-gold-light' : 'text-text-dim/60'
-                }`}>
+              <div className={`lg-chip flex h-10 shrink-0 items-center gap-1 rounded-xl px-2 md:hidden ${hasCoins ? 'lg-chip-warm' : ''}`}>
+                <span className={`text-[13px] ${hasCoins ? '' : 'opacity-40 grayscale'}`}>🪙</span>
+                <span className={`font-mono text-[12px] font-semibold ${hasCoins ? 'text-gold-light' : 'text-text-dim/60'}`}>
                   {Number(displayCoins || 0).toLocaleString()}
                 </span>
               </div>
@@ -1090,7 +1206,7 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
             </div>
 
             <div
-              className="hidden h-11 shrink-0 items-center gap-2 rounded-xl border border-white/[0.06] bg-black/20 px-2.5 xl:flex"
+              className="lg-chip hidden h-11 shrink-0 items-center gap-2 rounded-xl px-2.5 xl:flex"
               title={`Your time zone: ${AUTO_LOCAL_TZ}`}
             >
               <span className="text-sm text-gold-light/70">◷</span>
@@ -1102,21 +1218,15 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
 
             {currentUser && (
               <>
-                <div className="hidden md:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[0.06] bg-black/15">
+                <div className="hidden h-11 w-11 shrink-0 items-center justify-center md:flex">
                   {isDesktop && <NotificationBell ctx={ctx} onNavigate={navigate} />}
                 </div>
 
-                <div className={`hidden lg:flex shrink-0 items-center gap-2 rounded-xl border px-2.5 py-2 ${
-                  Number(displayCoins || 0) > 0
-                    ? 'border-gold/10 bg-gold/[0.025]'
-                    : 'border-white/[0.06] bg-white/[0.015]'
-                }`}>
-                  <span className={`text-[13px] ${Number(displayCoins || 0) > 0 ? '' : 'opacity-40 grayscale'}`}>🪙</span>
+                <div className={`lg-chip hidden shrink-0 items-center gap-2 rounded-xl px-2.5 py-2 lg:flex ${hasCoins ? 'lg-chip-warm' : ''}`}>
+                  <span className={`text-[13px] ${hasCoins ? '' : 'opacity-40 grayscale'}`}>🪙</span>
                   <div className="leading-tight">
                     <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-text-dim">Coins</div>
-                    <div className={`mt-0.5 font-mono text-[12px] font-semibold ${
-                      Number(displayCoins || 0) > 0 ? 'text-gold-light' : 'text-text-dim/60'
-                    }`}>
+                    <div className={`mt-0.5 font-mono text-[12px] font-semibold ${hasCoins ? 'text-gold-light' : 'text-text-dim/60'}`}>
                       {Number(displayCoins || 0).toLocaleString()}
                     </div>
                   </div>
@@ -1126,12 +1236,12 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                   <button
                     type="button"
                     onClick={() => setUserMenuOpen(value => !value)}
-                    className={`flex h-11 w-11 items-center justify-center gap-2 rounded-xl border px-0 transition xl:w-auto xl:justify-start xl:px-2.5 ${
-                      userMenuOpen ? 'border-gold/25 bg-gold/[0.07]' : 'border-white/[0.06] bg-black/15 hover:border-gold/20 hover:bg-white/[0.025]'
+                    className={`lg-chip flex h-11 w-11 items-center justify-center gap-2 rounded-xl px-0 transition xl:w-auto xl:justify-start xl:px-2.5 ${
+                      userMenuOpen ? 'lg-chip-active' : ''
                     }`}
                     aria-expanded={userMenuOpen}
                   >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gold/25 bg-gold/[0.08] text-[13px] font-bold text-gold-light">
+                    <span className="lg-emblem flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[13px] font-bold text-gold-light">
                       {(currentUser.name || 'U').charAt(0).toUpperCase()}
                     </span>
                     <span className="hidden max-w-[125px] text-left xl:block">
@@ -1142,44 +1252,47 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                   </button>
 
                   {userMenuOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-[min(16rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-gold/20 bg-[#0b0908] shadow-[0_22px_65px_rgba(0,0,0,.85)]">
-                      <div className="border-b border-white/[0.07] bg-black/20 px-4 py-4">
+                    <div className="lg-panel lg-pop absolute right-0 top-full mt-2 w-[min(16rem,calc(100vw-1rem))] overflow-hidden rounded-2xl">
+                      <div className="border-b border-white/[0.08] bg-white/[0.03] px-4 py-4">
                         <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-dim">Signed in as</div>
                         <div className="mt-1.5 truncate text-[15px] font-semibold text-text-bright">{currentUser.name}</div>
-                        <span className={`mt-2 inline-flex rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${roleBadgeClass(currentUser.role)}`}>
+                        <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${roleBadgeClass(currentUser.role)}`}>
                           {currentUser.role}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => { navigate('my-activity'); setUserMenuOpen(false) }}
-                        className={`block w-full px-4 py-3 text-left text-[13px] font-medium transition hover:bg-gold/[0.06] hover:text-gold-light ${page === 'my-activity' ? 'bg-gold/[0.07] text-gold-bright' : 'text-text'}`}
-                      >
-                        📜 <span className="ml-2">My Activity</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setShowChangePassword(true); setUserMenuOpen(false) }}
-                        className="block w-full border-t border-white/[0.06] px-4 py-3 text-left text-[13px] font-medium text-text transition hover:bg-gold/[0.06] hover:text-gold-light"
-                      >
-                        🔑 <span className="ml-2">Change Password</span>
-                      </button>
-                      <a
-                        href={SUPPORT_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setUserMenuOpen(false)}
-                        className="block w-full border-t border-white/[0.06] px-4 py-3 text-left text-[13px] font-medium text-text transition hover:bg-gold/[0.06] hover:text-gold-light"
-                      >
-                        💛 <span className="ml-2">Support the developer</span>
-                      </a>
-                      <button
-                        type="button"
-                        onClick={handleLogout}
-                        className="block w-full border-t border-white/[0.06] px-4 py-3 text-left text-[13px] font-medium text-red-400 transition hover:bg-red-500/[0.06] hover:text-red-300"
-                      >
-                        🚪 <span className="ml-2">Logout</span>
-                      </button>
+                      <div className="p-1.5">
+                        <button
+                          type="button"
+                          onClick={() => { navigate('my-activity'); setUserMenuOpen(false) }}
+                          className={`block w-full rounded-xl px-3 py-2.5 text-left text-[13px] font-medium transition hover:bg-white/[0.06] hover:text-gold-light ${page === 'my-activity' ? 'bg-gold/[0.1] text-gold-bright' : 'text-text'}`}
+                        >
+                          📜 <span className="ml-2">My Activity</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setShowChangePassword(true); setUserMenuOpen(false) }}
+                          className="block w-full rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-text transition hover:bg-white/[0.06] hover:text-gold-light"
+                        >
+                          🔑 <span className="ml-2">Change Password</span>
+                        </button>
+                        <a
+                          href={SUPPORT_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="block w-full rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-text transition hover:bg-white/[0.06] hover:text-gold-light"
+                        >
+                          💛 <span className="ml-2">Support the developer</span>
+                        </a>
+                        <div className="my-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                        <button
+                          type="button"
+                          onClick={handleLogout}
+                          className="block w-full rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-red-400 transition hover:bg-red-500/[0.1] hover:text-red-300"
+                        >
+                          🚪 <span className="ml-2">Logout</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1190,21 +1303,26 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
       </nav>
 
       {mobileOpen && (
-        <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm md:hidden" onClick={() => setMobileOpen(false)}>
+        <div className="fixed inset-0 z-[70] md:hidden">
+          {/* Scrim is a sibling (not a parent) so the drawer's own blur still works */}
           <div
-            className="absolute inset-y-0 left-0 flex w-[86vw] max-w-[360px] flex-col border-r border-gold/20 bg-[#090807] shadow-[20px_0_70px_rgba(0,0,0,.85)]"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="border-b border-white/[0.07] px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))]">
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+            onClick={() => setMobileOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="lg-panel lg-drawer absolute inset-y-0 left-0 flex w-[86vw] max-w-[360px] flex-col rounded-r-[26px]">
+            <div className="border-b border-white/[0.08] px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))]">
               <div className="flex items-center justify-between gap-3">
                 <button type="button" onClick={() => navigate('dashboard')} className="flex min-w-0 items-center gap-3 text-left">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-gold/[0.07] text-xl">🪙</span>
+                  <span className="lg-emblem flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gold-light">
+                    <CrestIcon width="24" height="24" />
+                  </span>
                   <span className="min-w-0">
                     <span className="block truncate font-spectral text-[18px] font-bold text-gold-light">PeakyBlinder</span>
                     <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.16em] text-text-dim">Clan Command Center</span>
                   </span>
                 </button>
-                <button type="button" onClick={() => setMobileOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-lg text-text-dim hover:text-text-bright" aria-label="Close menu">✕</button>
+                <button type="button" onClick={() => setMobileOpen(false)} className="lg-chip flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg text-text-dim hover:text-text-bright" aria-label="Close menu">✕</button>
               </div>
             </div>
 
@@ -1214,19 +1332,19 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                 {visibleNavItems.map(item => <NavButton key={item.id} item={item} mobile />)}
               </div>
 
-              <div className="mt-6 rounded-xl border border-white/[0.07] bg-white/[0.018] p-3.5">
+              <div className="lg-chip mt-6 rounded-2xl p-3.5">
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gold/25 bg-gold/[0.07] text-sm font-bold text-gold-light">
+                  <span className="lg-emblem flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-gold-light">
                     {(currentUser?.name || 'G').charAt(0).toUpperCase()}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-dim">Account</div>
                     <div className="mt-0.5 truncate text-[14px] font-semibold text-text-bright">{currentUser?.name || 'Guest'}</div>
                   </div>
-                  {currentUser && <span className={`rounded-md px-2 py-1 text-[10px] font-bold ${roleBadgeClass(currentUser.role)}`}>{currentUser.role}</span>}
+                  {currentUser && <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${roleBadgeClass(currentUser.role)}`}>{currentUser.role}</span>}
                 </div>
 
-                <div className="mt-3 flex items-center justify-between border-t border-white/[0.06] pt-3">
+                <div className="mt-3 flex items-center justify-between border-t border-white/[0.07] pt-3">
                   <span className="text-[11px] font-semibold text-text-dim">Your Time</span>
                   <span className="font-mono text-[11px] text-gold-light/85">{getLocalZoneLabel()}</span>
                 </div>
@@ -1234,17 +1352,17 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
 
               {currentUser ? (
                 <>
-                <button
-                  type="button"
-                  onClick={() => navigate('my-activity')}
-                  className={`mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition ${page === 'my-activity' ? 'border-gold/25 bg-gold/[0.07] text-gold-light' : 'border-white/[0.08] bg-white/[0.02] text-text hover:border-gold/20 hover:bg-gold/[0.05] hover:text-gold-light'}`}
-                >
-                  📜 My Activity
-                </button>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => { setShowChangePassword(true); setMobileOpen(false) }} className="min-h-11 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 text-[12px] font-semibold text-text hover:border-gold/20 hover:bg-gold/[0.05] hover:text-gold-light">🔑 Password</button>
-                  <button type="button" onClick={handleLogout} className="min-h-11 rounded-xl border border-red-500/15 bg-red-500/[0.025] px-3 text-[12px] font-semibold text-red-400 hover:bg-red-500/[0.06]">🚪 Logout</button>
-                </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('my-activity')}
+                    className={`lg-chip mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-3 text-[12px] font-semibold ${page === 'my-activity' ? 'lg-chip-active text-gold-light' : 'text-text hover:text-gold-light'}`}
+                  >
+                    📜 My Activity
+                  </button>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => { setShowChangePassword(true); setMobileOpen(false) }} className="lg-chip min-h-11 rounded-2xl px-3 text-[12px] font-semibold text-text hover:text-gold-light">🔑 Password</button>
+                    <button type="button" onClick={handleLogout} className="min-h-11 rounded-2xl border border-red-400/20 bg-red-500/[0.06] px-3 text-[12px] font-semibold text-red-400 shadow-[inset_0_1px_0_rgba(255,255,255,.08)] hover:bg-red-500/[0.12]">🚪 Logout</button>
+                  </div>
                 </>
               ) : (
                 <button
@@ -1255,14 +1373,14 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
                     setMobileOpen(false)
                     addToast('Entered guest mode.', 'blue', 'Welcome')
                   }}
-                  className="mt-3 min-h-11 w-full rounded-xl border border-gold/15 bg-gold/[0.04] text-[12px] font-semibold text-text-dim hover:bg-gold/[0.07] hover:text-gold-light"
+                  className="lg-chip lg-chip-warm mt-3 min-h-11 w-full rounded-2xl text-[12px] font-semibold text-text-dim hover:text-gold-light"
                 >
                   👤 Continue as Guest
                 </button>
               )}
             </div>
 
-            <div className="border-t border-white/[0.06] px-4 py-3 text-center">
+            <div className="border-t border-white/[0.07] px-4 py-3 text-center">
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-dim/55">PeakyBlinder • Ymir Clan</div>
               <a
                 href={SUPPORT_URL}
@@ -1277,12 +1395,12 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
         </div>
       )}
 
-      <main className="mx-auto w-full max-w-[1600px] flex-1 px-3 pb-8 pt-[88px] sm:px-5 lg:px-7">
+      <main className="relative mx-auto w-full max-w-[1600px] flex-1 px-3 pb-8 pt-[88px] sm:px-5 lg:px-7">
         {page === 'my-activity' ? <MyActivity ctx={ctx} /> : children}
       </main>
 
-      <footer className="mx-auto w-full max-w-[1600px] px-3 pb-6 sm:px-5 lg:px-7">
-        <div className="flex flex-col items-center gap-1 border-t border-white/[0.06] pt-5 text-center text-xs leading-5 text-text-dim sm:flex-row sm:justify-center sm:gap-2">
+      <footer className="relative mx-auto w-full max-w-[1600px] px-3 pb-6 sm:px-5 lg:px-7">
+        <div className="flex flex-col items-center gap-1 px-4 py-3 text-center text-xs leading-5 text-text-dim sm:flex-row sm:justify-center sm:gap-2">
           <span>Built by <span className="font-semibold text-gold-light">{CREATOR_NAME}</span></span>
           <span className="hidden text-white/20 sm:inline">•</span>
           <span>
@@ -1304,13 +1422,9 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
         {toasts.map(toast => (
           <div
             key={toast.id}
-            className={`rounded-xl border bg-[#0b0908]/95 p-3.5 backdrop-blur-sm shadow-[0_15px_45px_rgba(0,0,0,.65)] ${
-              toast.type === 'gold' ? 'border-gold/50' :
-              toast.type === 'red' ? 'border-blood/50' :
-              toast.type === 'blue' ? 'border-blue-500/40' :
-              'border-gold/30'
-            }`}
+            className="lg-panel animate-slideIn relative overflow-hidden rounded-2xl py-3.5 pl-4 pr-4"
           >
+            <span className={`absolute bottom-3 left-0 top-3 w-[3px] rounded-r-full ${toastAccent(toast.type)}`} aria-hidden="true" />
             {toast.title && <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-gold-light">{toast.title}</div>}
             <div className="text-[13px] leading-5 text-text">{toast.msg}</div>
           </div>
@@ -1328,6 +1442,160 @@ export default function Layout({ ctx, page, setPage, children, toasts }) {
         }
         .animate-slideIn { animation: slideIn 0.3s forwards; }
         button { -webkit-tap-highlight-color: transparent; }
+
+        /* ---------- Ambient light behind the glass ---------- */
+        .lg-ambient {
+          position: fixed;
+          inset: 0;
+          z-index: 0;
+          overflow: hidden;
+          pointer-events: none;
+        }
+        .lg-orb {
+          position: absolute;
+          border-radius: 50%;
+          opacity: .6;
+        }
+        .lg-orb--1 {
+          width: 44vmax; height: 44vmax; top: -16vmax; left: -12vmax;
+          background: radial-gradient(circle, rgba(201,162,75,.45) 0%, rgba(201,162,75,0) 70%);
+        }
+        .lg-orb--2 {
+          width: 36vmax; height: 36vmax; bottom: -14vmax; right: -10vmax;
+          background: radial-gradient(circle, rgba(150,62,38,.4) 0%, rgba(150,62,38,0) 70%);
+        }
+        .lg-orb--3 {
+          width: 24vmax; height: 24vmax; top: 38%; left: 58%;
+          background: radial-gradient(circle, rgba(74,96,112,.35) 0%, rgba(74,96,112,0) 70%);
+        }
+
+        /* ---------- Top bar ----------
+           The blur lives on a pseudo-element, so the nav itself does not
+           become a "backdrop root" and the dropdowns inside it still blur
+           the page underneath them. */
+        .lg-bar::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          z-index: -1;
+          background: linear-gradient(180deg, rgba(22,18,14,.62) 0%, rgba(12,10,8,.42) 100%);
+          backdrop-filter: blur(26px) saturate(170%);
+          -webkit-backdrop-filter: blur(26px) saturate(170%);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 10px 40px rgba(0,0,0,.35);
+        }
+        .lg-bar::after {
+          content: '';
+          position: absolute;
+          left: 0; right: 0; bottom: 0;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(235,208,141,.4) 30%, rgba(255,255,255,.25) 50%, rgba(235,208,141,.4) 70%, transparent);
+          pointer-events: none;
+        }
+
+        /* ---------- Floating glass panels (menus, drawer, toasts) ---------- */
+        .lg-panel {
+          background:
+            radial-gradient(120% 60% at 0% 0%, rgba(255,255,255,.09) 0%, transparent 50%),
+            linear-gradient(160deg, rgba(36,30,24,.72) 0%, rgba(14,11,9,.8) 100%);
+          backdrop-filter: blur(30px) saturate(170%);
+          -webkit-backdrop-filter: blur(30px) saturate(170%);
+          border: 1px solid rgba(255,255,255,.08);
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.18),
+            0 28px 80px -14px rgba(0,0,0,.8);
+        }
+        .lg-panel::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          padding: 1px;
+          border-radius: inherit;
+          background: linear-gradient(140deg, rgba(255,255,255,.4), rgba(255,255,255,.04) 35%, rgba(201,162,75,.28) 70%, rgba(255,255,255,.12));
+          -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
+        }
+        .lg-pop { animation: lg-pop .18s cubic-bezier(.2,.8,.2,1) both; transform-origin: top right; }
+        @keyframes lg-pop {
+          from { opacity: 0; transform: translateY(-4px) scale(.98); }
+          to   { opacity: 1; transform: none; }
+        }
+        .lg-drawer { animation: lg-drawer .25s cubic-bezier(.2,.8,.2,1) both; }
+        @keyframes lg-drawer {
+          from { transform: translateX(-24px); opacity: 0; }
+          to   { transform: none; opacity: 1; }
+        }
+
+        /* ---------- Glass chips (no backdrop-filter on purpose: they sit
+           on already-blurred surfaces, and a filter here would break the
+           blur of any dropdown opened from inside them) ---------- */
+        .lg-chip {
+          background: linear-gradient(180deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.025) 100%);
+          border: 1px solid rgba(255,255,255,.1);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 4px 14px -6px rgba(0,0,0,.45);
+          transition: background .2s ease, border-color .2s ease, box-shadow .2s ease, color .2s ease;
+        }
+        button.lg-chip:hover, a.lg-chip:hover {
+          background: linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.04) 100%);
+          border-color: rgba(235,208,141,.28);
+        }
+        .lg-chip.lg-chip-warm {
+          background: linear-gradient(180deg, rgba(201,162,75,.14) 0%, rgba(201,162,75,.04) 100%);
+          border-color: rgba(235,208,141,.2);
+        }
+        .lg-chip.lg-chip-active,
+        .lg-chip.lg-chip-active:hover {
+          background:
+            radial-gradient(90% 70% at 50% 0%, rgba(255,255,255,.22) 0%, transparent 70%),
+            linear-gradient(180deg, rgba(201,162,75,.22) 0%, rgba(201,162,75,.07) 100%);
+          border-color: rgba(235,208,141,.4);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 0 22px -4px rgba(201,162,75,.35);
+        }
+
+        /* ---------- Nav track + selected tab ---------- */
+        .lg-track {
+          background: rgba(0,0,0,.22);
+          border: 1px solid rgba(255,255,255,.07);
+          box-shadow: inset 0 1px 3px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.04);
+        }
+        .lg-tab-active {
+          background:
+            radial-gradient(90% 70% at 50% 0%, rgba(255,255,255,.24) 0%, transparent 70%),
+            linear-gradient(180deg, rgba(255,255,255,.13) 0%, rgba(255,255,255,.04) 100%);
+          border-color: rgba(255,255,255,.18);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 4px 14px -4px rgba(0,0,0,.5);
+        }
+
+        /* ---------- Emblem / avatar tile ---------- */
+        .lg-emblem {
+          background:
+            radial-gradient(80% 60% at 30% 20%, rgba(255,255,255,.32) 0%, transparent 60%),
+            linear-gradient(160deg, rgba(201,162,75,.3) 0%, rgba(201,162,75,.08) 100%);
+          border: 1px solid rgba(255,255,255,.2);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 6px 18px -8px rgba(201,162,75,.55);
+        }
+
+        /* ---------- Footer strip ---------- */
+        .lg-strip {
+          background: linear-gradient(135deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,.02) 100%);
+          backdrop-filter: blur(18px) saturate(150%);
+          -webkit-backdrop-filter: blur(18px) saturate(150%);
+          border: 1px solid rgba(255,255,255,.08);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+        }
+
+        /* ---------- No blur support: keep everything readable ---------- */
+        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+          .lg-bar::before { background: rgba(10,8,7,.97); }
+          .lg-panel { background: rgba(14,11,9,.98); }
+          .lg-strip { background: rgba(20,16,13,.95); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .lg-orb, .lg-pop, .lg-drawer, .animate-slideIn { animation: none; }
+          .lg-chip { transition: none; }
+        }
       `}</style>
     </div>
   )

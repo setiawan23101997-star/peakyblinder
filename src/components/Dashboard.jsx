@@ -47,11 +47,64 @@ const MAX_LIVE_AUCTIONS = 5
 const DEBUG_WINS = false
 
 const TYPE = {
-  boss:     { color: '#ef4444', icon: '👾', label: 'World Boss' },
-  battle:   { color: '#3b82f6', icon: '⚔️', label: 'Server Battle' },
-  treasure: { color: '#eab308', icon: '🏝️', label: 'Sindri Island' },
-  sanctuary:{ color: '#22c55e', icon: '🛡️', label: 'Clan Sanctuary' },
-  arena:    { color: '#a855f7', icon: '🏟️', label: 'Arena' },
+  boss:     { color: '#f87171', label: 'World Boss' },
+  battle:   { color: '#60a5fa', label: 'Server Battle' },
+  treasure: { color: '#facc15', label: 'Sindri Island' },
+  sanctuary:{ color: '#4ade80', label: 'Clan Sanctuary' },
+  arena:    { color: '#c084fc', label: 'Arena' },
+}
+
+// Same line icons as the Event Calendar page (emoji look different on every phone).
+function TypeIcon({ type, size = 18 }) {
+  const common = {
+    width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+    strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true,
+  }
+  switch (type) {
+    case 'boss':
+      return (
+        <svg {...common}>
+          <path d="M4 4l3 4M20 4l-3 4" />
+          <path d="M12 6c-4 0-6.5 2.6-6.5 6.2 0 2.1 1 3.6 2.5 4.5V19h8v-2.3c1.5-.9 2.5-2.4 2.5-4.5C18.5 8.6 16 6 12 6z" />
+          <circle cx="9.5" cy="12.5" r="1.3" fill="currentColor" stroke="none" />
+          <circle cx="14.5" cy="12.5" r="1.3" fill="currentColor" stroke="none" />
+          <path d="M11 19v-1.5M13 19v-1.5" />
+        </svg>
+      )
+    case 'battle':
+      return (
+        <svg {...common}>
+          <path d="M14.5 17.5L3 6V3h3l11.5 11.5" />
+          <path d="M13 19l6-6M16 16l4 4M19 21l2-2" />
+          <path d="M9.5 6.5L21 3v3l-3.5 3.5M5 14l4 4M7 17l-3 3M3 19l2 2" />
+        </svg>
+      )
+    case 'treasure':
+      return (
+        <svg {...common}>
+          <path d="M4 10a8 5 0 0 1 16 0" />
+          <rect x="4" y="10" width="16" height="9" rx="1.5" />
+          <path d="M4 13h16" />
+          <rect x="10.5" y="11.5" width="3" height="3.5" rx=".6" />
+        </svg>
+      )
+    case 'sanctuary': // shield
+      return (
+        <svg {...common}>
+          <path d="M12 3l7 3v5.5c0 4.3-3 7.8-7 9.5-4-1.7-7-5.2-7-9.5V6l7-3z" />
+          <path d="M9 12l2 2 4-4" />
+        </svg>
+      )
+    case 'arena':
+    default:
+      return (
+        <svg {...common}>
+          <path d="M8 4h8v5a4 4 0 0 1-8 0V4z" />
+          <path d="M8 6H5v1.5A3 3 0 0 0 8 10.5M16 6h3v1.5a3 3 0 0 1-3 3" />
+          <path d="M12 13v4M9 20h6M10 17h4" />
+        </svg>
+      )
+  }
 }
 
 const RARITY_COLORS = {
@@ -62,6 +115,99 @@ const RARITY_COLORS = {
   epic:       { color: '#f87171', border: 'rgba(248,113,113,0.7)' },
   legendary:  { color: '#f2cc60', border: 'rgba(242,204,96,0.75)' },
 }
+
+// Glassmorphism / liquid-glass styling for the dashboard (scoped to .db-root).
+const DB_STYLES = `
+  .db-root { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  .db-root .text-text-dim { color: #c9bda8; }
+  .db-root .font-mono { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+  .db-root .db-glass {
+    background:
+      radial-gradient(120% 70% at 0% 0%, rgba(255,255,255,.08) 0%, transparent 50%),
+      linear-gradient(160deg, rgba(34,28,22,.55) 0%, rgba(12,10,8,.62) 100%);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 22px 60px -30px rgba(0,0,0,.85);
+  }
+  /* Refractive rim; a card can tint it with --db-rim */
+  .db-root .db-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(140deg,
+      rgba(255,255,255,.38) 0%,
+      rgba(255,255,255,.04) 35%,
+      var(--db-rim, rgba(201,162,75,.26)) 70%,
+      rgba(255,255,255,.1) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .db-root .db-glass.db-solid {
+    background:
+      radial-gradient(120% 70% at 0% 0%, rgba(255,255,255,.06) 0%, transparent 50%),
+      linear-gradient(160deg, rgba(30,25,20,.94) 0%, rgba(13,11,9,.96) 100%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .db-root .db-lift {
+    transition: transform .25s cubic-bezier(.2,.8,.2,1), border-color .25s ease, box-shadow .25s ease;
+  }
+  .db-root .db-lift:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255,255,255,.15);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 26px 60px -28px rgba(0,0,0,.9);
+  }
+
+  .db-root .db-inset {
+    background: linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.018) 100%);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  .db-root .db-inset.db-inset-gold {
+    background: linear-gradient(160deg, rgba(201,162,75,.12) 0%, rgba(201,162,75,.03) 100%);
+    border-color: rgba(235,208,141,.18);
+    box-shadow: inset 0 1px 0 rgba(255,240,200,.1);
+  }
+  .db-root .db-well {
+    background: rgba(0,0,0,.24);
+    border: 1px solid rgba(255,255,255,.07);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,.32), 0 1px 0 rgba(255,255,255,.04);
+  }
+  .db-root .db-chip {
+    background: linear-gradient(180deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.025) 100%);
+    border: 1px solid rgba(255,255,255,.1);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 4px 14px -8px rgba(0,0,0,.5);
+    transition: background .2s ease, border-color .2s ease, color .2s ease;
+  }
+  .db-root button.db-chip:hover {
+    background: linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.04) 100%);
+    border-color: rgba(235,208,141,.3);
+  }
+  .db-root .db-chip.db-chip-gold {
+    background: linear-gradient(180deg, rgba(201,162,75,.18) 0%, rgba(201,162,75,.05) 100%);
+    border-color: rgba(235,208,141,.28);
+  }
+  .db-root .db-emblem {
+    background:
+      radial-gradient(80% 60% at 30% 20%, rgba(255,255,255,.3) 0%, transparent 60%),
+      linear-gradient(160deg, rgba(201,162,75,.28) 0%, rgba(201,162,75,.07) 100%);
+    border: 1px solid rgba(255,255,255,.2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 6px 18px -8px rgba(201,162,75,.5);
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .db-root .db-glass { background: rgba(16,13,11,.96); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .db-root .db-lift, .db-root .db-lift:hover { transition: none; transform: none; }
+  }
+`
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -80,7 +226,10 @@ const AUTO_LOCAL_TZ = (() => {
   }
 })()
 
-function getLocalZoneLabel() {
+const LOCAL_ZONE_LABEL = computeLocalZoneLabel()
+function getLocalZoneLabel() { return LOCAL_ZONE_LABEL }
+
+function computeLocalZoneLabel() {
   // Prefer a familiar regional abbreviation where the browser timezone is known.
   // Fall back to a GMT offset so the label remains accurate for other timezones.
   const COMMON_TZ_LABELS = {
@@ -209,8 +358,18 @@ function zoneWallTimeToUtc(y, m, d, hh, mm, tz) {
   return best
 }
 
+const FIXED_OFFSET_ZONES = { 'Asia/Singapore': 8 * 60 * 60 * 1000 }
+
 function nextOccurrenceInZone(dayOfWeek, hhmm, fromTs, tz) {
   const [hh, mm] = hhmm.split(':').map(Number)
+  const offset = FIXED_OFFSET_ZONES[tz]
+  if (offset !== undefined) {
+    const wall = new Date(fromTs + offset)
+    const dayStart = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate()) - offset
+    const delta = (dayOfWeek - wall.getUTCDay() + 7) % 7
+    const candidate = dayStart + delta * 86400000 + (hh * 60 + mm) * 60000
+    return candidate > fromTs ? candidate : candidate + 7 * 86400000
+  }
   const fromParts = getZoneParts(fromTs, tz)
   const delta = (dayOfWeek - fromParts.dow + 7) % 7
 
@@ -418,7 +577,8 @@ export default function Dashboard({ ctx, setPage }) {
   const goNoticeBoard = useCallback(() => setPage('notice-board'), [setPage])
 
   return (
-    <div className="w-full min-w-0 max-w-full overflow-x-hidden space-y-5 sm:space-y-8 pb-8 sm:pb-12">
+    <div className="db-root w-full min-w-0 max-w-full overflow-x-hidden space-y-5 sm:space-y-8 pb-8 sm:pb-12">
+      <style>{DB_STYLES}</style>
       <HeroSection
         currentUser={currentUser}
       />
@@ -426,10 +586,10 @@ export default function Dashboard({ ctx, setPage }) {
       <UpcomingEventPreview onOpenCalendar={goCalendar} />
 
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 min-w-0" aria-label="Quick actions">
-        <ActionTile icon="◷" label="Attendance" hint={isElder ? 'Record & Award Coins' : 'View Attendance'} onClick={goAttendance} />
-        <ActionTile icon="◇" label="Live Auctions" hint="Bid On Clan Items" onClick={goAuctions} />
-        <ActionTile icon="♙" label={isElder ? 'Manage Members' : 'View Members'} hint={isElder ? 'Add, Edit & Remove' : 'See Clan Roster'} onClick={goMembers} />
-        <ActionTile icon="▣" label="Event Calendar" hint="Check Upcoming Events" onClick={goCalendar} />
+        <ActionTile icon={<DbIcon name="attendance" />} label="Attendance" hint={isElder ? 'Record & Award Coins' : 'View Attendance'} onClick={goAttendance} />
+        <ActionTile icon={<DbIcon name="auctions" />} label="Live Auctions" hint="Bid On Clan Items" onClick={goAuctions} />
+        <ActionTile icon={<DbIcon name="members" />} label={isElder ? 'Manage Members' : 'View Members'} hint={isElder ? 'Add, Edit & Remove' : 'See Clan Roster'} onClick={goMembers} />
+        <ActionTile icon={<DbIcon name="calendar" />} label="Event Calendar" hint="Check Upcoming Events" onClick={goCalendar} />
       </section>
 
       <LiveAuctionsStrip
@@ -442,7 +602,7 @@ export default function Dashboard({ ctx, setPage }) {
       <RecentWinsStrip
         endedData={endedAuctionData}
         onOpenAll={goAuctions}
-        currentUser={currentUser}
+        currentUserName={currentUser?.name}
       />
 
       <ClanNoticePreview ctx={ctx} onOpenAll={goNoticeBoard} />
@@ -470,31 +630,31 @@ const HeroSection = React.memo(function HeroSection({
 
   return (
     <>
-      <section className="relative overflow-hidden rounded-2xl border border-gold/25 bg-[#0b0a09]/90 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+      <section className="db-glass relative overflow-hidden rounded-[24px]">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold/70 to-transparent" aria-hidden="true" />
         <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gold/[0.05] blur-3xl" aria-hidden="true" />
         <div className="relative p-5 sm:p-6 md:p-7 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] gap-4 sm:gap-6 items-center min-w-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_10px_rgba(242,204,96,0.8)]" />
-              <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold-dim">Clan command center</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-gold-dim">Clan command center</span>
             </div>
             <h1 className="font-spectral text-3xl sm:text-4xl md:text-[2.7rem] font-bold leading-tight break-words">
               <span className="text-text-bright">{greeting}, </span>
               <span className="text-gold-bright">{firstName}</span>
             </h1>
-            <p className="mt-2 text-text-dim text-[11px] leading-relaxed sm:text-[15px]">
+            <p className="mt-2 text-[13px] leading-relaxed text-text-dim sm:text-[15px]">
               Your clan overview, market activity, and upcoming events at a glance.
             </p>
           </div>
 
           <div className="min-w-0 w-full xl:w-auto xl:min-w-[390px]">
-            <div className="rounded-xl border border-gold/15 bg-black/25 px-3.5 py-3 sm:px-4 sm:py-3.5">
+            <div className="db-well rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5">
               <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <div className="min-w-0 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.12em] sm:tracking-[0.16em] text-text-dim truncate">
+                <div className="min-w-0 text-[11px] sm:text-[11px] font-bold uppercase tracking-[0.12em] sm:tracking-[0.12em] text-text-dim truncate">
                   Server {SERVER_TZ_LABEL}
                 </div>
-                <div className="min-w-0 text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.12em] sm:tracking-wider text-gold-dim truncate">
+                <div className="min-w-0 text-[11px] sm:text-[11px] font-semibold uppercase tracking-[0.12em] sm:tracking-wider text-gold-dim truncate">
                   Your Time · {getLocalZoneLabel()}
                 </div>
               </div>
@@ -502,14 +662,14 @@ const HeroSection = React.memo(function HeroSection({
               <div className="mt-1.5 flex min-w-0 items-baseline justify-between gap-3">
                 <div className="min-w-0 font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap">
                   <span className="text-xl sm:text-2xl md:text-[1.65rem]">{serverClock.time}</span>
-                  <span className="ml-1 text-[9px] sm:text-[10px] text-gold-light/45">:{serverSec}</span>
+                  <span className="ml-0.5 text-[13px] sm:text-[15px] text-gold-light/60">:{serverSec}</span>
                 </div>
                 <div className="min-w-0 font-mono tabular-nums leading-none text-gold-bright whitespace-nowrap">
                   <span className="text-xl sm:text-2xl md:text-[1.65rem]">{localClock.time}</span>
                 </div>
               </div>
 
-              <div className="mt-1.5 flex min-w-0 items-center justify-between gap-3 text-[10px] sm:text-[11px] text-text-dim whitespace-nowrap">
+              <div className="mt-1.5 flex min-w-0 items-center justify-between gap-3 text-[11px] sm:text-[11px] text-text-dim whitespace-nowrap">
                 <span className="truncate">{serverClock.day.slice(0, 3)} · {serverClock.date}</span>
                 <span className="truncate">{AUTO_LOCAL_TZ}</span>
               </div>
@@ -552,11 +712,11 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-bright shadow-[0_0_8px_rgba(242,204,96,0.65)]"
               aria-hidden="true"
             />
-            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-text-dim">
+            <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim">
               Next Event
             </span>
           </div>
-          <h2 className="font-spectral text-[1.45rem] font-bold leading-none text-text-bright sm:text-[1.7rem]">
+          <h2 className="font-spectral text-[1.5rem] font-bold leading-none text-text-bright sm:text-[1.75rem]">
             Upcoming Clan Event
           </h2>
         </div>
@@ -564,7 +724,7 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
         <button
           type="button"
           onClick={onOpenCalendar}
-          className="shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+          className="db-chip shrink-0 rounded-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-[0.1em] text-gold-light hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
         >
           View Calendar <span aria-hidden="true">→</span>
         </button>
@@ -574,7 +734,8 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
         type="button"
         onClick={onOpenCalendar}
         aria-label={`Open Clan Calendar — ${next.name}, ${to12h(next.time)} server time`}
-        className="group relative block w-full min-w-0 cursor-pointer overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/80 text-left shadow-[0_12px_34px_rgba(0,0,0,0.16)] transition-all duration-200 hover:border-gold/20 hover:bg-[#0c0b09] hover:shadow-[0_16px_38px_rgba(0,0,0,0.25)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+        className="db-glass db-lift group relative block w-full min-w-0 cursor-pointer overflow-hidden rounded-[20px] text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+        style={{ '--db-rim': `${type.color}66` }}
       >
         <div
           className="absolute inset-y-0 left-0 w-[3px] transition-all duration-200 group-hover:w-[4px]"
@@ -582,40 +743,40 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
           aria-hidden="true"
         />
 
-        <div className="flex min-w-0 flex-col gap-3 px-3.5 py-3.5 sm:flex-row sm:items-center sm:gap-5 sm:px-5 sm:py-4.5">
+        <div className="flex min-w-0 flex-col gap-3 px-3.5 py-3.5 sm:flex-row sm:items-center sm:gap-5 sm:px-5 sm:py-[18px]">
           <div className="flex min-w-0 items-start gap-3 sm:contents">
             <div
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border text-base transition-colors duration-200 group-hover:brightness-110 sm:h-12 sm:w-12 sm:text-lg"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors duration-200 group-hover:brightness-110 sm:h-12 sm:w-12"
               style={{
                 color: type.color,
-                borderColor: `${type.color}35`,
-                background: `${type.color}0d`,
+                borderColor: `${type.color}66`,
+                background: `${type.color}1f`,
               }}
               aria-hidden="true"
             >
-              {type.icon}
+              <TypeIcon type={next.type} size={22} />
             </div>
 
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
                 <span
-                  className="shrink-0 text-[9px] font-bold uppercase tracking-[0.13em] sm:text-[10px] sm:tracking-[0.16em]"
+                  className="shrink-0 text-[11px] font-bold uppercase tracking-[0.13em] sm:text-[11px] sm:tracking-[0.12em]"
                   style={{ color: type.color }}
                 >
                   {type.label}
                 </span>
-                <span className="truncate text-[9px] text-text-dim sm:text-[10px]">
+                <span className="truncate text-[11px] text-text-dim sm:text-[11px]">
                   {DAY_NAMES[next.dow].slice(0, 3)} · {to12h(next.time)}
                 </span>
               </div>
 
-              <div className="mt-0.5 truncate text-[15px] font-semibold text-text-bright transition-colors group-hover:text-gold-light sm:text-[14px]">
+              <div className="mt-0.5 truncate text-[15px] font-semibold text-text-bright transition-colors group-hover:text-gold-light sm:text-[16px]">
                 {next.name}
               </div>
 
-              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-text-dim sm:text-[11px]">
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-text-dim sm:text-[11px]">
                 {next.boss && (
-                  <span className="truncate">👾 {next.boss}</span>
+                  <span className="truncate">Boss: <span className="text-text-bright/90">{next.boss}</span></span>
                 )}
                 {localEq && (
                   <>
@@ -630,14 +791,14 @@ const UpcomingEventPreview = React.memo(function UpcomingEventPreview({ onOpenCa
           </div>
 
           <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] pt-2.5 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 sm:text-right">
-            <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-dim sm:text-[11px] sm:tracking-[0.14em]">
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-text-dim sm:text-[11px] sm:tracking-[0.14em]">
               Starts in
             </div>
             <div
               className={`whitespace-nowrap font-mono text-[17px] font-bold leading-none tabular-nums sm:text-[17px] ${
                 urgent ? 'motion-safe:animate-pulse' : ''
               }`}
-              style={{ color: urgent ? '#f87171' : type.color }}
+              style={{ color: urgent ? '#fcd34d' : '#f2cc60' }}
             >
               {formatCountdown(remaining)}
             </div>
@@ -666,17 +827,17 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
         <div className="min-w-0">
           <div className="mb-1.5 flex items-center gap-2.5">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.7)]" aria-hidden="true" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-text-dim">Market</span>
-            <span className="rounded-full border border-red-400/20 bg-red-400/[0.06] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-red-300">
+            <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim">Market</span>
+            <span className="rounded-full border border-red-400/20 bg-red-400/[0.06] px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.1em] text-red-300">
               {totalCount} Active
             </span>
           </div>
-          <h2 className="font-spectral text-[1.65rem] font-bold leading-none text-text-bright sm:text-[2.15rem]">
+          <h2 className="font-spectral text-[1.5rem] font-bold leading-none text-text-bright sm:text-[1.75rem]">
             Live Auctions
           </h2>
         </div>
         <button type="button" onClick={onOpenAll}
-          className="shrink-0 rounded-lg px-1.5 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em] text-text-dim sm:px-2.5 sm:py-2 sm:text-[10px] sm:tracking-[0.14em] transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60">
+          className="db-chip shrink-0 rounded-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-[0.1em] text-gold-light hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60">
           View Market <span aria-hidden="true">→</span>
         </button>
       </div>
@@ -690,7 +851,7 @@ const LiveAuctionsStrip = React.memo(function LiveAuctionsStrip({
 
       {remainingCount > 0 && (
         <button type="button" onClick={onOpenAll}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.018] py-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim transition-all hover:border-gold/20 hover:bg-gold/[0.025] hover:text-gold-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60">
+          className="db-chip mt-3 flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] text-gold-light hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60">
           +{remainingCount} More {remainingCount === 1 ? 'Auction' : 'Auctions'} <span aria-hidden="true">→</span>
         </button>
       )}
@@ -721,16 +882,17 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
 
   return (
     <button type="button" onClick={onOpenAll} aria-label={cardLabel}
-      className={`group relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/[0.085] bg-[#080706]/95 text-left shadow-[0_14px_38px_rgba(0,0,0,0.26)] transition-all duration-200 hover:-translate-y-0.5 hover:border-gold/20 hover:bg-[#0a0908] hover:shadow-[0_20px_48px_rgba(0,0,0,0.36)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 ${wide ? '' : ''}`}>
+      className="db-glass db-solid db-lift group relative w-full min-w-0 overflow-hidden rounded-[22px] text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+      style={{ '--db-rim': `${rarity.color}59` }}>
       <span className="absolute inset-y-5 left-0 w-[3px] rounded-full"
         style={{ background: rarity.color, boxShadow: `0 0 18px ${rarity.color}55` }} aria-hidden="true" />
       <div className="pointer-events-none absolute right-0 top-0 h-56 w-56 opacity-45"
         style={{ background: `radial-gradient(circle at center, ${rarity.color}12, transparent 68%)` }} aria-hidden="true" />
 
       {wide ? (
-        <div className="relative flex min-w-0 flex-col gap-1.5 p-3 pl-5 sm:flex-row sm:items-center sm:gap-4 sm:p-4 sm:pl-6 lg:gap-5 lg:p-4.5 lg:pl-7">
+        <div className="relative flex min-w-0 flex-col gap-1.5 p-3 pl-5 sm:flex-row sm:items-center sm:gap-4 sm:p-4 sm:pl-6 lg:gap-5 lg:p-[18px] lg:pl-7">
           <div className="flex min-w-0 items-center gap-2.5 sm:contents">
-            <div className="relative h-[60px] w-[60px] shrink-0 overflow-hidden rounded-lg border bg-black/50 shadow-[0_8px_24px_rgba(0,0,0,0.42)] sm:h-[78px] sm:w-[78px] lg:h-[88px] lg:w-[88px]"
+            <div className="relative h-[60px] w-[60px] shrink-0 overflow-hidden rounded-xl border bg-black/40 shadow-[0_8px_24px_rgba(0,0,0,0.42)] sm:h-[78px] sm:w-[78px] lg:h-[88px] lg:w-[88px]"
               style={{ borderColor: `${rarity.color}45` }}>
               {a.imageUrl ? (
                 <img src={a.imageUrl} alt="" width={104} height={104} loading="lazy"
@@ -748,15 +910,15 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
 
             <div className="min-w-0 flex-1 sm:min-w-0">
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                <span className="rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] sm:px-2 sm:py-1 sm:text-[10px] sm:tracking-[0.16em]"
+                <span className="rounded-full border px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] sm:px-2 sm:py-1 sm:text-[11px] sm:tracking-[0.12em]"
                   style={{ color: rarity.color, borderColor: `${rarity.color}35`, background: `${rarity.color}0c` }}>
                   {a.rarity}
                 </span>
-                <span className="inline-flex items-center gap-1 rounded-md border border-gold/20 bg-gold/[0.045] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-gold-light sm:px-2 sm:py-1 sm:text-[9px]">
+                <span className="inline-flex items-center gap-1 rounded-full db-chip db-chip-gold px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-gold-light sm:px-2 sm:py-1 sm:text-[11px]">
                   Blind
                 </span>
                 {isEnding && (
-                  <span className="inline-flex items-center gap-1 rounded-md border border-red-400/20 bg-red-400/[0.06] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.07em] text-red-300 sm:gap-1.5 sm:px-2 sm:py-1 sm:text-[9px] sm:tracking-[0.08em]">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-red-400/20 bg-red-400/[0.06] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.07em] text-red-300 sm:gap-1.5 sm:px-2 sm:py-1 sm:text-[11px] sm:tracking-[0.08em]">
                     <span className="h-1.5 w-1.5 rounded-full bg-red-400 motion-safe:animate-pulse" aria-hidden="true" />
                     Ending Soon
                   </span>
@@ -768,13 +930,13 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
               </div>
 
               <div className="mt-1.5">
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-bold tracking-wide ${
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide ${
                   bidderCount === 0
                     ? 'border-white/[.12] bg-white/[.025] text-text-dim'
                     : 'border-gold/25 bg-gold/[.055] text-gold-light'
                 }`}>
                   {bidderCount > 0 && (
-                    <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
+                    <span className="font-mono text-[11px] text-gold-bright">{bidderCount}</span>
                   )}
                   <span className={bidderCount > 0 ? 'ml-1' : ''}>
                     {bidderCount === 0 ? 'No Players Bidding' : bidderCount === 1 ? 'Player Bidding' : 'Players Bidding'}
@@ -788,27 +950,27 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
           <div className="hidden h-[68px] w-px shrink-0 bg-white/[0.07] lg:block" />
 
           <div className="grid w-full min-w-0 shrink-0 grid-cols-2 gap-2 sm:w-[280px] sm:gap-2.5 lg:w-[320px] lg:gap-3">
-            <div className="min-w-0 rounded-lg border border-gold/10 bg-gold/[0.025] px-3 py-1.5 sm:px-3.5 sm:py-3">
-              <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Starting Bid</div>
+            <div className="min-w-0 rounded-xl db-inset db-inset-gold px-3 py-1.5 sm:px-3.5 sm:py-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[11px] sm:tracking-[0.12em]">Starting Bid</div>
               <div className="mt-1 flex min-w-0 items-baseline gap-1 sm:mt-2 sm:gap-1.5">
                 <span className="truncate font-mono text-[1.15rem] font-bold leading-none tabular-nums text-text-bright sm:text-[1.45rem]">
                   {startingBid.toLocaleString()}
                 </span>
-                <span className="shrink-0 text-[8px] font-semibold uppercase tracking-[0.06em] text-text-dim sm:text-[9px] sm:tracking-[0.08em]">Coins</span>
+                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em] text-text-dim sm:text-[11px] sm:tracking-[0.08em]">Coins</span>
               </div>
             </div>
 
-            <div className={`min-w-0 rounded-lg border px-3 py-1.5 text-right sm:px-3.5 sm:py-3 ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
-              <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[9px] sm:tracking-[0.16em]">Ends In</div>
+            <div className={`min-w-0 rounded-xl border px-3 py-1.5 text-right sm:px-3.5 sm:py-3 ${isEnding ? 'border-red-400/25 bg-red-400/[0.07]' : 'db-inset'}`}>
+              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-dim sm:text-[11px] sm:tracking-[0.12em]">Ends In</div>
               <div className={`mt-1 truncate font-mono text-[1.05rem] font-bold leading-none tabular-nums sm:mt-1.5 sm:text-[1.25rem] lg:text-[1.35rem] ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
-                style={{ color: isEnding ? '#f87171' : '#9ca3af' }}>
+                style={{ color: isEnding ? '#f87171' : '#f4ebd9' }}>
                 {timeLabel}
               </div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="relative flex min-w-0 flex-col p-4 pl-5 sm:p-4.5 sm:pl-6">
+        <div className="relative flex min-w-0 flex-col p-4 pl-5 sm:p-[18px] sm:pl-6">
           <div className="flex min-w-0 items-start gap-4">
             <div className="relative h-[78px] w-[78px] shrink-0 overflow-hidden rounded-xl border bg-black/50 shadow-[0_7px_20px_rgba(0,0,0,0.38)]"
               style={{ borderColor: `${rarity.color}45` }}>
@@ -826,11 +988,11 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
 
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="inline-flex rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em]"
+                <span className="inline-flex rounded-full border px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em]"
                   style={{ color: rarity.color, borderColor: `${rarity.color}35`, background: `${rarity.color}0c` }}>
                   {a.rarity}
                 </span>
-                <span className="inline-flex rounded-md border border-gold/20 bg-gold/[0.045] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-gold-light">
+                <span className="inline-flex rounded-full db-chip db-chip-gold px-2 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-gold-light">
                   Blind
                 </span>
               </div>
@@ -840,13 +1002,13 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
               </div>
 
               <div className="mt-1.5">
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-bold tracking-wide ${
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide ${
                   bidderCount === 0
                     ? 'border-white/[.12] bg-white/[.025] text-text-dim'
                     : 'border-gold/25 bg-gold/[.055] text-gold-light'
                 }`}>
                   {bidderCount > 0 && (
-                    <span className="font-mono text-[10px] text-gold-bright">{bidderCount}</span>
+                    <span className="font-mono text-[11px] text-gold-bright">{bidderCount}</span>
                   )}
                   <span className={bidderCount > 0 ? 'ml-1' : ''}>
                     {bidderCount === 0 ? 'No Players Bidding' : bidderCount === 1 ? 'Player Bidding' : 'Players Bidding'}
@@ -860,20 +1022,20 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
           <div className="my-2.5 border-t border-white/[0.07]" />
 
           <div className="grid grid-cols-2 gap-2.5">
-            <div className="rounded-lg border border-gold/10 bg-gold/[0.025] px-3 py-2.5">
-              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Starting Bid</div>
+            <div className="rounded-xl db-inset db-inset-gold px-3 py-2.5">
+              <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-text-dim">Starting Bid</div>
               <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="font-mono text-[1.35rem] font-bold leading-none tabular-nums text-text-bright">
                   {startingBid.toLocaleString()}
                 </span>
-                <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-text-dim">Coins</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-dim">Coins</span>
               </div>
             </div>
 
-            <div className={`rounded-lg border px-3 py-2.5 text-right ${isEnding ? 'border-red-400/20 bg-red-400/[0.055]' : 'border-white/[0.07] bg-white/[0.018]'}`}>
-              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text-dim">Ends In</div>
+            <div className={`rounded-xl border px-3 py-2.5 text-right ${isEnding ? 'border-red-400/25 bg-red-400/[0.07]' : 'db-inset'}`}>
+              <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-text-dim">Ends In</div>
               <div className={`mt-1 font-mono text-[1.25rem] font-bold leading-none tabular-nums ${isEnding ? 'motion-safe:animate-pulse' : ''}`}
-                style={{ color: isEnding ? '#f87171' : '#9ca3af' }}>
+                style={{ color: isEnding ? '#f87171' : '#f4ebd9' }}>
                 {timeLabel}
               </div>
             </div>
@@ -887,7 +1049,7 @@ const LiveAuctionCard = React.memo(function LiveAuctionCard({
 const RecentWinsStrip = React.memo(function RecentWinsStrip({
   endedData, onOpenAll, currentUserName,
 }) {
-  const now = useNow()
+  const now = useNow(15_000)
   const cutoff = now - RECENT_WIN_MS
 
   const wins = useMemo(() => {
@@ -915,12 +1077,12 @@ const RecentWinsStrip = React.memo(function RecentWinsStrip({
         <div className="min-w-0">
           <div className="mb-1.5 flex flex-wrap items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-gold-bright shadow-[0_0_9px_rgba(242,204,96,0.65)]" aria-hidden="true" />
-            <span className="text-[9px] font-bold uppercase tracking-[0.24em] text-text-dim">History</span>
-            <span className="rounded-full border border-white/[0.08] bg-white/[0.025] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-text-dim">
+            <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim">History</span>
+            <span className="rounded-full border border-white/[0.08] bg-white/[0.025] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-text-dim">
               Last 7 Days
             </span>
           </div>
-          <h2 className="font-spectral text-2xl font-bold leading-none text-text-bright sm:text-[1.7rem]">
+          <h2 className="font-spectral text-[1.5rem] font-bold leading-none text-text-bright sm:text-[1.75rem]">
             Recently Won
           </h2>
         </div>
@@ -928,14 +1090,14 @@ const RecentWinsStrip = React.memo(function RecentWinsStrip({
         <button
           type="button"
           onClick={onOpenAll}
-          className="shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-text-dim transition-colors hover:bg-white/[0.035] hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
+          className="db-chip shrink-0 rounded-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-[0.1em] text-gold-light hover:text-gold-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
         >
           View History <span aria-hidden="true">→</span>
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-[#090807]/80 shadow-[0_12px_34px_rgba(0,0,0,0.18)]">
-        <div className="hidden grid-cols-[minmax(250px,1.45fr)_minmax(150px,0.9fr)_130px_92px] items-center gap-4 border-b border-white/[0.06] bg-white/[0.018] px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-text-dim md:grid">
+      <div className="db-glass db-solid relative overflow-hidden rounded-[22px]">
+        <div className="hidden grid-cols-[minmax(250px,1.45fr)_minmax(150px,0.9fr)_130px_92px] items-center gap-4 border-b border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] text-text-dim md:grid">
           <span>Item</span>
           <span>Winner</span>
           <span>Final Bid</span>
@@ -978,7 +1140,7 @@ const RecentWinRow = React.memo(function RecentWinRow({
       type="button"
       onClick={onOpenAll}
       aria-label={rowLabel}
-      className={`group relative w-full min-w-0 text-left transition-colors hover:bg-white/[0.022] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 ${
+      className={`group relative w-full min-w-0 text-left transition-colors hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-gold/60 ${
         isMe ? 'bg-green-400/[0.025]' : ''
       }`}
     >
@@ -991,7 +1153,7 @@ const RecentWinRow = React.memo(function RecentWinRow({
       {/* Desktop/tablet: true result-table hierarchy. */}
       <div className="hidden min-w-0 grid-cols-[minmax(250px,1.45fr)_minmax(150px,0.9fr)_130px_92px] items-center gap-4 px-4 py-2.5 md:grid">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-black/35">
+          <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-white/[0.1] bg-black/30">
             {a.imageUrl ? (
               <img
                 src={a.imageUrl}
@@ -1015,7 +1177,7 @@ const RecentWinRow = React.memo(function RecentWinRow({
 
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: rarity.color }}>
+              <span className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: rarity.color }}>
                 {a.rarity}
               </span>
             </div>
@@ -1025,29 +1187,29 @@ const RecentWinRow = React.memo(function RecentWinRow({
 
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
-            <span className={`truncate text-[11px] font-medium ${isMe ? 'text-green-300' : 'text-text-bright'}`}>
+            <span className={`truncate text-[13px] font-semibold ${isMe ? 'text-green-300' : 'text-text-bright'}`}>
               {winnerName}
             </span>
             {isMe && (
-              <span className="shrink-0 rounded-full border border-green-400/25 bg-green-400/[0.07] px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-wider text-green-300">
+              <span className="shrink-0 rounded-full border border-green-400/25 bg-green-400/[0.07] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-green-300">
                 You Won
               </span>
             )}
           </div>
           {hasMultipleWins && (
-            <div className="mt-0.5 text-[8px] text-gold-light/70">{totalWins} wins in last 7 days</div>
+            <div className="mt-0.5 text-[10px] text-gold-light/70">{totalWins} wins in last 7 days</div>
           )}
         </div>
 
         <div>
           <div className="flex items-baseline gap-1 font-mono font-bold tabular-nums">
             <span className="text-[15px] text-gold-bright">{price.toLocaleString()}</span>
-            <span className="text-[8px] font-semibold text-gold-light/55">coins</span>
+            <span className="text-[10px] font-semibold text-gold-light/55">coins</span>
           </div>
         </div>
 
         <div className="text-right">
-          <div className="text-[10px] font-semibold text-text-dim">
+          <div className="text-[11px] font-semibold text-text-dim">
             {agoLabel}
           </div>
         </div>
@@ -1055,7 +1217,7 @@ const RecentWinRow = React.memo(function RecentWinRow({
 
       {/* Mobile: same hierarchy, stacked intentionally rather than squeezing table columns. */}
       <div className="flex min-w-0 items-center gap-2.5 px-2.5 py-3 md:hidden">
-        <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-black/35">
+        <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-white/[0.1] bg-black/30">
           {a.imageUrl ? (
             <img
               src={a.imageUrl}
@@ -1079,11 +1241,11 @@ const RecentWinRow = React.memo(function RecentWinRow({
 
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-[8px] font-bold uppercase tracking-[0.15em]" style={{ color: rarity.color }}>
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: rarity.color }}>
               {a.rarity}
             </span>
             {isMe && (
-              <span className="shrink-0 rounded-full border border-green-400/25 bg-green-400/[0.07] px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-wider text-green-300">
+              <span className="shrink-0 rounded-full border border-green-400/25 bg-green-400/[0.07] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-green-300">
                 You Won
               </span>
             )}
@@ -1098,9 +1260,9 @@ const RecentWinRow = React.memo(function RecentWinRow({
         <div className="shrink-0 text-right">
           <div className="flex items-baseline justify-end gap-1 font-mono font-bold tabular-nums">
             <span className="text-[14px] text-gold-bright">{price.toLocaleString()}</span>
-            <span className="text-[7px] font-semibold text-gold-light/55">coins</span>
+            <span className="text-[10px] font-semibold text-gold-light/55">coins</span>
           </div>
-          <div className="mt-1 text-[8px] font-semibold text-text-dim">
+          <div className="mt-1 text-[10px] font-semibold text-text-dim">
             {agoLabel}
           </div>
         </div>
@@ -1126,9 +1288,9 @@ const ScheduleSection = React.memo(function ScheduleSection({ activeRegion, idPr
       <div className="flex items-end justify-between mb-3 sm:mb-4 flex-wrap gap-2 sm:gap-3 min-w-0">
         <div>
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-dim mb-0.5">Clan calendar</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-gold-dim mb-0.5">Clan calendar</div>
             <h2 className="font-spectral text-2xl font-bold text-text-bright">Weekly Schedule</h2>
-          <div className="mt-1 text-[10px] text-text-dim">
+          <div className="mt-1 text-[11px] text-text-dim">
             Server schedule is authoritative · Your Time updates automatically from your browser/device timezone.
           </div>
           </div>
@@ -1145,7 +1307,7 @@ const ScheduleSection = React.memo(function ScheduleSection({ activeRegion, idPr
         <div className="hidden sm:flex items-center gap-4 flex-wrap">
           {Object.entries(TYPE).map(([k, t]) => (
             <div key={k} className="flex items-center gap-1.5 text-xs text-text-dim">
-              <span aria-hidden="true">{t.icon}</span>
+              <span style={{ color: t.color }}><TypeIcon type={k} size={14} /></span>
               <span>{t.label}</span>
             </div>
           ))}
@@ -1201,22 +1363,22 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
 
       <div className="relative grid min-w-0 grid-cols-[40px_minmax(0,1fr)] gap-2.5 p-3 sm:flex sm:items-center sm:gap-4 sm:p-4 md:p-5">
         <div
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-black/20 text-lg sm:h-12 sm:w-12 sm:rounded-2xl sm:text-2xl"
-          style={{ background: `${t.color}15`, border: `1px solid ${t.color}40` }}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl sm:h-12 sm:w-12 sm:rounded-2xl"
+          style={{ color: t.color, background: `${t.color}1f`, border: `1px solid ${t.color}66` }}
           aria-hidden="true"
         >
-          {t.icon}
+          <TypeIcon type={next.type} size={22} />
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-bold uppercase tracking-widest mb-0.5" style={{ color: t.color }}>
+          <div className="text-[11px] font-bold uppercase tracking-widest mb-0.5" style={{ color: t.color }}>
             Coming Up Next
           </div>
           <div className="font-spectral text-base sm:text-lg md:text-xl font-bold text-text-bright leading-tight break-words">
             {next.name}
           </div>
-          <div className="flex items-center gap-x-2 gap-y-1 mt-1 text-[10px] sm:text-sm text-text-dim flex-wrap min-w-0">
-            {next.boss && <span className="truncate max-w-full">👾 {next.boss}</span>}
+          <div className="flex items-center gap-x-2 gap-y-1 mt-1 text-[11px] sm:text-sm text-text-dim flex-wrap min-w-0">
+            {next.boss && <span className="truncate max-w-full">Boss: {next.boss}</span>}
             <span className="font-mono tabular-nums whitespace-nowrap">
               {DAY_NAMES[next.dow].slice(0, 3)} · {to12h(next.time)} · server
             </span>
@@ -1230,7 +1392,7 @@ const NextEventCard = React.memo(function NextEventCard({ activeRegion }) {
         </div>
 
         <div className="min-w-0 flex-shrink-0 text-right">
-          <div className="text-[10px] text-text-dim font-semibold uppercase tracking-wider mb-0.5 whitespace-nowrap">
+          <div className="text-[11px] text-text-dim font-semibold uppercase tracking-wider mb-0.5 whitespace-nowrap">
             Starts In
           </div>
           <div
@@ -1310,7 +1472,7 @@ const WeeklyEventTabs = React.memo(function WeeklyEventTabs({
                 {DAY_SHORT[dow]}
                 {isToday && <span className="w-1.5 h-1.5 rounded-full bg-gold-bright" aria-label="Today" />}
               </span>
-              <span className="text-[10px] font-mono tabular-nums text-text-dim whitespace-nowrap">
+              <span className="text-[11px] font-mono tabular-nums text-text-dim whitespace-nowrap">
                 {count} {count === 1 ? 'evt' : 'evts'}
               </span>
               {isActive && (
@@ -1363,11 +1525,11 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
       <div className="sm:hidden">
         <div className="flex items-start gap-3">
           <div
-            className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-lg"
-            style={{ background: `${t.color}10`, border: `1px solid ${t.color}25` }}
+            className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
+            style={{ color: t.color, background: `${t.color}1a`, border: `1px solid ${t.color}55` }}
             aria-hidden="true"
           >
-            {t.icon}
+            <TypeIcon type={ev.type} size={17} />
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[13px] sm:text-base font-semibold text-text-bright leading-snug break-words">
@@ -1375,7 +1537,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
             </div>
             {(ev.boss || ev.subtitle) && (
               <div className="text-[11px] sm:text-sm text-text-dim mt-0.5 leading-snug">
-                {ev.boss ? `👾 ${ev.boss}` : ev.subtitle}
+                {ev.boss ? `Boss: ${ev.boss}` : ev.subtitle}
               </div>
             )}
           </div>
@@ -1391,7 +1553,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
             </span>
           </div>
           <div className="col-span-2 sm:col-span-1 sm:text-right flex-shrink-0 pt-2 sm:pt-0 border-t border-white/[0.06] sm:border-0 min-w-0">
-            <div className="text-[9px] sm:text-[10px] text-text-dim leading-none">Starts In</div>
+            <div className="text-[11px] sm:text-[11px] text-text-dim leading-none">Starts In</div>
             <div className="font-mono text-[11px] sm:text-sm text-gold-light tabular-nums mt-0.5 leading-none whitespace-nowrap">
               {countdown}
             </div>
@@ -1399,7 +1561,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
         </div>
 
         {localEq && (
-           <div className="mt-1.5 text-[10px] text-gold-light/70 tabular-nums flex items-center gap-1.5">
+           <div className="mt-1.5 text-[11px] text-gold-light/70 tabular-nums flex items-center gap-1.5">
              <span className="text-gold-light">●</span>
              <span>{localEq.day.slice(0, 3)} {localEq.time} Your Time · {getLocalZoneLabel()}</span>
            </div>
@@ -1414,22 +1576,22 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
         </div>
 
         <div
-          className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-lg"
-          style={{ background: `${t.color}10`, border: `1px solid ${t.color}25` }}
+          className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
+          style={{ color: t.color, background: `${t.color}1a`, border: `1px solid ${t.color}55` }}
           aria-hidden="true"
         >
-          {t.icon}
+          <TypeIcon type={ev.type} size={17} />
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="break-words text-[15px] font-semibold leading-tight text-text-bright sm:text-base">{ev.name}</div>
           {(ev.boss || ev.subtitle) && (
             <div className="text-xs text-text-dim truncate mt-0.5">
-              {ev.boss ? `👾 ${ev.boss}` : ev.subtitle}
+              {ev.boss ? `Boss: ${ev.boss}` : ev.subtitle}
             </div>
           )}
           {localEq && (
-            <div className="text-[10px] text-gold-light/70 tabular-nums mt-0.5 flex items-center gap-1.5">
+            <div className="text-[11px] text-gold-light/70 tabular-nums mt-0.5 flex items-center gap-1.5">
               <span className="text-gold-light">●</span>
               <span>{localEq.day.slice(0, 3)} {localEq.time} · Your Time · {AUTO_LOCAL_TZ}</span>
             </div>
@@ -1437,7 +1599,7 @@ const EventRow = React.memo(function EventRow({ ev, dow, activeRegion }) {
         </div>
 
         <div className="col-span-2 sm:col-span-1 sm:text-right flex-shrink-0 pt-2 sm:pt-0 border-t border-white/[0.06] sm:border-0 min-w-0">
-          <div className="text-[10px] text-text-dim">Starts In</div>
+          <div className="text-[11px] text-text-dim">Starts In</div>
           <div className="font-mono text-xs text-gold-light tabular-nums mt-0.5 whitespace-nowrap">
             {countdown}
           </div>
@@ -1491,7 +1653,7 @@ const StatTile = React.memo(function StatTile({
         </span>
 
         <div className="min-w-0 flex-1">
-          <div className="break-words text-[8px] leading-tight font-bold uppercase tracking-[0.10em] text-text-dim sm:text-[9px] sm:tracking-[0.14em] md:text-[10px]">
+          <div className="break-words text-[10px] leading-tight font-bold uppercase tracking-[0.10em] text-text-dim sm:text-[11px] sm:tracking-[0.14em] md:text-[11px]">
             {label}
           </div>
           <div className="mt-1 break-words font-mono text-lg font-bold leading-none tracking-tight tabular-nums text-text-bright sm:text-xl md:text-2xl">
@@ -1501,7 +1663,7 @@ const StatTile = React.memo(function StatTile({
 
         {clickable && (
           <span
-            className="hidden sm:block text-[9px] font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity"
+            className="hidden sm:block text-[11px] font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ color: accent }}
           >
             Open
@@ -1512,17 +1674,58 @@ const StatTile = React.memo(function StatTile({
   )
 })
 
+function DbIcon({ name }) {
+  const common = {
+    width: 19, height: 19, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+    strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true,
+  }
+  switch (name) {
+    case 'attendance':
+      return (
+        <svg {...common}>
+          <rect x="4" y="4" width="16" height="17" rx="2.5" />
+          <path d="M9 2.5v3M15 2.5v3M8 12.5l2.5 2.5L16 9.5" />
+        </svg>
+      )
+    case 'auctions':
+      return (
+        <svg {...common}>
+          <path d="M14.5 4.5l5 5M12.5 6.5l5 5M8 11l5-5M10 16l5-5" />
+          <path d="M11 13l-7 7" />
+          <path d="M3.5 21h8" />
+        </svg>
+      )
+    case 'members':
+      return (
+        <svg {...common}>
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3.5 19.5c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5" />
+          <path d="M15.5 5.2a3 3 0 0 1 0 5.6M17.5 14.8c1.7.6 2.7 2.2 3 4.7" />
+        </svg>
+      )
+    case 'calendar':
+    default:
+      return (
+        <svg {...common}>
+          <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+          <path d="M3.5 10h17M8 3v4M16 3v4" />
+          <path d="M8 14h2M12 14h2M16 14h.5M8 17h2M12 17h2" />
+        </svg>
+      )
+  }
+}
+
 const ActionTile = React.memo(function ActionTile({ icon, label, hint, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.07] bg-[#0b0a09]/70 px-4 py-3.5 sm:gap-3.5 sm:rounded-2xl sm:px-5 sm:py-4 hover:-translate-y-0.5 hover:border-gold/30 hover:bg-gold/[0.035] hover:shadow-[0_12px_30px_rgba(0,0,0,0.18)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60 transition-all text-left"
+      className="db-glass db-solid db-lift group relative flex min-w-0 items-center gap-3 overflow-hidden rounded-[18px] px-4 py-3.5 text-left sm:gap-3.5 sm:rounded-[20px] sm:px-5 sm:py-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold/60"
     >
-      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[0.05] text-sm text-gold-light opacity-90 sm:h-10 sm:w-10 sm:rounded-xl sm:text-lg group-hover:opacity-100" aria-hidden="true">{icon}</span>
+      <span className="db-emblem flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-gold-light transition-colors group-hover:text-gold-bright sm:h-11 sm:w-11" aria-hidden="true">{icon}</span>
       <div className="min-w-0">
         <div className="break-words text-[15px] font-semibold leading-tight text-text-bright sm:text-base">{label}</div>
-        <div className="mt-0.5 break-words text-[12px] leading-tight text-text-dim sm:text-sm">{hint}</div>
+        <div className="mt-1 break-words text-[12px] leading-snug text-text-dim sm:text-[13px]">{hint}</div>
       </div>
     </button>
   )

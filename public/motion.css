@@ -1,0 +1,397 @@
+/* ==========================================================================
+   PeakyBlinder · motion.css
+   Global motion layer for the clan portal.
+
+   - Works with the existing pages without editing any .jsx file: it targets
+     the class names the pages already use (.db-root, .ag-root, .mb-card…).
+   - Only animates transform and opacity, which the GPU handles cheaply,
+     so it does not bring back scrolling lag.
+   - Everything plays once when a page or card appears, plus small hover and
+     press feedback. Nothing loops in the background.
+   - Entrance animations only run while <html> does NOT have .pbm-settled.
+     motion.js adds that class ~1.5s after a page opens, so if the app
+     re-creates the page later (e.g. while reloading data) it simply appears
+     instead of fading in again (that caused a full-page blink).
+   - Cursor glow, card tilt, click ripple and scroll reveal need motion.js
+     (loaded from index.html).
+   - Players who turn on "reduce motion" on their device (on Windows:
+     Animation effects off) get a calm version: soft fades only.
+   ========================================================================== */
+
+:root {
+  --pbm-ease-out: cubic-bezier(.16, 1, .3, 1);    /* quick start, soft landing */
+  --pbm-ease-spring: cubic-bezier(.34, 1.4, .64, 1); /* tiny overshoot for presses/pops */
+  --pbm-rise: 16px;                                /* how far things travel in */
+  --pbm-page: .6s;                                 /* page section entrance */
+  --pbm-card: .5s;                                 /* card entrance */
+  --pbm-step: 55ms;                                /* delay between items */
+}
+
+/* --------------------------------------------------------------------------
+   Keyframes
+   -------------------------------------------------------------------------- */
+
+/* Slide up and fade in */
+@keyframes pbm-rise {
+  from { opacity: 0; transform: translate3d(0, var(--pbm-rise), 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Slide up only (no fade). Used on sections that contain frosted glass:
+   fading a parent would briefly switch off the blur inside it. */
+@keyframes pbm-rise-solid {
+  from { transform: translate3d(0, var(--pbm-rise), 0); }
+  to   { transform: none; }
+}
+
+/* Small "pop" for cards and rows */
+@keyframes pbm-pop {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(.975); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Gentle attention pulse for badges that just appeared */
+@keyframes pbm-badge-in {
+  0%   { transform: scale(.4); opacity: 0; }
+  70%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* Bell wiggle when there are unread notifications (plays once) */
+@keyframes pbm-ring {
+  0%, 100% { transform: rotate(0); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-12deg); }
+  45% { transform: rotate(8deg); }
+  60% { transform: rotate(-5deg); }
+  75% { transform: rotate(2deg); }
+}
+
+/* Heading underline grows in */
+@keyframes pbm-line {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+
+  /* ------------------------------------------------------------------------
+     1. Page entrance
+     Every page's top-level sections slide in one after another when the
+     page opens (switching pages replays it).
+     ------------------------------------------------------------------------ */
+
+  html:not(.pbm-settled) :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root) > :not(style) {
+    animation: pbm-rise var(--pbm-page) var(--pbm-ease-out) backwards;
+  }
+
+  /* Sections that contain glass: slide only, so their blur never flickers */
+  :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root)
+    > :not(style):has(.db-glass, .ag-glass, .at-glass, .mb-glass, .ec-glass) {
+    animation-name: pbm-rise-solid;
+  }
+
+  :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root) > :nth-child(2)  { animation-delay: calc(var(--pbm-step) * 0); }
+  :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root) > :nth-child(3)  { animation-delay: calc(var(--pbm-step) * 1); }
+  :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root) > :nth-child(4)  { animation-delay: calc(var(--pbm-step) * 2); }
+  :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root) > :nth-child(5)  { animation-delay: calc(var(--pbm-step) * 3); }
+  :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root) > :nth-child(6)  { animation-delay: calc(var(--pbm-step) * 4); }
+  :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root) > :nth-child(7)  { animation-delay: calc(var(--pbm-step) * 5); }
+  :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root) > :nth-child(8)  { animation-delay: calc(var(--pbm-step) * 6); }
+  :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root) > :nth-child(n+9) { animation-delay: calc(var(--pbm-step) * 7); }
+
+  /* ------------------------------------------------------------------------
+     2. Cards and rows pop in, one after another
+     Member cards, auction cards, dashboard tiles, calendar rows.
+     New batches (e.g. "Show more" on Members) animate too.
+     ------------------------------------------------------------------------ */
+
+  html:not(.pbm-settled) :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day) {
+    animation: pbm-pop var(--pbm-card) var(--pbm-ease-out) backwards;
+  }
+
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(1)  { animation-delay: 120ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(2)  { animation-delay: 160ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(3)  { animation-delay: 200ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(4)  { animation-delay: 240ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(5)  { animation-delay: 280ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(6)  { animation-delay: 320ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(7)  { animation-delay: 360ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(8)  { animation-delay: 400ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(9)  { animation-delay: 440ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(10) { animation-delay: 480ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(11) { animation-delay: 520ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row, .ec-day):nth-child(n+12) { animation-delay: 560ms; }
+
+  /* Members loads cards in batches of 24: restart the stagger for each batch */
+  .mb-card:nth-child(24n+1)  { animation-delay: 60ms; }
+  .mb-card:nth-child(24n+2)  { animation-delay: 100ms; }
+  .mb-card:nth-child(24n+3)  { animation-delay: 140ms; }
+  .mb-card:nth-child(24n+4)  { animation-delay: 180ms; }
+
+  /* Archive rows and attendance/history list items: a light fade only */
+  html:not(.pbm-settled) :is(.ag-root, .at-root) li {
+    animation: pbm-pop .4s var(--pbm-ease-out) backwards;
+  }
+  html:not(.pbm-settled) :is(.ag-root, .at-root) li:nth-child(n+16) { animation: none; }
+
+  /* ------------------------------------------------------------------------
+     3. Card tilt (needs motion.js)
+     Cards lean slightly toward the mouse while you point at them.
+     ------------------------------------------------------------------------ */
+
+  @media (hover: hover) and (pointer: fine) {
+    /* :root … :hover makes this win over each page's own hover lift */
+    :root :is(.mb-card, .ag-lift, .db-lift)[data-pbm-hot]:hover {
+      transform: perspective(900px) rotateX(var(--pbm-rx, 0deg)) rotateY(var(--pbm-ry, 0deg)) translate3d(0, -4px, 0);
+      transition: transform .12s ease-out, box-shadow .25s ease;
+      box-shadow: 0 26px 50px -24px rgba(0, 0, 0, .9);
+    }
+  }
+
+  /* Scroll reveal: cards further down rise in as you reach them */
+  [data-pbm-reveal="wait"] {
+    opacity: 0;
+    transform: translate3d(0, 28px, 0) scale(.97);
+    animation: none !important;
+  }
+  [data-pbm-reveal="in"] {
+    opacity: 1;
+    transform: none;
+    transition: opacity .6s var(--pbm-ease-out), transform .7s var(--pbm-ease-out);
+    animation: none !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     4. Press feedback
+     Buttons sink slightly when pressed, so taps feel responsive on phones.
+     ------------------------------------------------------------------------ */
+
+  :is(.btn-gold, .ag-chip, .db-chip, .at-chip, .mb-chip, .ec-chip, .lg-chip,
+      .mb-pill, .ec-pill, .pb-submit, .ag-btn-danger, .mb-btn-red, .at-btn-danger) {
+    transition-property: transform, background, border-color, color, box-shadow, filter;
+    transition-duration: .18s;
+    transition-timing-function: var(--pbm-ease-spring);
+  }
+  :is(.btn-gold, .ag-chip, .db-chip, .at-chip, .mb-chip, .ec-chip, .lg-chip,
+      .mb-pill, .ec-pill, .pb-submit, .ag-btn-danger, .mb-btn-red, .at-btn-danger):active:not(:disabled) {
+    transform: scale(.96);
+    transition-duration: .06s;
+  }
+
+  /* Cards pressed on touch screens */
+  :is(.mb-card, .db-lift, .ec-row):active {
+    transform: scale(.985);
+    transition: transform .08s ease-out;
+  }
+
+  /* Segmented controls and filter chips: the selected one settles in */
+  :is(.mb-seg, .ec-seg) button[aria-pressed="true"],
+  :is(.mb-pill, .ec-pill)[aria-pressed="true"],
+  .ec-day[aria-selected="true"] {
+    animation: pbm-pop .28s var(--pbm-ease-spring);
+  }
+
+  /* ------------------------------------------------------------------------
+     5. Navigation (Layout.jsx)
+     ------------------------------------------------------------------------ */
+
+  /* Active page tab eases in */
+  .lg-tab-active {
+    animation: pbm-pop .3s var(--pbm-ease-spring);
+  }
+
+  /* Nav icons nudge up on hover */
+  .lg-track button > span:first-child {
+    transition: transform .2s var(--pbm-ease-spring);
+  }
+  .lg-track button:hover > span:first-child {
+    transform: translateY(-2px) scale(1.08);
+  }
+
+  /* Notification bell rings once when it has an unread badge */
+  .lg-chip:has(> span.bg-red-500) > svg {
+    transform-origin: 50% 10%;
+    animation: pbm-ring 1.1s ease-in-out .6s 1;
+  }
+  .lg-chip > span.bg-red-500 {
+    animation: pbm-badge-in .45s var(--pbm-ease-spring) .4s backwards;
+  }
+
+  /* ------------------------------------------------------------------------
+     6. Small details
+     ------------------------------------------------------------------------ */
+
+  /* Big page titles: the gold dot before the eyebrow label pops in */
+  html:not(.pbm-settled) :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root) header span.rounded-full.h-1\.5.w-1\.5 {
+    animation: pbm-badge-in .5s var(--pbm-ease-spring) .25s backwards;
+  }
+
+  /* Rank badges and "You" tags on member cards */
+  html:not(.pbm-settled) .mb-card span.rounded-full.font-mono {
+    animation: pbm-badge-in .45s var(--pbm-ease-spring) .35s backwards;
+  }
+
+  /* Calendar: progress bar of a running event grows in */
+  html:not(.pbm-settled) .ec-root [role="progressbar"] > div {
+    transform-origin: left center;
+    animation: pbm-line .8s var(--pbm-ease-out) .3s backwards;
+  }
+
+  /* Toast messages bounce in a little */
+  .animate-slideIn {
+    animation-timing-function: var(--pbm-ease-spring) !important;
+  }
+
+  /* Smooth scrolling for in-page jumps ("Show in schedule", "Jump to me") */
+  html { scroll-behavior: smooth; }
+}
+
+/* ==========================================================================
+   Interactive light effects (need motion.js)
+   These are changes of light, not movement, so they stay on even when the
+   device asks for reduced motion.
+   ========================================================================== */
+
+/* Cursor glow on cards and glass panels */
+:is(.mb-card, .ag-lift, .db-lift, .ec-row,
+    .db-glass, .ag-glass, .at-glass, .mb-glass, .ec-glass, .pb-card)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    var(--pbm-glow-size, 340px) circle at var(--pbm-x, 50%) var(--pbm-y, 50%),
+    rgba(255, 222, 150, var(--pbm-glow, .15)),
+    rgba(255, 222, 150, 0) 62%
+  );
+  opacity: 0;
+  transition: opacity .3s ease;
+}
+:is(.mb-card, .ag-lift, .db-lift, .ec-row,
+    .db-glass, .ag-glass, .at-glass, .mb-glass, .ec-glass, .pb-card)[data-pbm-hot]::after {
+  opacity: 1;
+}
+/* Big panels get a wider, fainter glow */
+:is(.db-glass, .ag-glass, .at-glass, .mb-glass, .ec-glass, .pb-card):not(.mb-card, .ag-lift, .db-lift) {
+  --pbm-glow-size: 560px;
+  --pbm-glow: .10;
+}
+/* The glass edge brightens near the cursor */
+:is(.mb-card, .ag-lift, .db-lift, .db-glass, .ag-glass, .mb-glass, .ec-glass)[data-pbm-hot] {
+  border-color: rgba(255, 236, 190, .18);
+}
+
+/* Click ripple */
+.pbm-ripple-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  contain: strict;
+}
+.pbm-ripple-box {
+  position: fixed;
+  overflow: hidden;
+  pointer-events: none;
+}
+.pbm-ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 220, 140, .35) 0%, rgba(255, 220, 140, .12) 40%, rgba(255, 220, 140, 0) 70%);
+  transform: scale(0);
+  opacity: 1;
+  animation: pbm-ripple .6s var(--pbm-ease-out) forwards;
+}
+.pbm-ripple[data-tone="light"] {
+  background: radial-gradient(circle, rgba(255, 255, 255, .55) 0%, rgba(255, 255, 255, .18) 40%, rgba(255, 255, 255, 0) 70%);
+}
+@keyframes pbm-ripple {
+  to { transform: scale(1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Ripple becomes a quick flash instead of an expanding ring */
+  .pbm-ripple { transform: scale(1); animation: pbm-flash .35s ease-out forwards; }
+  /* Scroll reveal fades only, no movement */
+  [data-pbm-reveal="wait"] { opacity: 0; animation: none !important; }
+  [data-pbm-reveal="in"] { opacity: 1; transition: opacity .5s ease-out; animation: none !important; }
+}
+@keyframes pbm-flash {
+  from { opacity: .9; }
+  to   { opacity: 0; }
+}
+
+/* --------------------------------------------------------------------------
+   Reduce motion (e.g. Windows "Animation effects" turned off)
+   No sliding, bouncing, sweeping or ringing — pages and cards just fade in
+   softly so the portal still feels alive. Looping pulses are stopped.
+   -------------------------------------------------------------------------- */
+@keyframes pbm-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Page sections fade in (sections containing glass stay put so their blur
+     never flickers; the glass panels themselves fade instead) */
+  html:not(.pbm-settled) :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root)
+    > :not(style):not(:has(.db-glass, .ag-glass, .at-glass, .mb-glass, .ec-glass)),
+  html:not(.pbm-settled) :is(.db-root, .ag-root, .at-root, .mb-root, .ec-root)
+    :is(.db-glass, .ag-glass, .at-glass, .mb-glass, .ec-glass):not(:is(.db-glass, .ag-glass, .at-glass, .mb-glass, .ec-glass) *) {
+    animation: pbm-fade .45s ease-out backwards;
+  }
+
+  /* Cards and rows fade in one after another */
+  html:not(.pbm-settled) :is(.mb-card, .ag-lift, .db-lift, .ec-row) {
+    animation: pbm-fade .4s ease-out backwards;
+  }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row):nth-child(2)  { animation-delay: 40ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row):nth-child(3)  { animation-delay: 80ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row):nth-child(4)  { animation-delay: 120ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row):nth-child(5)  { animation-delay: 160ms; }
+  :is(.mb-card, .ag-lift, .db-lift, .ec-row):nth-child(n+6) { animation-delay: 200ms; }
+
+  /* Colour changes on hover/selection still ease, they just don't move */
+  :is(.btn-gold, .ag-chip, .db-chip, .at-chip, .mb-chip, .ec-chip, .lg-chip, .mb-pill, .ec-pill) {
+    transition: background .2s ease, border-color .2s ease, color .2s ease, filter .2s ease;
+  }
+
+  /* Stop looping pulses */
+  .ec-live-dot,
+  .motion-safe\:animate-pulse,
+  .animate-pulse {
+    animation: none !important;
+  }
+}
+
+/* ───────── Custom mouse cursor ─────────
+   Files: /public/cursor.png and /public/cursor-hover.png
+   "1 1" = the pointy tip of the cursor (the spot that clicks). */
+html, body {
+  cursor: url("/cursor.png") 1 1, auto;
+}
+html body a,
+html body button,
+html body summary,
+html body label[for],
+html body select,
+html body [role="button"],
+html body [role="tab"],
+html body [role="menuitem"],
+html body .cursor-pointer {
+  cursor: url("/cursor-hover.png") 1 1, pointer;
+}
+/* Keep the normal text bar inside typing boxes, and the "no" sign on disabled things */
+html body input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html body textarea,
+html body [contenteditable="true"] {
+  cursor: text;
+}
+html body button:disabled,
+html body [aria-disabled="true"],
+html body .cursor-not-allowed {
+  cursor: not-allowed;
+}

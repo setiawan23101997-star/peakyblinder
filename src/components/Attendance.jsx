@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useId } from 'react'
+import { createPortal } from 'react-dom'
 
 const eventTypes = [
   'Inter-Server Battle',
@@ -359,7 +360,305 @@ function FlagImage({ code, flag, name, width = 20, height = 15 }) {
   )
 }
 
+// Glassmorphism / liquid-glass styling for this page (scoped to .at-root).
+// Modals and the main page panels use live blur; panels nested inside them use
+// translucent fills, because a blurred element inside another blurred element
+// loses its own blur.
+const AT_STYLES = `
+  .at-root { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  .at-root .text-text-dim { color: #c9bda8; }
+
+  .at-root .at-glass {
+    background:
+      radial-gradient(120% 70% at 0% 0%, rgba(255,255,255,.08) 0%, transparent 50%),
+      linear-gradient(160deg, rgba(34,28,22,.58) 0%, rgba(12,10,8,.66) 100%);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 22px 60px -30px rgba(0,0,0,.85);
+  }
+  .at-root .at-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(140deg,
+      rgba(255,255,255,.38) 0%,
+      rgba(255,255,255,.04) 35%,
+      var(--at-rim, rgba(201,162,75,.26)) 70%,
+      rgba(255,255,255,.1) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 1;
+  }
+  /* Glass look without live blur (menus inside an already-blurred panel) */
+  .at-root .at-glass.at-solid {
+    background:
+      radial-gradient(120% 70% at 0% 0%, rgba(255,255,255,.07) 0%, transparent 50%),
+      linear-gradient(160deg, rgba(32,27,22,.97) 0%, rgba(14,12,10,.98) 100%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 18px 40px -12px rgba(0,0,0,.85);
+  }
+  /* Modal windows: more opaque so long tables stay readable */
+  .at-root .at-glass.at-modal {
+    background:
+      radial-gradient(120% 60% at 0% 0%, rgba(255,255,255,.08) 0%, transparent 50%),
+      linear-gradient(160deg, rgba(34,28,22,.84) 0%, rgba(12,10,8,.9) 100%);
+    backdrop-filter: blur(28px) saturate(170%);
+    -webkit-backdrop-filter: blur(28px) saturate(170%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 40px 90px -20px rgba(0,0,0,.85);
+    animation: at-pop .22s cubic-bezier(.2,.8,.2,1) both;
+  }
+  .at-root .at-overlay {
+    background: rgba(5,4,3,.62);
+    animation: at-fade .18s ease-out both;
+  }
+  .at-root .at-lift { transition: transform .25s cubic-bezier(.2,.8,.2,1), border-color .25s ease; }
+  .at-root .at-lift:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.15); }
+
+  .at-root .at-inset {
+    background: linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.018) 100%);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  .at-root .at-inset.at-inset-gold {
+    background: linear-gradient(160deg, rgba(201,162,75,.12) 0%, rgba(201,162,75,.03) 100%);
+    border-color: rgba(235,208,141,.2);
+    box-shadow: inset 0 1px 0 rgba(255,240,200,.1);
+  }
+  .at-root .at-well {
+    background: rgba(0,0,0,.22);
+    border: 1px solid rgba(255,255,255,.07);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,.3), 0 1px 0 rgba(255,255,255,.04);
+  }
+  .at-root .at-chip {
+    background: linear-gradient(180deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.025) 100%);
+    border: 1px solid rgba(255,255,255,.1);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 4px 14px -8px rgba(0,0,0,.5);
+    transition: background .2s ease, border-color .2s ease, color .2s ease;
+  }
+  .at-root button.at-chip:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.04) 100%);
+    border-color: rgba(235,208,141,.3);
+  }
+  .at-root .at-chip.at-chip-gold {
+    background: linear-gradient(180deg, rgba(201,162,75,.18) 0%, rgba(201,162,75,.05) 100%);
+    border-color: rgba(235,208,141,.28);
+  }
+  .at-root .at-chip.at-chip-red {
+    background: linear-gradient(180deg, rgba(239,68,68,.14) 0%, rgba(239,68,68,.04) 100%);
+    border-color: rgba(248,113,113,.28);
+  }
+  .at-root .at-emblem {
+    background:
+      radial-gradient(80% 60% at 30% 20%, rgba(255,255,255,.3) 0%, transparent 60%),
+      linear-gradient(160deg, rgba(201,162,75,.28) 0%, rgba(201,162,75,.07) 100%);
+    border: 1px solid rgba(255,255,255,.2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 6px 18px -8px rgba(201,162,75,.5);
+  }
+  .at-root .at-emblem-danger {
+    background:
+      radial-gradient(80% 60% at 30% 20%, rgba(255,255,255,.25) 0%, transparent 60%),
+      linear-gradient(160deg, rgba(239,68,68,.3) 0%, rgba(239,68,68,.08) 100%);
+    border: 1px solid rgba(255,180,170,.28);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 6px 18px -8px rgba(239,68,68,.5);
+    font-weight: 800;
+  }
+
+  .at-root .input {
+    background: linear-gradient(180deg, rgba(0,0,0,.32) 0%, rgba(0,0,0,.16) 100%);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 12px;
+    color: #f4ebd9;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,.3), 0 1px 0 rgba(255,255,255,.05);
+    transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .at-root .input:focus {
+    outline: none;
+    border-color: rgba(235,208,141,.55);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,.28), 0 0 0 3px rgba(201,162,75,.2);
+  }
+  .at-root select.input option { background: #15110e; color: #f4ebd9; }
+  .at-root input[type="date"].input { color-scheme: dark; }
+
+  .at-root .btn-gold {
+    border: 1px solid rgba(255,240,200,.5);
+    border-radius: 999px;
+    color: #1a140b;
+    background: linear-gradient(180deg,
+      rgba(255,246,214,.96) 0%,
+      rgba(235,208,141,.95) 20%,
+      rgba(201,162,75,.93) 58%,
+      rgba(160,122,46,.96) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.7),
+      inset 0 -3px 8px rgba(90,60,10,.32),
+      0 10px 24px -10px rgba(201,162,75,.6);
+    transition: transform .2s ease, filter .2s ease;
+  }
+  .at-root .btn-gold:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+  .at-root .at-btn-danger {
+    color: #fff5f3;
+    border: 1px solid rgba(255,190,180,.45);
+    background: linear-gradient(180deg, rgba(248,113,113,.95) 0%, rgba(220,38,38,.92) 60%, rgba(170,28,28,.95) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 -3px 8px rgba(90,10,10,.3), 0 10px 24px -10px rgba(239,68,68,.6);
+    transition: transform .2s ease, filter .2s ease;
+  }
+  .at-root .at-btn-danger:hover { transform: translateY(-1px); filter: brightness(1.06); }
+
+  @keyframes at-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes at-pop {
+    from { opacity: 0; transform: translateY(10px) scale(.98); }
+    to   { opacity: 1; transform: none; }
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .at-root .at-glass, .at-root .at-glass.at-modal { background: rgba(16,13,11,.97); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .at-root .at-overlay, .at-root .at-glass.at-modal { animation: none; }
+    .at-root .at-lift, .at-root .at-lift:hover, .at-root .btn-gold { transition: none; transform: none; }
+  }
+`
+
+// ---------------------------------------------------------------------------
+// Glass confirm dialog (replaces the browser's confirm pop-up)
+// Usage: const ok = await askConfirm({ title, body, note, details, confirmLabel, tone })
+// ---------------------------------------------------------------------------
+function GlassConfirmDialog({
+  title, body, note, details, confirmLabel = 'Confirm', cancelLabel = 'Cancel',
+  tone = 'gold', onConfirm, onCancel,
+}) {
+  const titleId = useId()
+  const bodyId = useId()
+  const panelRef = useRef(null)
+  const cancelRef = useRef(null)
+  const onCancelRef = useRef(onCancel)
+  onCancelRef.current = onCancel
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement
+    cancelRef.current?.focus()
+
+    const handleKey = e => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onCancelRef.current()
+        return
+      }
+      if (e.key === 'Tab' && panelRef.current) {
+        const focusable = panelRef.current.querySelectorAll('button:not([disabled])')
+        if (!focusable.length) return
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+      }
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('keydown', handleKey)
+      previouslyFocused?.focus?.()
+    }
+  }, [])
+
+  const isDanger = tone === 'danger'
+
+  return createPortal(
+    <div data-glass-confirm="" className="at-root fixed inset-0 z-[400] flex items-end justify-center p-3 sm:items-center sm:p-6">
+      <div className="at-overlay absolute inset-0" onClick={onCancel} aria-hidden="true" />
+      <div
+        ref={panelRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={bodyId}
+        className="at-glass at-modal relative w-full max-w-[440px] overflow-hidden rounded-[24px]"
+      >
+        <div className="relative px-5 pb-4 pt-5 sm:px-6 sm:pt-6">
+          <div className="flex items-start gap-3.5">
+            <span
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg ${
+                isDanger ? 'at-emblem-danger text-red-300' : 'at-emblem text-gold-light'
+              }`}
+              aria-hidden="true"
+            >
+              {isDanger ? '!' : '?'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 id={titleId} className="font-spectral text-[19px] font-bold leading-tight text-text-bright">
+                {title}
+              </h2>
+              <div id={bodyId} className="mt-1.5 space-y-2 text-[13px] leading-5 text-text-dim">
+                {body && <p>{body}</p>}
+                {Array.isArray(details) && details.length > 0 && (
+                  <ul className="at-well max-h-40 space-y-1 overflow-y-auto rounded-xl px-3 py-2 text-[12px] text-text-bright">
+                    {details.map((line, i) => (
+                      <li key={`${i}-${line}`} className="truncate">• {line}</li>
+                    ))}
+                  </ul>
+                )}
+                {note && (
+                  <p className={`text-[12px] ${isDanger ? 'text-red-300/90' : 'text-gold-light/85'}`}>{note}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-white/[.08] bg-white/[.025] px-5 py-3.5 sm:flex-row sm:justify-end sm:px-6">
+          <button
+            ref={cancelRef}
+            type="button"
+            onClick={onCancel}
+            className="at-chip h-10 rounded-full px-5 text-[13px] font-semibold text-text-bright"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`h-10 px-5 text-[13px] font-bold ${isDanger ? 'at-btn-danger rounded-full' : 'btn-gold'}`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function useGlassConfirm() {
+  const [dialog, setDialog] = useState(null)
+  const resolverRef = useRef(null)
+
+  const askConfirm = useCallback(options => new Promise(resolve => {
+    resolverRef.current?.(false)
+    resolverRef.current = resolve
+    setDialog(options)
+  }), [])
+
+  const settle = useCallback(result => {
+    resolverRef.current?.(result)
+    resolverRef.current = null
+    setDialog(null)
+  }, [])
+
+  useEffect(() => () => { resolverRef.current?.(false) }, [])
+
+  const confirmDialog = dialog
+    ? <GlassConfirmDialog {...dialog} onConfirm={() => settle(true)} onCancel={() => settle(false)} />
+    : null
+
+  return [askConfirm, confirmDialog]
+}
+
 export default function Attendance({ ctx }) {
+  const [askConfirm, confirmDialog] = useGlassConfirm()
   const {
     members, setMembers, attendanceLogs, setAttendanceLogs,
     currentUser, addToast, supabase,
@@ -789,7 +1088,18 @@ export default function Attendance({ ctx }) {
 ` +
       `This cannot be undone.`
 
-    if (!window.confirm(confirmMsg)) return
+    const confirmedDeleteLog = await askConfirm({
+      title: 'Delete this attendance record?',
+      body: `"${log.event}" from ${formatGMT8Short(log.ts || log.id)} will be removed.`,
+      details: [
+        `${attendees.length} member${attendees.length === 1 ? '' : 's'} lose this attendance`,
+        `${totalCoins.toLocaleString()} coins reversed in total`,
+      ],
+      note: 'This cannot be undone.',
+      confirmLabel: 'Delete record',
+      tone: 'danger',
+    })
+    if (!confirmedDeleteLog) return
 
     setDeletingId(log.id)
 
@@ -868,7 +1178,14 @@ export default function Attendance({ ctx }) {
       `This will reverse ${reward.toLocaleString()} Coins and 1 attendance for this player.\n\n` +
       `The rest of the attendance record will remain unchanged.`
 
-    if (!window.confirm(confirmMsg)) return
+    const confirmedRemove = await askConfirm({
+      title: `Remove ${attendee.name}?`,
+      body: `They will be removed from ${getLogSession(log)?.displayName || log.event}.`,
+      note: `This reverses ${reward.toLocaleString()} coins and 1 attendance for this player. The rest of the record stays the same.`,
+      confirmLabel: 'Remove player',
+      tone: 'danger',
+    })
+    if (!confirmedRemove) return
 
     const key = `${log.id}-${attendee.memberId || attendee.name}`
     setRemovingAttendeeKey(key)
@@ -1204,9 +1521,17 @@ export default function Attendance({ ctx }) {
     const total = freshRows.length * PERFECT_ATTENDANCE_BONUS
     const names = freshRows.map(row => row.member.name).join(', ')
 
-    if (!window.confirm(
-      `Award Weekly Perfect Attendance?\n\n${freshRows.length} qualified player(s):\n${names}\n\n+${PERFECT_ATTENDANCE_BONUS} Coins each\nTotal: +${total.toLocaleString()} Coins\n\nThis weekly bonus can only be awarded once per player.`
-    )) return
+    const confirmedAward = await askConfirm({
+      title: 'Award Perfect Attendance?',
+      body: `${freshRows.length} qualified player${freshRows.length === 1 ? '' : 's'} get +${PERFECT_ATTENDANCE_BONUS} coins each, ${total.toLocaleString()} coins in total.`,
+      details: [
+        ...freshRows.slice(0, 8).map(row => row.member.name),
+        ...(freshRows.length > 8 ? [`+${freshRows.length - 8} more`] : []),
+      ],
+      note: 'Each player can only receive this bonus once per week.',
+      confirmLabel: `Award +${total.toLocaleString()}`,
+    })
+    if (!confirmedAward) return
 
     setAwardingPerfect(true)
 
@@ -1365,13 +1690,17 @@ export default function Attendance({ ctx }) {
 
     const total = awardedRows.length * PERFECT_ATTENDANCE_BONUS
     const names = awardedRows.map(row => row.member.name).join(', ')
-    const confirmed = window.confirm(
-      `Reset Weekly Perfect Attendance awards?\n\n` +
-      `${awardedRows.length} player(s):\n${names}\n\n` +
-      `This will remove the +${PERFECT_ATTENDANCE_BONUS} bonus and subtract ` +
-      `${total.toLocaleString()} Coins in total.\n\n` +
-      `The players will become eligible to be awarded again.`
-    )
+    const confirmed = await askConfirm({
+      title: 'Reset Perfect Attendance awards?',
+      body: `This removes the +${PERFECT_ATTENDANCE_BONUS} bonus from ${awardedRows.length} player${awardedRows.length === 1 ? '' : 's'}, subtracting ${total.toLocaleString()} coins in total.`,
+      details: [
+        ...awardedRows.slice(0, 8).map(row => row.member.name),
+        ...(awardedRows.length > 8 ? [`+${awardedRows.length - 8} more`] : []),
+      ],
+      note: 'These players can be awarded again afterwards.',
+      confirmLabel: 'Reset awards',
+      tone: 'danger',
+    })
     if (!confirmed) return
 
     setAwardingPerfect(true)
@@ -1656,20 +1985,41 @@ export default function Attendance({ ctx }) {
     safeHistoryPage * HISTORY_PAGE_SIZE
   )
 
+  // Escape closes the top-most open window (UI only — same as pressing ×).
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key !== 'Escape') return
+      if (document.querySelector('[data-glass-confirm]')) return
+      if (openActionMenuId != null) { setOpenActionMenuId(null); return }
+      if (showAttendanceExport) { setShowAttendanceExport(false); return }
+      if (showPerfectAttendance) { if (!awardingPerfect) setShowPerfectAttendance(false); return }
+      if (showRewardGuide) { setShowRewardGuide(false); return }
+      if (showEventSchedule) { setShowEventSchedule(false); return }
+      if (showRecordModal) { if (!submitting) setShowRecordModal(false); return }
+      if (showAddMissing) { if (!addingMissing) setShowAddMissing(false); return }
+      if (detailLog) { setAttendeeSearch(''); setDetailLog(null) }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [openActionMenuId, showAttendanceExport, showPerfectAttendance, awardingPerfect, showRewardGuide,
+      showEventSchedule, showRecordModal, submitting, showAddMissing, addingMissing, detailLog])
+
   return (
-    <div className="min-w-0 space-y-3">
+    <div className="at-root min-w-0 space-y-3">
+      <style>{AT_STYLES}</style>
+      {confirmDialog}
       {/* Header */}
-      <header className="rounded-2xl border border-gold/15 bg-[#0c0a09]/90">
+      <header className="at-glass relative rounded-[22px]">
         <div className="flex flex-col gap-2 px-4 py-3 sm:px-5 sm:py-3.5 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.18em] text-gold-dim">
+            <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.12em] text-gold-dim">
               <span className="h-1.5 w-1.5 rounded-full bg-gold-bright" />
               Clan Management
             </div>
             <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
               <h1 className="font-spectral text-2xl sm:text-3xl font-bold tracking-tight text-text-bright">Attendance</h1>
-              <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-0.5 text-[11px] font-sans text-text-dim">{members.length} members</span>
-              <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-0.5 text-[11px] font-sans text-text-dim">{sortedLogs.length} logs</span>
+              <span className="rounded-full at-chip px-2 py-0.5 text-[11px] font-sans text-text-dim">{members.length} members</span>
+              <span className="rounded-full at-chip px-2 py-0.5 text-[11px] font-sans text-text-dim">{sortedLogs.length} logs</span>
             </div>
             <p className="mt-0.5 text-[12px] sm:text-[13px] text-text-dim">
               {isElder ? 'Select a session, mark attendees, and let GP determine the reward.' : 'View clan attendance and event participation.'}
@@ -1692,64 +2042,25 @@ export default function Attendance({ ctx }) {
       </header>
 
       {/* Weekly calendar — thin expandable bar */}
-      <section className="overflow-hidden rounded-2xl border border-gold/15 bg-[#0c0a09]/[.97]">
+      <section className="at-glass at-lift relative overflow-hidden rounded-[20px]">
         <button
           type="button"
           onClick={() => setShowEventSchedule(value => !value)}
-          className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left sm:px-5 hover:bg-white/[.018]"
-          aria-expanded={showEventSchedule}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left sm:px-5"
+          aria-haspopup="dialog"
         >
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[12px] font-bold uppercase tracking-[.14em] text-text-dim">Weekly Event Calendar</span>
-              <span className="rounded-md border border-white/[.08] bg-black/15 px-2 py-0.5 text-[11px] text-text-dim">{currentWeekLabel}</span>
-              <span className="text-[10px] text-text-dim">8 sessions · GMT+8</span>
+              <span className="rounded-full at-chip px-2 py-0.5 text-[11px] text-text-dim">{currentWeekLabel}</span>
+              <span className="text-[11px] text-text-dim">8 sessions · GMT+8</span>
             </div>
           </div>
-          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-[14px] font-semibold text-text-dim">
-            {showEventSchedule ? '−' : '+'}
+          <span className="at-chip flex-shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[.1em] text-gold-light">
+            View <span aria-hidden="true">→</span>
           </span>
         </button>
 
-        {showEventSchedule && (
-          <div className="border-t border-white/[.06] px-3 py-3 sm:px-4">
-            <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-              {[2, 4, 6].map(day => {
-                const daySessions = WEEKLY_EVENT_SESSIONS.filter(session => session.day === day)
-                const dayLabel = daySessions[0]?.dayLabel || ''
-                return (
-                  <div key={day} className="rounded-xl border border-white/[.07] bg-black/15 p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-[11px] font-bold uppercase tracking-[.12em] text-text-dim">{dayLabel}</span>
-                      <span className="text-[10px] text-text-dim">{daySessions.length} sessions</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {daySessions.map((session, index) => {
-                        const times = formatSessionTimes(session, now)
-                        const run = getRunLabel(session)
-                        return (
-                          <div key={session.id} className="rounded-lg border border-white/[.06] bg-[#10100e] px-2.5 py-2">
-                            <div className="flex items-start gap-2">
-                              <span className="mt-0.5 text-[9px] text-text-dim">{String(index + 1).padStart(2, '0')}</span>
-                              <div className="min-w-0 flex-1">
-                                <div className="text-[11px] font-semibold leading-4 text-text-bright">{session.displayName}</div>
-                                <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] text-text-dim">
-                                  <span>Server {times.serverTime}</span>
-                                  <span>Local {times.localTime}</span>
-                                  {run !== 'Single Run' && <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${getRunTagClass(run)}`}>{run}</span>}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
       </section>
 
       {/* Weekly status — compact stat chips */}
@@ -1757,10 +2068,10 @@ export default function Attendance({ ctx }) {
         <button
           type="button"
           onClick={() => setShowPerfectAttendance(true)}
-          className="flex min-w-0 w-full items-center justify-between gap-3 rounded-xl border border-white/[.08] bg-[#0c0a09]/[.97] px-3.5 py-3 text-left hover:border-gold/20 sm:py-2.5"
+          className="flex min-w-0 w-full items-center justify-between gap-3 at-glass at-lift relative rounded-[18px] px-3.5 py-3 text-left hover:border-gold/20 sm:py-2.5"
         >
           <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim">Perfect Attendance</div>
+            <div className="text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Perfect Attendance</div>
             <div className="mt-0.5 truncate text-[13px] font-semibold text-text-bright">{qualifiedPerfectAttendance.length} qualified · 8/8 required</div>
           </div>
           <span className="flex-shrink-0 whitespace-nowrap text-[13px] font-bold text-gold-bright">+150</span>
@@ -1769,16 +2080,16 @@ export default function Attendance({ ctx }) {
         <button
           type="button"
           onClick={() => setShowRewardGuide(true)}
-          className="flex min-w-0 w-full flex-wrap items-center gap-1.5 rounded-xl border border-white/[.08] bg-[#0c0a09]/[.97] px-3.5 py-3 text-left transition-colors hover:border-gold/25 hover:bg-gold/[.02] sm:py-2.5"
+          className="flex min-w-0 w-full flex-wrap items-center gap-1.5 at-glass at-lift relative rounded-[18px] px-3.5 py-3 text-left transition-colors hover:border-gold/25 hover:bg-gold/[.02] sm:py-2.5"
           title="View reward and GP bonus criteria"
         >
           <div className="mr-1 min-w-0 basis-full sm:basis-auto">
-            <div className="text-[10px] font-bold uppercase tracking-[.14em] text-text-dim">Reward Guide</div>
+            <div className="text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">Reward Guide</div>
             <div className="text-[11px] text-text-dim">Click to view GP bonus criteria</div>
           </div>
           {[['Battle', 100], ['Boss', 50], ['Annihilation', 75], ['Sindri', 75], ['Sanctuary', 50]].map(([name, base]) => (
-            <div key={name} className="flex-shrink-0 rounded-lg border border-white/[.06] bg-black/15 px-2.5 py-1.5">
-              <span className="text-[10px] text-text-dim">{name}</span>
+            <div key={name} className="flex-shrink-0 rounded-xl at-inset px-2.5 py-1.5">
+              <span className="text-[11px] text-text-dim">{name}</span>
               <span className="ml-1.5 text-[11px] font-semibold text-text-bright">+{base}</span>
             </div>
           ))}
@@ -1786,20 +2097,20 @@ export default function Attendance({ ctx }) {
       </div>
 
       {/* Recent Attendance — only a small page of records is rendered */}
-      <section className="overflow-hidden rounded-2xl border border-white/[.08] bg-[#0c0a09]/95 shadow-[0_10px_40px_rgba(0,0,0,.18)]">
+      <section className="at-glass relative rounded-[22px]">
         <div className="flex flex-col gap-2.5 border-b border-white/[.06] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-base font-bold text-text-bright">Recent Attendance</h2>
+            <h2 className="font-spectral text-[1.3rem] font-bold leading-tight text-text-bright">Recent Attendance</h2>
             <p className="mt-0.5 text-[12px] text-text-dim">Showing the latest 8 records · use search to find older sessions</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             {isElder && sortedLogs.length > 0 && (
               <>
-                <button type="button" onClick={() => setShowAttendanceExport(true)} className="rounded-lg border border-gold/25 bg-gold/[.05] px-2.5 py-1.5 text-[11px] font-bold text-gold-light hover:border-gold/45">↧ Export CSV</button>
-                <button type="button" onClick={() => openAddMissing()} className="rounded-lg border border-gold/20 bg-gold/[.035] px-2.5 py-1.5 text-[11px] font-bold text-gold-light hover:border-gold/40">+ Add Missing</button>
+                <button type="button" onClick={() => setShowAttendanceExport(true)} className="rounded-full at-chip at-chip-gold px-2.5 py-1.5 text-[11px] font-bold text-gold-light hover:border-gold/45">↧ Export CSV</button>
+                <button type="button" onClick={() => openAddMissing()} className="rounded-full at-chip at-chip-gold px-2.5 py-1.5 text-[11px] font-bold text-gold-light hover:border-gold/40">+ Add Missing</button>
               </>
             )}
-            <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-1 text-[11px] font-sans text-text-dim">{sortedLogs.length} logs</span>
+            <span className="rounded-full at-chip px-2 py-1 text-[11px] font-sans text-text-dim">{sortedLogs.length} logs</span>
           </div>
         </div>
 
@@ -1814,7 +2125,7 @@ export default function Attendance({ ctx }) {
               />
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim text-[13px]">⌕</span>
             </div>
-            {historySearch && <button type="button" onClick={() => { setHistorySearch(''); setHistoryPage(1) }} className="rounded-lg border border-white/[.08] px-2.5 text-[11px] text-text-dim hover:text-text-bright">Clear</button>}
+            {historySearch && <button type="button" onClick={() => { setHistorySearch(''); setHistoryPage(1) }} className="rounded-full at-chip px-2.5 text-[11px] text-text-dim hover:text-text-bright">Clear</button>}
           </div>
         </div>
 
@@ -1832,8 +2143,8 @@ export default function Attendance({ ctx }) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="truncate text-[14px] font-semibold text-text-bright">{log.sessionDisplayName || log.event}</span>
-                      <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-bold ${getRunTagClass(run)}`}>{run}</span>
-                      <span className="rounded-md border border-white/[.07] bg-black/20 px-1.5 py-0.5 text-[10px] font-sans text-text-dim">{attendees.length}/50</span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${getRunTagClass(run)}`}>{run}</span>
+                      <span className="rounded-full at-chip px-1.5 py-0.5 text-[11px] font-sans text-text-dim">{attendees.length}/50</span>
                     </div>
                     <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] sm:text-[12px] text-text-dim">
                       <span title={`Server time: ${formatGMT8Short(logTs)} · GMT+8`}>Local {formatInAutoLocalZone(logTs)}</span>
@@ -1843,13 +2154,13 @@ export default function Attendance({ ctx }) {
                   <div className="flex items-center justify-between gap-2 lg:justify-end">
                     <span className="flex items-center gap-1 text-[12px] font-bold text-gold-light"><span aria-hidden="true">🪙</span>{totalAwarded.toLocaleString()}</span>
                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => { setAttendeeSearch(''); setDetailLog(log) }} title="View attendance details" aria-label="View attendance details" className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[.08] text-[13px] text-text-dim hover:border-white/[.16] hover:text-text-bright">⌕</button>
-                      {isElder && attendees.length < 50 && <button type="button" onClick={() => openAddMissing(log)} title="Add missing members" aria-label="Add missing members" className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[.08] text-[14px] text-text-dim hover:border-white/[.16] hover:text-text-bright">+</button>}
+                      <button type="button" onClick={() => { setAttendeeSearch(''); setDetailLog(log) }} title="View attendance details" aria-label="View attendance details" className="flex h-8 w-8 items-center justify-center rounded-full at-chip text-[13px] text-text-dim hover:border-white/[.16] hover:text-text-bright">⌕</button>
+                      {isElder && attendees.length < 50 && <button type="button" onClick={() => openAddMissing(log)} title="Add missing members" aria-label="Add missing members" className="flex h-8 w-8 items-center justify-center rounded-full at-chip text-[14px] text-text-dim hover:border-white/[.16] hover:text-text-bright">+</button>}
                       {isElder && (
                         <div className="relative">
-                          <button type="button" onClick={() => setOpenActionMenuId(openActionMenuId === log.id ? null : log.id)} title="More actions" aria-label="More actions" aria-expanded={openActionMenuId === log.id} className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[.08] text-[16px] text-text-dim hover:border-white/[.16] hover:text-text-bright">⋮</button>
+                          <button type="button" onClick={() => setOpenActionMenuId(openActionMenuId === log.id ? null : log.id)} title="More actions" aria-label="More actions" aria-expanded={openActionMenuId === log.id} className="flex h-8 w-8 items-center justify-center rounded-full at-chip text-[16px] text-text-dim hover:border-white/[.16] hover:text-text-bright">⋮</button>
                           {openActionMenuId === log.id && (
-                            <div className="absolute right-0 top-9 z-30 min-w-[120px] rounded-lg border border-white/[.10] bg-[#11100f] p-1 shadow-xl">
+                            <div className="absolute right-0 top-9 z-30 min-w-[120px] at-glass at-solid rounded-xl p-1">
                               <button type="button" onClick={() => { setOpenActionMenuId(null); deleteLog(log) }} disabled={isDeleting} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] font-semibold text-red-300 hover:bg-red-500/[.07] disabled:opacity-40">
                                 {isDeleting ? 'Deleting…' : 'Delete record'}
                               </button>
@@ -1869,25 +2180,25 @@ export default function Attendance({ ctx }) {
         <div className="flex flex-col gap-2 border-t border-white/[.06] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-[11px] text-text-dim">Page {safeHistoryPage} of {historyTotalPages} · {filteredHistoryLogs.length} matching</span>
           <div className="flex gap-1">
-            <button type="button" disabled={safeHistoryPage <= 1} onClick={() => setHistoryPage(page => Math.max(1, page - 1))} className="flex-1 rounded-lg border border-white/[.08] px-2.5 py-1.5 text-[11px] text-text-dim disabled:opacity-30 sm:flex-none">← Prev</button>
-            <button type="button" disabled={safeHistoryPage >= historyTotalPages} onClick={() => setHistoryPage(page => Math.min(historyTotalPages, page + 1))} className="flex-1 rounded-lg border border-white/[.08] px-2.5 py-1.5 text-[11px] text-text-dim disabled:opacity-30 sm:flex-none">Next →</button>
+            <button type="button" disabled={safeHistoryPage <= 1} onClick={() => setHistoryPage(page => Math.max(1, page - 1))} className="flex-1 rounded-full at-chip px-2.5 py-1.5 text-[11px] text-text-dim disabled:opacity-30 sm:flex-none">← Prev</button>
+            <button type="button" disabled={safeHistoryPage >= historyTotalPages} onClick={() => setHistoryPage(page => Math.min(historyTotalPages, page + 1))} className="flex-1 rounded-full at-chip px-2.5 py-1.5 text-[11px] text-text-dim disabled:opacity-30 sm:flex-none">Next →</button>
           </div>
         </div>
       </section>
 
       {/* Record Attendance modal */}
       {isElder && showRecordModal && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/75 p-3 backdrop-blur-[3px]" role="dialog" aria-modal="true">
-          <div className="flex w-full max-w-3xl max-h-[92vh] flex-col overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
+        <div className="fixed inset-0 z-[220] flex items-center justify-center at-overlay p-3" role="dialog" aria-modal="true">
+          <div className="flex w-full max-w-3xl max-h-[92vh] flex-col overflow-hidden at-glass at-modal relative rounded-[24px]">
             <div className="flex items-start justify-between gap-3 border-b border-white/[.07] px-4 py-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-bold text-text-bright">Record Attendance</h3>
-                  {selectedSession && <span className="rounded-md border border-gold/20 bg-gold/[.04] px-2 py-0.5 text-[11px] font-bold text-gold-light">{getRunLabel(selectedSession)}</span>}
+                  <h3 className="font-spectral text-[1.2rem] font-bold leading-tight text-text-bright">Record Attendance</h3>
+                  {selectedSession && <span className="rounded-full at-chip at-chip-gold px-2 py-0.5 text-[11px] font-bold text-gold-light">{getRunLabel(selectedSession)}</span>}
                 </div>
                 <p className="mt-0.5 text-[12px] text-text-dim">Pick the exact event and run first. Players will see exactly which session they are being recorded for.</p>
               </div>
-              <button type="button" onClick={() => !submitting && setShowRecordModal(false)} disabled={submitting} className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light disabled:opacity-40">×</button>
+              <button type="button" onClick={() => !submitting && setShowRecordModal(false)} disabled={submitting} className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full at-chip text-text-dim hover:border-gold/30 hover:text-gold-light disabled:opacity-40">×</button>
             </div>
 
             <div className="min-h-0 overflow-y-auto p-4">
@@ -1909,7 +2220,7 @@ export default function Attendance({ ctx }) {
                           key={session.id}
                           type="button"
                           onClick={() => setSelectedSessionId(session.id)}
-                          className={`min-h-[58px] rounded-lg border px-3 py-2 text-left transition-colors ${active ? 'border-gold/40 bg-gold/[.07]' : 'border-white/[.08] bg-black/15 hover:border-gold/20'}`}
+                          className={`min-h-[58px] rounded-xl border px-3 py-2 text-left transition-colors ${active ? 'border-gold/40 bg-gold/[.07]' : 'at-inset hover:border-gold/30'}`}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className={`text-[13px] font-bold ${active ? 'text-gold-bright' : 'text-text-bright'}`}>{getRunLabel(session)}</span>
@@ -1917,7 +2228,7 @@ export default function Attendance({ ctx }) {
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                             <span className="truncate text-[11px] text-text-dim">{session.displayName}</span>
-                            <span className="font-sans text-[10px] text-text-dim">{times.serverTime} · Local {times.localTime}</span>
+                            <span className="font-sans text-[11px] text-text-dim">{times.serverTime} · Local {times.localTime}</span>
                           </div>
                         </button>
                       )
@@ -1926,7 +2237,7 @@ export default function Attendance({ ctx }) {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-gold/15 bg-gold/[.025] px-3 py-2.5">
+              <div className="mt-3 rounded-2xl at-inset at-inset-gold px-3 py-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim">Selected Session</div>
@@ -1938,7 +2249,7 @@ export default function Attendance({ ctx }) {
               </div>
 
               {selectedSession && (
-                <div className="mt-2.5 rounded-lg border border-white/[.07] bg-black/15 px-3 py-2.5">
+                <div className="mt-2.5 rounded-xl at-inset px-3 py-2.5">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
                     <span className="font-semibold text-text-bright">
                       Reward: <span className="text-gold-light">+{ATTENDANCE_REWARDS[selectedEvent]?.base || 0} base</span>
@@ -1958,12 +2269,12 @@ export default function Attendance({ ctx }) {
                   <input className="input h-8 w-full pl-8 text-[12px]" placeholder="Search member..." value={search} onChange={e => setSearch(e.target.value)} />
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim text-[13px]">⌕</span>
                 </div>
-                <button type="button" onClick={toggleAllFiltered} className="min-h-8 w-full rounded-lg border border-white/[.08] px-2.5 text-[11px] font-semibold sm:w-auto sm:shrink-0 text-text-dim hover:border-gold/25 hover:text-gold-light">{allFilteredSelected ? 'Clear Visible' : 'Select Visible'}</button>
-                {selectedCount > 0 && <button type="button" onClick={clearSelection} className="min-h-8 w-full rounded-lg border border-white/[.08] px-2.5 text-[11px] text-text-dim hover:text-red-300 sm:w-auto sm:shrink-0">Clear</button>}
+                <button type="button" onClick={toggleAllFiltered} className="min-h-8 w-full rounded-full at-chip px-2.5 text-[11px] font-semibold sm:w-auto sm:shrink-0 text-text-dim hover:border-gold/25 hover:text-gold-light">{allFilteredSelected ? 'Clear Visible' : 'Select Visible'}</button>
+                {selectedCount > 0 && <button type="button" onClick={clearSelection} className="min-h-8 w-full rounded-full at-chip px-2.5 text-[11px] text-text-dim hover:text-red-300 sm:w-auto sm:shrink-0">Clear</button>}
               </div>
 
-              <div className="mt-2.5 overflow-hidden rounded-xl border border-white/[.07]">
-                <div className="hidden sm:grid grid-cols-[28px_minmax(0,1fr)_72px_125px] items-center gap-2 border-b border-white/[.06] bg-black/20 px-3 py-2 text-[10px] font-bold uppercase tracking-[.12em] text-text-dim">
+              <div className="mt-2.5 overflow-hidden rounded-2xl at-well">
+                <div className="hidden sm:grid grid-cols-[28px_minmax(0,1fr)_72px_125px] items-center gap-2 border-b border-white/[.06] bg-black/20 px-3 py-2 text-[11px] font-bold uppercase tracking-[.12em] text-text-dim">
                   <span />
                   <span>Member</span>
                   <span className="text-right">GP</span>
@@ -1978,8 +2289,8 @@ export default function Attendance({ ctx }) {
                         <span className={`flex h-5 w-5 items-center justify-center rounded-md border text-[13px] ${checked ? 'border-gold bg-gold text-black' : 'border-white/15 bg-black/20 text-transparent'}`}>✓</span>
                          <span className="min-w-0">
                            <span className={`block truncate text-[13px] font-semibold ${checked ? 'text-gold-light' : 'text-text-bright'}`}>{m.name}</span>
-                           <span className="block truncate text-[10px] text-text-dim">{m.cls || 'Member'}</span>
-                           <span className="mt-0.5 block truncate text-[10px] font-sans text-text-dim sm:hidden">{formatGp(m.power)} GP · Base +{ATTENDANCE_REWARDS[selectedEvent]?.base || 0} · GP +{getAttendanceGpBonus(m.power, selectedEvent)}</span>
+                           <span className="block truncate text-[11px] text-text-dim">{m.cls || 'Member'}</span>
+                           <span className="mt-0.5 block truncate text-[11px] font-sans text-text-dim sm:hidden">{formatGp(m.power)} GP · Base +{ATTENDANCE_REWARDS[selectedEvent]?.base || 0} · GP +{getAttendanceGpBonus(m.power, selectedEvent)}</span>
                          </span>
                          <span className="text-right font-sans text-[11px] text-text-dim">
                            <span className="font-semibold text-green-300 sm:hidden">+{reward}</span>
@@ -1987,7 +2298,7 @@ export default function Attendance({ ctx }) {
                          </span>
                          <span className="hidden text-right sm:block">
                            <span className="block font-sans text-[13px] font-bold text-green-300">+{reward}</span>
-                           <span className="block mt-0.5 text-[10px] text-text-dim">Base +{ATTENDANCE_REWARDS[selectedEvent]?.base || 0} · GP +{getAttendanceGpBonus(m.power, selectedEvent)}</span>
+                           <span className="block mt-0.5 text-[11px] text-text-dim">Base +{ATTENDANCE_REWARDS[selectedEvent]?.base || 0} · GP +{getAttendanceGpBonus(m.power, selectedEvent)}</span>
                          </span>
                       </button>
                     )
@@ -2000,7 +2311,7 @@ export default function Attendance({ ctx }) {
             <div className="flex flex-col gap-2.5 border-t border-white/[.07] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0"><div className="text-[12px] font-semibold text-text-bright">{selectedCount ? `${selectedCount} members ready` : 'No members selected'}</div><div className="truncate text-[11px] text-text-dim">{selectedSession?.displayName || 'Select a session'}</div></div>
               <div className="flex w-full gap-1.5 sm:w-auto">
-                <button type="button" onClick={() => setShowRecordModal(false)} disabled={submitting} className="flex-1 rounded-lg border border-white/[.08] px-3 py-1.5 text-[12px] text-text-dim disabled:opacity-40 sm:flex-none">Cancel</button>
+                <button type="button" onClick={() => setShowRecordModal(false)} disabled={submitting} className="flex-1 rounded-full at-chip px-3 py-1.5 text-[12px] text-text-dim disabled:opacity-40 sm:flex-none">Cancel</button>
                 <button type="button" onClick={async () => { const ok = await recordAttendance(); if (ok) setShowRecordModal(false) }} disabled={submitting || selectedCount === 0 || !selectedSession} className="btn-gold min-h-8 flex-1 px-3 text-[12px] font-bold disabled:opacity-40 sm:flex-none">
                   {submitting ? 'Saving…' : selectedCount ? `Record ${selectedCount}` : 'Select Members'}
                 </button>
@@ -2013,7 +2324,7 @@ export default function Attendance({ ctx }) {
       {/* Full weekly event schedule */}
       {showEventSchedule && (
         <div
-          className="fixed inset-0 z-[220] flex items-center justify-center bg-black/75 p-3 sm:p-5 backdrop-blur-[3px]"
+          className="fixed inset-0 z-[220] flex items-center justify-center at-overlay p-3 sm:p-5"
           role="dialog"
           aria-modal="true"
           aria-label="Weekly Event Schedule"
@@ -2021,20 +2332,20 @@ export default function Attendance({ ctx }) {
             if (e.target === e.currentTarget) setShowEventSchedule(false)
           }}
         >
-          <div className="flex w-full max-w-3xl max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
+          <div className="flex w-full max-w-3xl max-h-[90vh] flex-col overflow-hidden at-glass at-modal relative rounded-[24px]">
             <div className="flex items-center justify-between gap-3 border-b border-white/[.07] px-4 py-4 sm:px-5">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md border border-gold/20 bg-gold/[.05] px-2 py-1 text-[12px] font-bold uppercase tracking-[.12em] text-gold-dim">Weekly Schedule</span>
+                  <span className="rounded-full at-chip at-chip-gold px-2 py-1 text-[12px] font-bold uppercase tracking-[.12em] text-gold-dim">Weekly Schedule</span>
                   <span className="text-[13px] font-sans text-text-dim">{currentWeekLabel}</span>
                 </div>
-                <h3 className="mt-1.5 text-lg font-bold text-text-bright">Event Schedule</h3>
+                <h3 className="mt-1.5 font-spectral text-[1.3rem] font-bold leading-tight text-text-bright">Event Schedule</h3>
                 <p className="mt-0.5 text-[13px] text-text-dim">Server Time GMT+8 · Local time is shown for reference</p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowEventSchedule(false)}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full at-chip text-text-dim hover:border-gold/30 hover:text-gold-light"
                 aria-label="Close"
               >
                 ×
@@ -2047,13 +2358,13 @@ export default function Attendance({ ctx }) {
                   const daySessions = WEEKLY_EVENT_SESSIONS.filter(session => session.day === day)
                   const dayLabel = daySessions[0]?.dayLabel || ''
                   return (
-                    <div key={day} className="overflow-hidden rounded-xl border border-white/[.08] bg-[#10100e]">
+                    <div key={day} className="overflow-hidden rounded-2xl at-inset">
                       <div className="flex items-center justify-between border-b border-white/[.07] bg-white/[.02] px-3.5 py-2.5 sm:px-4">
                         <div>
                           <div className="text-[15px] font-bold uppercase tracking-[.12em] text-gold-light">{dayLabel}</div>
                           <div className="mt-0.5 text-[12px] text-text-dim">{daySessions.length} scheduled {daySessions.length === 1 ? 'session' : 'sessions'}</div>
                         </div>
-                        <span className="rounded-md border border-gold/15 bg-gold/[.035] px-2 py-1 text-[12px] font-sans font-bold text-gold-light">{daySessions.length}</span>
+                        <span className="rounded-full at-chip at-chip-gold px-2 py-1 text-[12px] font-sans font-bold text-gold-light">{daySessions.length}</span>
                       </div>
 
                       <div className="divide-y divide-white/[.05]">
@@ -2063,17 +2374,17 @@ export default function Attendance({ ctx }) {
                           return (
                             <div key={session.id} className="px-3.5 py-3 sm:px-4">
                               <div className="flex items-start gap-3">
-                                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gold/15 bg-gold/[.045] text-[12px] font-sans font-bold text-gold-light">{String(index + 1).padStart(2, '0')}</span>
+                                <span className="at-emblem flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-[12px] font-sans font-bold text-gold-light">{String(index + 1).padStart(2, '0')}</span>
                                 <div className="min-w-0 flex-1">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-[15px] sm:text-[15px] font-semibold leading-5 text-text-bright">{session.displayName}</span>
                                     {run !== 'Single Run' && (
-                                      <span className="rounded-md border border-gold/20 bg-gold/[.04] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[.08em] text-gold-light">{run}</span>
+                                      <span className="rounded-full at-chip at-chip-gold px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-[.08em] text-gold-light">{run}</span>
                                     )}
                                   </div>
                                   <div className="mt-2 flex flex-wrap gap-1.5">
-                                    <span className="rounded-md border border-gold/15 bg-gold/[.035] px-2.5 py-1.5 text-[12px] font-sans font-bold text-gold-light">Server {times.serverTime} · GMT+8</span>
-                                    <span className="rounded-md border border-white/[.08] bg-black/20 px-2.5 py-1.5 text-[12px] font-sans font-semibold text-text-bright">Local {times.localTime}</span>
+                                    <span className="rounded-full at-chip at-chip-gold px-2.5 py-1.5 text-[12px] font-sans font-bold text-gold-light">Server {times.serverTime} · GMT+8</span>
+                                    <span className="rounded-full at-chip px-2.5 py-1.5 text-[12px] font-sans font-semibold text-text-bright">Local {times.localTime}</span>
                                   </div>
                                 </div>
                               </div>
@@ -2086,13 +2397,13 @@ export default function Attendance({ ctx }) {
                 })}
               </div>
 
-              <div className="mt-4 rounded-xl border border-gold/15 bg-gold/[.025] p-3.5">
+              <div className="mt-4 rounded-2xl at-inset at-inset-gold p-3.5">
                 <div className="text-[12px] font-bold uppercase tracking-[.12em] text-gold-dim">Reward Information</div>
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="rounded-lg border border-white/[.06] bg-black/15 px-3 py-2.5 text-[12px] text-text-dim">
+                  <div className="rounded-xl at-inset px-3 py-2.5 text-[12px] text-text-dim">
                     <span className="font-semibold text-text-bright">Attendance:</span> Base reward + GP bonus according to the member's GP tier.
                   </div>
-                  <div className="rounded-lg border border-gold/15 bg-gold/[.025] px-3 py-2.5 text-[12px] text-text-dim">
+                  <div className="rounded-xl at-inset at-inset-gold px-3 py-2.5 text-[12px] text-text-dim">
                     <span className="font-semibold text-gold-light">Perfect Attendance:</span> Attend all 8 weekly sessions → <span className="font-sans font-bold text-gold-bright">+150 Coins</span>.
                   </div>
                 </div>
@@ -2105,7 +2416,7 @@ export default function Attendance({ ctx }) {
       {/* Reward Guide modal */}
       {showRewardGuide && (
         <div
-          className="fixed inset-0 z-[225] flex items-center justify-center bg-black/75 p-3 sm:p-5 backdrop-blur-[3px]"
+          className="fixed inset-0 z-[225] flex items-center justify-center at-overlay p-3 sm:p-5"
           role="dialog"
           aria-modal="true"
           aria-label="Attendance reward guide"
@@ -2113,11 +2424,11 @@ export default function Attendance({ ctx }) {
             if (e.target === e.currentTarget) setShowRewardGuide(false)
           }}
         >
-          <div className="w-full max-w-3xl max-h-[88vh] overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
+          <div className="w-full max-w-3xl max-h-[88vh] overflow-hidden at-glass at-modal relative rounded-[24px]">
             <div className="flex items-start justify-between gap-4 border-b border-white/[.07] px-4 py-4 sm:px-5">
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-[.16em] text-gold-dim">Attendance Rewards</div>
-                <h3 className="mt-1 text-lg font-bold text-text-bright">Reward & GP Bonus Criteria</h3>
+                <div className="text-[11px] font-bold uppercase tracking-[.12em] text-gold-dim">Attendance Rewards</div>
+                <h3 className="mt-1 font-spectral text-[1.3rem] font-bold leading-tight text-text-bright">Reward & GP Bonus Criteria</h3>
                 <p className="mt-1 text-[12px] leading-5 text-text-dim">
                   Each attendance gives a base reward. Your GP determines the additional bonus.
                 </p>
@@ -2125,7 +2436,7 @@ export default function Attendance({ ctx }) {
               <button
                 type="button"
                 onClick={() => setShowRewardGuide(false)}
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full at-chip text-text-dim hover:border-gold/30 hover:text-gold-light"
                 aria-label="Close reward guide"
               >
                 ×
@@ -2133,9 +2444,9 @@ export default function Attendance({ ctx }) {
             </div>
 
             <div className="max-h-[68vh] overflow-y-auto p-4 sm:p-5">
-              <div className="overflow-x-auto rounded-xl border border-white/[.07]">
+              <div className="overflow-x-auto rounded-2xl at-well">
                 <div className="min-w-[680px]">
-                  <div className="grid grid-cols-[minmax(180px,1.5fr)_70px_repeat(4,minmax(88px,1fr))] items-center border-b border-white/[.07] bg-white/[.025] px-3 py-3 text-[10px] font-bold uppercase tracking-[.1em] text-text-dim sm:px-4">
+                  <div className="grid grid-cols-[minmax(180px,1.5fr)_70px_repeat(4,minmax(88px,1fr))] items-center border-b border-white/[.07] bg-white/[.025] px-3 py-3 text-[11px] font-bold uppercase tracking-[.1em] text-text-dim sm:px-4">
                     <span>Event</span>
                     <span className="text-center">Base</span>
                     <span className="text-center">100–150k</span>
@@ -2154,7 +2465,7 @@ export default function Attendance({ ctx }) {
                     <div key={event} className="grid grid-cols-[minmax(180px,1.5fr)_70px_repeat(4,minmax(88px,1fr))] items-center border-b border-white/[.05] px-3 py-3 last:border-b-0 sm:px-4">
                       <div>
                         <div className="text-[12px] font-semibold text-text-bright">{event}</div>
-                        <div className="mt-0.5 text-[10px] text-text-dim">Per attendance</div>
+                        <div className="mt-0.5 text-[11px] text-text-dim">Per attendance</div>
                       </div>
                       <div className="text-center text-[12px] font-bold text-text-bright">+{base}</div>
                       {[b1, b2, b3, b4].map((bonus, index) => (
@@ -2166,13 +2477,13 @@ export default function Attendance({ ctx }) {
               </div>
 
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border border-white/[.07] bg-black/15 p-3">
+                <div className="rounded-2xl at-inset p-3">
                   <div className="text-[11px] font-bold uppercase tracking-[.12em] text-text-dim">GP bonus</div>
                   <p className="mt-1.5 text-[12px] leading-5 text-text-dim">
                     The GP bonus is calculated when attendance is recorded. Higher GP tiers receive a larger bonus on top of the base reward.
                   </p>
                 </div>
-                <div className="rounded-xl border border-gold/15 bg-gold/[.025] p-3">
+                <div className="rounded-2xl at-inset at-inset-gold p-3">
                   <div className="text-[11px] font-bold uppercase tracking-[.12em] text-gold-dim">Perfect Attendance</div>
                   <p className="mt-1.5 text-[12px] leading-5 text-text-dim">
                     Attend all <strong className="text-text-bright">8 scheduled sessions</strong> Tuesday–Saturday to qualify for the separate <strong className="text-gold-bright">+150 Coins</strong> weekly bonus.
@@ -2180,7 +2491,7 @@ export default function Attendance({ ctx }) {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-white/[.07] bg-white/[.015] px-3 py-2.5 text-[11px] leading-5 text-text-dim">
+              <div className="mt-3 rounded-2xl at-inset px-3 py-2.5 text-[11px] leading-5 text-text-dim">
                 <strong className="text-text-bright">Session reminder:</strong> Clan Annihilation and Sindri's Treasure Island each have a First Run and Second Run. Each run counts as its own scheduled attendance session.
               </div>
             </div>
@@ -2191,7 +2502,7 @@ export default function Attendance({ ctx }) {
       {/* Attendance CSV Export — Admin / Master / Elder only */}
       {isElder && showAttendanceExport && (
         <div
-          className="fixed inset-0 z-[235] flex items-center justify-center bg-black/75 p-3 sm:p-5 backdrop-blur-[3px]"
+          className="fixed inset-0 z-[235] flex items-center justify-center at-overlay p-3 sm:p-5"
           role="dialog"
           aria-modal="true"
           aria-label="Export Attendance CSV"
@@ -2199,17 +2510,17 @@ export default function Attendance({ ctx }) {
             if (e.target === e.currentTarget) setShowAttendanceExport(false)
           }}
         >
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
+          <div className="w-full max-w-lg overflow-hidden at-glass at-modal relative rounded-[24px]">
             <div className="flex items-start justify-between gap-3 border-b border-white/[.07] px-4 py-4 sm:px-5">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-md border border-gold/20 bg-gold/[.05] px-2 py-1 text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim">Staff Only</span>
+                  <span className="rounded-full at-chip at-chip-gold px-2 py-1 text-[11px] font-bold uppercase tracking-[.14em] text-gold-dim">Staff Only</span>
                   <span className="text-[11px] text-text-dim">Admin · Master · Elder</span>
                 </div>
-                <h3 className="mt-2 text-lg font-bold text-text-bright">Export Attendance CSV</h3>
+                <h3 className="mt-2 font-spectral text-[1.3rem] font-bold leading-tight text-text-bright">Export Attendance CSV</h3>
                 <p className="mt-1 text-[12px] leading-5 text-text-dim">Choose the server-date range to export. This export contains attendance records only — no lottery data.</p>
               </div>
-              <button type="button" onClick={() => setShowAttendanceExport(false)} className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light" aria-label="Close">×</button>
+              <button type="button" onClick={() => setShowAttendanceExport(false)} className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full at-chip text-text-dim hover:border-gold/30 hover:text-gold-light" aria-label="Close">×</button>
             </div>
 
             <div className="p-4 sm:p-5">
@@ -2224,7 +2535,7 @@ export default function Attendance({ ctx }) {
                 </label>
               </div>
 
-              <div className="mt-3 rounded-xl border border-gold/15 bg-gold/[.035] px-3.5 py-3">
+              <div className="mt-3 rounded-2xl at-inset at-inset-gold px-3.5 py-3">
                 <div className="text-[12px] text-text-dim">
                   Date range uses <strong className="text-gold-light">Server Time (GMT+8)</strong>. Both dates are inclusive.
                 </div>
@@ -2232,7 +2543,7 @@ export default function Attendance({ ctx }) {
               </div>
 
               <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button type="button" onClick={() => setShowAttendanceExport(false)} className="min-h-10 rounded-lg border border-white/[.08] px-4 text-[12px] font-semibold text-text-dim hover:text-text-bright">Cancel</button>
+                <button type="button" onClick={() => setShowAttendanceExport(false)} className="min-h-10 rounded-full at-chip px-4 text-[12px] font-semibold text-text-dim hover:text-text-bright">Cancel</button>
                 <button type="button" onClick={exportAttendanceCsv} className="btn-gold min-h-10 px-4 text-[12px] font-bold">Export CSV</button>
               </div>
             </div>
@@ -2244,7 +2555,7 @@ export default function Attendance({ ctx }) {
       {showPerfectAttendance && (() => {
         return (
           <div
-            className="fixed inset-0 z-[230] flex items-center justify-center bg-black/75 p-3 sm:p-5 backdrop-blur-[3px]"
+            className="fixed inset-0 z-[230] flex items-center justify-center at-overlay p-3 sm:p-5"
             role="dialog"
             aria-modal="true"
             aria-label="Weekly Perfect Attendance"
@@ -2252,22 +2563,22 @@ export default function Attendance({ ctx }) {
               if (e.target === e.currentTarget && !awardingPerfect) setShowPerfectAttendance(false)
             }}
           >
-            <div className="flex w-full max-w-4xl max-h-[88vh] flex-col overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
+            <div className="flex w-full max-w-4xl max-h-[88vh] flex-col overflow-hidden at-glass at-modal relative rounded-[24px]">
               <div className="flex flex-col gap-3 border-b border-white/[.07] px-4 py-3.5 sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md border border-gold/20 bg-gold/[.05] px-2 py-1 text-[12px] font-bold uppercase tracking-[.14em] text-gold-dim">Weekly</span>
+                    <span className="rounded-full at-chip at-chip-gold px-2 py-1 text-[12px] font-bold uppercase tracking-[.14em] text-gold-dim">Weekly</span>
                     <span className="text-[13px] font-sans text-text-dim">{currentWeekLabel}</span>
                   </div>
-                  <h3 className="mt-1.5 text-lg font-bold text-text-bright">Perfect Attendance</h3>
+                  <h3 className="mt-1.5 font-spectral text-[1.3rem] font-bold leading-tight text-text-bright">Perfect Attendance</h3>
                   <p className="mt-0.5 text-[13px] text-text-dim">Players are qualified only when they attend all {PERFECT_ATTENDANCE_REQUIRED_SESSIONS} scheduled sessions.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="rounded-lg border border-gold/15 bg-gold/[.035] px-3 py-2 text-right">
+                  <div className="rounded-xl at-inset at-inset-gold px-3 py-2 text-right">
                     <div className="text-[11px] font-bold uppercase tracking-[.12em] text-text-dim">Reward</div>
                     <div className="mt-0.5 font-sans text-sm font-bold text-gold-bright">+150 Coins</div>
                   </div>
-                  <button type="button" onClick={() => setShowPerfectAttendance(false)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light" aria-label="Close">×</button>
+                  <button type="button" onClick={() => setShowPerfectAttendance(false)} className="flex h-9 w-9 items-center justify-center rounded-full at-chip text-text-dim hover:border-gold/30 hover:text-gold-light" aria-label="Close">×</button>
                 </div>
               </div>
 
@@ -2287,7 +2598,7 @@ export default function Attendance({ ctx }) {
                       key={value}
                       type="button"
                       onClick={() => setPerfectFilter(value)}
-                      className={`rounded-lg border px-3 py-2 text-[12px] font-semibold transition-colors ${perfectFilter === value ? 'border-gold/35 bg-gold/[.07] text-gold-light' : 'border-white/[.08] bg-black/15 text-text-dim hover:text-text-bright'}`}
+                      className={`rounded-full px-3.5 py-2 text-[12px] font-semibold transition-colors ${perfectFilter === value ? 'at-chip at-chip-gold text-gold-light' : 'at-chip text-text-dim hover:text-text-bright'}`}
                     >
                       {label}
                     </button>
@@ -2304,7 +2615,7 @@ export default function Attendance({ ctx }) {
                 {visiblePerfectRows.length === 0 ? (
                   <div className="py-12 text-center text-xs text-text-dim">No players match this filter.</div>
                 ) : (
-                  <div className="overflow-hidden rounded-xl border border-white/[.07]">
+                  <div className="overflow-hidden rounded-2xl at-well">
                     <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_150px_125px_120px] items-center gap-3 border-b border-white/[.07] bg-white/[.02] px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.14em] text-text-dim">
                       <span>Player</span><span>Attendance</span><span>Status</span><span className="text-right">Bonus</span>
                     </div>
@@ -2325,11 +2636,11 @@ export default function Attendance({ ctx }) {
                           </div>
                           <div className="mt-2 sm:mt-0">
                             {row.awarded ? (
-                              <span className="inline-flex rounded-md border border-green-500/15 bg-green-500/[.035] px-2 py-1 text-[12px] font-semibold text-green-300">✓ Awarded</span>
+                              <span className="inline-flex rounded-full border border-green-500/20 bg-green-500/[.035] px-2 py-1 text-[12px] font-semibold text-green-300">✓ Awarded</span>
                             ) : row.qualified ? (
-                              <span className="inline-flex rounded-md border border-gold/20 bg-gold/[.045] px-2 py-1 text-[12px] font-semibold text-gold-light">🏆 Qualified</span>
+                              <span className="inline-flex rounded-full border border-gold/20 bg-gold/[.045] px-2 py-1 text-[12px] font-semibold text-gold-light">🏆 Qualified</span>
                             ) : (
-                              <span className="inline-flex rounded-md border border-white/[.07] bg-black/15 px-2 py-1 text-[12px] text-text-dim">Not qualified</span>
+                              <span className="inline-flex rounded-full border border-white/[.07] bg-black/15 px-2 py-1 text-[12px] text-text-dim">Not qualified</span>
                             )}
                           </div>
                           <div className="mt-2 flex items-center justify-between gap-2 sm:mt-0 sm:justify-end">
@@ -2339,7 +2650,7 @@ export default function Attendance({ ctx }) {
                                 type="button"
                                 onClick={() => awardPerfectAttendance([row])}
                                 disabled={awardingPerfect}
-                                className="rounded-lg border border-gold/20 bg-gold/[.035] px-2.5 py-1.5 text-[12px] font-semibold text-gold-light hover:border-gold/40 disabled:opacity-40"
+                                className="rounded-full at-chip at-chip-gold px-2.5 py-1.5 text-[12px] font-semibold text-gold-light hover:border-gold/40 disabled:opacity-40"
                               >
                                 Award
                               </button>
@@ -2371,7 +2682,7 @@ export default function Attendance({ ctx }) {
                         type="button"
                         onClick={resetPerfectAttendanceAwards}
                         disabled={awardingPerfect}
-                        className="min-h-9 rounded-lg border border-red-500/20 bg-red-500/[.035] px-3.5 text-[13px] font-bold text-red-300 hover:border-red-500/35 disabled:opacity-40"
+                        className="min-h-9 rounded-full at-chip at-chip-red px-3.5 text-[13px] font-bold text-red-300 hover:border-red-500/35 disabled:opacity-40"
                       >
                         {awardingPerfect ? 'Processing…' : 'Reset Awards'}
                       </button>
@@ -2396,7 +2707,7 @@ export default function Attendance({ ctx }) {
 
         return (
           <div
-            className="fixed inset-0 z-[210] flex items-center justify-center bg-black/75 p-4 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[210] flex items-center justify-center at-overlay p-4"
             role="dialog"
             aria-modal="true"
             aria-label="Add missing attendance record"
@@ -2404,18 +2715,18 @@ export default function Attendance({ ctx }) {
               if (e.target === e.currentTarget && !addingMissing) setShowAddMissing(false)
             }}
           >
-            <div className="w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl border border-gold/20 bg-[#0c0a09] shadow-2xl">
+            <div className="w-full max-w-2xl max-h-[90vh] overflow-hidden at-glass at-modal relative rounded-[24px]">
               <div className="flex items-start justify-between gap-3 border-b border-white/[.06] px-4 sm:px-5 py-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md border border-gold/20 bg-gold/[.05] px-2 py-1 text-[12px] font-bold uppercase tracking-[.14em] text-gold-dim">
+                    <span className="rounded-full at-chip at-chip-gold px-2 py-1 text-[12px] font-bold uppercase tracking-[.14em] text-gold-dim">
                       Staff Only
                     </span>
                     <span className="text-[13px] font-sans text-text-dim">
                       {baseRecordedCount}/50 recorded
                     </span>
                   </div>
-                  <h3 className="mt-2 text-base font-bold text-text-bright">Add Missing Record</h3>
+                  <h3 className="mt-2 font-spectral text-[1.2rem] font-bold leading-tight text-text-bright">Add Missing Record</h3>
                   <p className="mt-1 text-[13px] leading-4 text-text-dim">
                     Add a member who was accidentally left out of an existing attendance event.
                   </p>
@@ -2425,7 +2736,7 @@ export default function Attendance({ ctx }) {
                   type="button"
                   onClick={() => !addingMissing && setShowAddMissing(false)}
                   disabled={addingMissing}
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light disabled:opacity-40"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full at-chip text-text-dim hover:border-gold/30 hover:text-gold-light disabled:opacity-40"
                   aria-label="Close"
                 >
                   ×
@@ -2435,7 +2746,7 @@ export default function Attendance({ ctx }) {
               <div className="max-h-[68vh] overflow-y-auto p-4 sm:p-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label className="block">
-                    <span className="mb-1.5 block text-[12px] font-bold uppercase tracking-[.16em] text-text-dim">Attendance Session</span>
+                    <span className="mb-1.5 block text-[12px] font-bold uppercase tracking-[.12em] text-text-dim">Attendance Session</span>
                     <select
                       className="input w-full h-10"
                       value={missingLog.id}
@@ -2456,14 +2767,14 @@ export default function Attendance({ ctx }) {
                   </label>
 
                   <div className="block">
-                    <span className="mb-1.5 block text-[12px] font-bold uppercase tracking-[.16em] text-text-dim">Automatic Reward</span>
-                    <div className="h-10 flex items-center rounded-lg border border-gold/20 bg-gold/[.04] px-3 text-[13px] text-text-dim">
+                    <span className="mb-1.5 block text-[12px] font-bold uppercase tracking-[.12em] text-text-dim">Automatic Reward</span>
+                    <div className="h-10 flex items-center rounded-xl at-inset at-inset-gold px-3 text-[13px] text-text-dim">
                       GP-based reward · calculated per member
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-xl border border-gold/15 bg-gold/[.035] px-3.5 py-3">
+                <div className="mt-3 rounded-2xl at-inset at-inset-gold px-3.5 py-3">
                   <div className="text-[13px] text-text-dim">
                     Selected session: <strong className="text-gold-light">{missingLog.sessionDisplayName || missingLog.sessionLabel || missingLog.event}</strong>
                   </div>
@@ -2493,7 +2804,7 @@ export default function Attendance({ ctx }) {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim text-xs">⌕</span>
                 </div>
 
-                <div className="mt-3 rounded-xl border border-white/[.07] overflow-hidden">
+                <div className="mt-3 rounded-2xl at-well overflow-hidden">
                   <div className="flex items-center justify-between gap-2 border-b border-white/[.06] bg-black/20 px-3 py-2">
                     <span className="text-[12px] font-bold uppercase tracking-[.14em] text-text-dim">Members not yet recorded</span>
                     <span className="text-[12px] font-sans text-text-dim">{availableMissing.length} available</span>
@@ -2542,7 +2853,7 @@ export default function Attendance({ ctx }) {
                     type="button"
                     onClick={() => setShowAddMissing(false)}
                     disabled={addingMissing}
-                    className="flex-1 rounded-lg border border-white/10 px-4 py-2 text-xs text-text-dim hover:text-text-bright disabled:opacity-40 sm:flex-none"
+                    className="flex-1 rounded-full at-chip px-4 py-2 text-xs text-text-dim hover:text-text-bright disabled:opacity-40 sm:flex-none"
                   >
                     Cancel
                   </button>
@@ -2576,7 +2887,7 @@ export default function Attendance({ ctx }) {
 
         return (
           <div
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 p-3 sm:p-5 backdrop-blur-[3px]"
+            className="fixed inset-0 z-[200] flex items-center justify-center at-overlay p-3 sm:p-5"
             role="dialog"
             aria-modal="true"
             aria-label={`${detailLog.event} attendance`}
@@ -2584,16 +2895,16 @@ export default function Attendance({ ctx }) {
               if (e.target === e.currentTarget) setDetailLog(null)
             }}
           >
-            <div className="w-full max-w-3xl max-h-[84vh] overflow-hidden rounded-2xl border border-gold/20 bg-[#0d0c0b] shadow-2xl">
+            <div className="w-full max-w-3xl max-h-[84vh] overflow-hidden at-glass at-modal relative rounded-[24px]">
               {/* Compact header */}
               <div className="flex items-center justify-between gap-3 border-b border-white/[.07] px-4 sm:px-5 py-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="truncate text-sm sm:text-base font-bold text-text-bright">{getLogSession(detailLog)?.displayName || detailLog.sessionDisplayName || detailLog.event}</h3>
-                    <span className="rounded-md border border-white/[.08] bg-white/[.025] px-1.5 py-0.5 text-[12px] font-sans text-text-dim">
+                    <span className="rounded-full at-chip px-1.5 py-0.5 text-[12px] font-sans text-text-dim">
                       {attendees.length}/50
                     </span>
-                    <span className="rounded-md border border-green-500/15 bg-green-500/[.035] px-1.5 py-0.5 text-[12px] font-semibold text-green-400">
+                    <span className="rounded-full border border-green-500/20 bg-green-500/[.035] px-1.5 py-0.5 text-[12px] font-semibold text-green-400">
                       {getRunLabel(getLogSession(detailLog))} · GP rewards
                     </span>
                   </div>
@@ -2607,7 +2918,7 @@ export default function Attendance({ ctx }) {
                 <button
                   type="button"
                   onClick={() => { setAttendeeSearch(''); setDetailLog(null) }}
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[.08] text-text-dim hover:border-gold/30 hover:text-gold-light transition-colors"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full at-chip text-text-dim hover:border-gold/30 hover:text-gold-light transition-colors"
                   aria-label="Close attendee details"
                 >
                   ×
@@ -2617,10 +2928,10 @@ export default function Attendance({ ctx }) {
               {/* Summary bar */}
               <div className="flex flex-col gap-2.5 border-b border-white/[.06] bg-black/15 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div>
-                  <div className="text-[13px] font-bold uppercase tracking-[.16em] text-gold-light">Attendees</div>
+                  <div className="text-[13px] font-bold uppercase tracking-[.12em] text-gold-light">Attendees</div>
                   <div className="mt-0.5 text-[13px] text-text-dim">Individual GP-based rewards</div>
                 </div>
-                <div className="flex items-center gap-2.5 rounded-lg border border-gold/15 bg-gold/[.035] px-3 py-2">
+                <div className="flex items-center gap-2.5 rounded-xl at-inset at-inset-gold px-3 py-2">
                   <span className="text-[12px] font-bold uppercase tracking-[.12em] text-text-dim">Total</span>
                   <span className="font-sans text-sm font-bold tabular-nums text-gold-bright">{totalAwarded.toLocaleString()} Coins</span>
                 </div>
@@ -2636,7 +2947,7 @@ export default function Attendance({ ctx }) {
                     onChange={e => setAttendeeSearch(e.target.value)}
                     placeholder="Search player or class..."
                     aria-label="Search attendees"
-                    className="w-full rounded-lg border border-white/[.08] bg-black/20 py-2 pl-9 pr-16 text-[12px] text-text-bright outline-none placeholder:text-text-dim focus:border-gold/30"
+                    className="input w-full py-2 pl-9 pr-16 text-[13px]"
                   />
                   {attendeeSearch && (
                     <button
@@ -2661,10 +2972,10 @@ export default function Attendance({ ctx }) {
                     {filteredAttendees.map((a, idx) => (
                       <div
                         key={`${a.name}-${idx}`}
-                        className="min-w-0 rounded-lg border border-white/[.07] bg-[#12110f] px-3 py-2.5 transition-colors hover:border-gold/20"
+                        className="min-w-0 rounded-xl at-inset px-3 py-2.5 transition-colors hover:border-gold/20"
                       >
                         <div className="flex items-start gap-2.5">
-                          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-gold/15 bg-gold/[.05] text-[13px] font-sans font-bold text-gold-light">
+                          <span className="at-emblem flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[13px] font-sans font-bold text-gold-light">
                             {idx + 1}
                           </span>
 
@@ -2680,7 +2991,7 @@ export default function Attendance({ ctx }) {
                               disabled={removingAttendeeKey === `${detailLog.id}-${a.memberId || a.name}`}
                               title={`Remove ${a.name} from this attendance record`}
                               aria-label={`Remove ${a.name} from this attendance record`}
-                              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-red-500/15 text-[13px] text-red-300/70 transition-colors hover:border-red-400/30 hover:bg-red-500/[.06] hover:text-red-300 disabled:opacity-40"
+                              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-red-500/20 text-[13px] text-red-300/70 transition-colors hover:border-red-400/30 hover:bg-red-500/[.06] hover:text-red-300 disabled:opacity-40"
                             >
                               {removingAttendeeKey === `${detailLog.id}-${a.memberId || a.name}` ? '…' : '×'}
                             </button>
@@ -2688,16 +2999,16 @@ export default function Attendance({ ctx }) {
                         </div>
 
                         <div className="mt-2.5 grid grid-cols-3 gap-1.5 border-t border-white/[.06] pt-2">
-                          <div className="rounded-md bg-black/15 px-2 py-1.5">
-                            <div className="text-[9px] font-semibold uppercase tracking-[.1em] text-text-dim">GP</div>
+                          <div className="rounded-lg bg-black/20 px-2 py-1.5">
+                            <div className="text-[11px] font-semibold uppercase tracking-[.1em] text-text-dim">GP</div>
                             <div className="mt-0.5 whitespace-nowrap text-[11px] font-sans font-semibold text-text-bright">{a.gp != null ? formatGp(a.gp) : '—'}</div>
                           </div>
-                          <div className="rounded-md bg-black/15 px-2 py-1.5">
-                            <div className="text-[9px] font-semibold uppercase tracking-[.1em] text-text-dim">Bonus</div>
+                          <div className="rounded-lg bg-black/20 px-2 py-1.5">
+                            <div className="text-[11px] font-semibold uppercase tracking-[.1em] text-text-dim">Bonus</div>
                             <div className="mt-0.5 whitespace-nowrap text-[11px] font-sans font-semibold text-gold-light">+{(a.gpBonus ?? 0).toLocaleString()}</div>
                           </div>
-                          <div className="rounded-md bg-green-500/[.035] px-2 py-1.5">
-                            <div className="text-[9px] font-bold uppercase tracking-[.1em] text-green-400/80">Earned</div>
+                          <div className="rounded-lg bg-green-500/[.06] px-2 py-1.5">
+                            <div className="text-[11px] font-bold uppercase tracking-[.1em] text-green-400/80">Earned</div>
                             <div className="mt-0.5 whitespace-nowrap text-[12px] font-sans font-bold tabular-nums text-green-300">+{(a.earned || 0).toLocaleString()}</div>
                           </div>
                         </div>
