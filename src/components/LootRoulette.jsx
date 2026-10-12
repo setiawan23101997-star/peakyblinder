@@ -23,6 +23,12 @@ const LR_STYLES = `
     border: 1px solid rgba(255,255,255,.08);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 22px 60px -30px rgba(0,0,0,.9);
   }
+  /* Dropdown list: fully solid so nothing shows through it */
+  .lr-root .lr-menu {
+    background: #15110d;
+    border: 1px solid rgba(212,175,55,.22);
+    box-shadow: 0 24px 60px -12px rgba(0,0,0,.95), 0 0 0 1px rgba(0,0,0,.4);
+  }
   .lr-root .lr-inset, .lr-modal .lr-inset {
     background: rgba(0,0,0,.24);
     border: 1px solid rgba(255,255,255,.07);
@@ -335,7 +341,7 @@ function AttendancePicker({ options, value, onChange, activeAttendanceIds }) {
       </button>
 
       {open && (
-        <div className="lr-solid absolute z-50 mt-2 max-h-80 w-full overflow-auto rounded-2xl p-1.5" role="listbox">
+        <div className="lr-menu absolute left-0 right-0 z-50 mt-2 max-h-80 overflow-auto rounded-2xl p-1.5" role="listbox">
           {options.map(log => {
             const used = activeAttendanceIds.has(String(log.id))
             const isSelected = String(log.id) === String(value)
@@ -1238,7 +1244,7 @@ export default function LootRoulette({ ctx }) {
 
       {/* ── Create ─────────────────────────────────────────────────── */}
       {isStaff && createOpen && (
-        <section id="loot-roulette-create" className="lr-glass rounded-[24px] p-4 sm:p-5">
+        <section id="loot-roulette-create" className="lr-glass relative z-20 rounded-[24px] p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-spectral text-[22px] font-bold text-text-bright sm:text-[24px]">New Loot Roulette</h2>
