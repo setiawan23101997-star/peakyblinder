@@ -435,7 +435,7 @@ function RunTile({ log, checked, disabled = false, onToggle, tag = null }) {
           {run !== 'Single Run' && <span>· {run}</span>}
           {tag === 'late' && <span className="font-bold text-sky-300">· late entry</span>}
           {tag === 'added' && <span className="font-bold text-gold-light">· added</span>}
-          {tag === 'used' && <span className="font-bold text-emerald-300">· has roulette</span>}
+          {tag === 'used' && <span className="font-bold text-emerald-300">· in another weekly</span>}
         </span>
       </span>
       <span className="shrink-0 text-right text-[12px] font-bold leading-4 text-text-bright">
@@ -597,7 +597,8 @@ export default function LootRoulette({ ctx }) {
   const [history, setHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(true)
   const [historyLimit, setHistoryLimit] = useState(100)
-  const [activeAttendanceIds, setActiveAttendanceIds] = useState(() => new Set())
+  const [activeAttendanceIds, setActiveAttendanceIds] = useState(() => new Set()) // runs used by a single-event roulette
+  const [activeWeeklyIds, setActiveWeeklyIds] = useState(() => new Set())         // runs used by a weekly roulette
   const [historySearch, setHistorySearch] = useState('')
   const [expandedHistoryIds, setExpandedHistoryIds] = useState(() => new Set())
   const [confirmCreate, setConfirmCreate] = useState(false)
@@ -647,16 +648,16 @@ export default function LootRoulette({ ctx }) {
   const selectedWeek = weekGroups.find(w => w.key === selectedWeekKey) || null
   const weekRuns = useMemo(() => (selectedWeek?.logs || []).map(log => ({
     log,
-    used: activeAttendanceIds.has(String(log.id)),
-    included: !activeAttendanceIds.has(String(log.id)) && !excludedWeekLogIds.has(String(log.id)),
-  })), [selectedWeek, activeAttendanceIds, excludedWeekLogIds])
+    used: activeWeeklyIds.has(String(log.id)),
+    included: !activeWeeklyIds.has(String(log.id)) && !excludedWeekLogIds.has(String(log.id)),
+  })), [selectedWeek, activeWeeklyIds, excludedWeekLogIds])
   // Runs from other weeks that staff added by hand (e.g. logged very late)
   const otherRuns = useMemo(() => {
     const inWeek = new Set((selectedWeek?.logs || []).map(log => String(log.id)))
     return attendanceOptions
-      .filter(log => !inWeek.has(String(log.id)) && !activeAttendanceIds.has(String(log.id)))
+      .filter(log => !inWeek.has(String(log.id)) && !activeWeeklyIds.has(String(log.id)))
       .slice(0, 40)
-  }, [attendanceOptions, selectedWeek, activeAttendanceIds])
+  }, [attendanceOptions, selectedWeek, activeWeeklyIds])
   const extraLogs = otherRuns.filter(log => extraWeekLogIds.has(String(log.id)))
   const weekIncludedLogs = [...weekRuns.filter(r => r.included).map(r => r.log), ...extraLogs]
   // One entry per player, however many runs they attended
@@ -771,16 +772,18 @@ export default function LootRoulette({ ctx }) {
     try {
       const [{ data: rows, error }, { data: activeRows, error: activeError }] = await Promise.all([
         supabase.from('loot_roulettes').select('*').order('created_at', { ascending: false }).limit(nextLimit),
-        supabase.from('loot_roulettes').select('attendance_log_id, attendance_log_ids').neq('status', 'void')
+        supabase.from('loot_roulettes').select('attendance_log_id, attendance_log_ids, roulette_type').neq('status', 'void')
           .then(res => res.error ? supabase.from('loot_roulettes').select('attendance_log_id').neq('status', 'void') : res),
       ])
       if (error) throw error
       if (activeError) console.error('Failed to load active attendance usage:', activeError)
 
-      setActiveAttendanceIds(new Set((activeRows || []).flatMap(row => [
-        String(row.attendance_log_id),
-        ...(Array.isArray(row.attendance_log_ids) ? row.attendance_log_ids.map(String) : []),
-      ])))
+      // Single-event and weekly roulettes lock runs separately:
+      // a run can have one single roulette AND be part of one weekly roulette.
+      const rowsList = activeRows || []
+      const isWeeklyRow = row => row.roulette_type === 'weekly' || (Array.isArray(row.attendance_log_ids) && row.attendance_log_ids.length > 1)
+      setActiveAttendanceIds(new Set(rowsList.filter(row => !isWeeklyRow(row)).map(row => String(row.attendance_log_id))))
+      setActiveWeeklyIds(new Set(rowsList.filter(isWeeklyRow).flatMap(row => (row.attendance_log_ids || [row.attendance_log_id]).map(String))))
 
       const rouletteRows = rows || []
       if (!rouletteRows.length) {
@@ -1392,6 +1395,25 @@ export default function LootRoulette({ ctx }) {
   // Newest roulette still waiting to be rolled (shown to everyone)
   const upcomingRoulette = useMemo(() => history.find(r => r.status === 'ready' && (r.participants || []).length) || null, [history])
 
+  // Your newest win (history is newest first) and your chance in the waiting draw
+  const myLastWin = useMemo(() => {
+    if (currentUser?.id == null) return ''
+    for (const r of history) {
+      if (r.status === 'void') continue
+      const row = (r.results || []).find(x => String(x.winner_member_id) === String(currentUser.id) && String(x.item_name || '').toLowerCase() !== 'nothing')
+      if (row) return row.item_name
+    }
+    return ''
+  }, [history, currentUser?.id])
+  const myUpcoming = useMemo(() => {
+    if (!upcomingRoulette || currentUser?.id == null) return null
+    const list = upcomingRoulette.participants || []
+    const me = list.find(p => String(p.member_id) === String(currentUser.id))
+    if (!me) return null
+    const total = list.reduce((sum, p) => sum + ticketsOf(p), 0) || 1
+    return { runs: ticketsOf(me), totalRuns: getTotalRuns(upcomingRoulette), chance: ticketsOf(me) / total }
+  }, [upcomingRoulette, currentUser?.id])
+
   const pageStats = useMemo(() => {
     const live = history.filter(r => r.status !== 'void')
     const lootRows = live.flatMap(r => (r.results || []).filter(row => String(row.item_name || '').toLowerCase() !== 'nothing'))
@@ -1406,7 +1428,6 @@ export default function LootRoulette({ ctx }) {
   }, [history, currentUser?.id])
 
   const weekTickets = weekPlayers.reduce((sum, p) => sum + p.runs, 0)
-  const ticketsOf = p => Math.max(1, Number(p?.entries) || 1)
   const totalTickets = participants.reduce((sum, p) => sum + ticketsOf(p), 0)
   const hasTickets = participants.some(p => ticketsOf(p) > 1)
   const balancePct = createPlayerCount ? Math.min(100, Math.round((Math.min(createUnitCount, createPlayerCount) / createPlayerCount) * 100)) : 0
@@ -1418,38 +1439,51 @@ export default function LootRoulette({ ctx }) {
     <div className="lr-root min-w-0 space-y-4">
       <style>{LR_STYLES}</style>
 
-      {/* ── Header ─────────────────────────────────────────────────── */}
-      <header className="lr-glass rounded-[24px] p-4 sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      {/* ── Header (compact) ───────────────────────────────────────── */}
+      <header className="lr-glass rounded-[24px] px-4 py-3.5 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">
-              <span className="h-1.5 w-1.5 rounded-full bg-gold" aria-hidden="true" /> Clan rewards
-            </div>
-            <h1 className="mt-1 font-spectral text-[28px] font-bold leading-tight text-text-bright sm:text-[32px]">Loot Roulette</h1>
-            <p className="mt-1 max-w-2xl text-[14px] leading-6 text-text/80">
-              Loot is shared among players who attended: one event, or a whole <span className="font-semibold text-gold-light">Tuesday–Saturday week</span>. The server picks every winner.
-            </p>
+            <h1 className="font-spectral text-[26px] font-bold leading-tight text-text-bright">Loot Roulette</h1>
+            <p className="text-[13px] text-text-dim">Win loot from events you attend. <span className="text-gold-light">More runs = higher chance.</span></p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             {isStaff && !createOpen && (
               <button type="button" onClick={() => setCreateOpen(true)} className="btn-gold min-h-10 px-5 text-[13px] font-bold">+ New Roulette</button>
             )}
-            <button type="button" onClick={() => loadHistory()} className="lr-btn">↻ Refresh</button>
-            <button type="button" onClick={exportAllCsv} disabled={!hasExportableResults} className="lr-btn">↓ Export all</button>
+            <button type="button" onClick={() => loadHistory()} className="lr-btn" aria-label="Refresh">↻<span className="hidden sm:inline">Refresh</span></button>
+            <button type="button" onClick={exportAllCsv} disabled={!hasExportableResults} className="lr-btn" aria-label="Export all">↓<span className="hidden sm:inline">Export</span></button>
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <StatTile label="Roulettes" value={pageStats.roulettes} />
-          <StatTile label="Loot given" value={pageStats.loot} tone="gold" />
-          <StatTile label="Players rewarded" value={pageStats.winners} />
-          <StatTile label="Your wins" value={pageStats.mine} />
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/[.06] pt-3 text-[13px]">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-gold/[.08] px-3 py-1.5">
+            <span aria-hidden="true">🎁</span>
+            <span className="text-text-dim">Your wins</span>
+            <span className="font-bold text-gold-light">{pageStats.mine}</span>
+            {myLastWin && <span className="hidden text-text-dim sm:inline">· last: <span className="font-semibold text-text-bright">{myLastWin}</span></span>}
+          </span>
+          {myUpcoming && (
+            <button
+              type="button"
+              onClick={() => document.getElementById('loot-upcoming')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/[.1] bg-white/[.03] px-3 py-1.5 transition hover:border-gold/30"
+            >
+              <span className="text-text-dim">This week</span>
+              {myUpcoming.totalRuns > 1 && <span className="font-semibold text-text-bright">{myUpcoming.runs}/{myUpcoming.totalRuns} runs</span>}
+              <span className="text-text-dim">·</span>
+              <span className="font-bold text-gold-light">{formatShare(myUpcoming.chance)} chance</span>
+              <span className="text-text-dim" aria-hidden="true">→</span>
+            </button>
+          )}
+          <span className="ml-auto text-[12px] text-text-dim">
+            {pageStats.roulettes} {pageStats.roulettes === 1 ? 'roulette' : 'roulettes'} · {pageStats.loot} loot given · {pageStats.winners} players rewarded
+          </span>
         </div>
       </header>
 
       {/* ── Upcoming draw (everyone can see their chance) ───────────── */}
       {upcomingRoulette && (
-        <section className="lr-glass rounded-[24px] p-4 sm:p-5">
+        <section id="loot-upcoming" className="lr-glass scroll-mt-24 rounded-[24px] p-4 sm:p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">
@@ -1509,7 +1543,7 @@ export default function LootRoulette({ ctx }) {
                       {selectedSummary.used && <span className="rounded-full border border-amber-400/25 bg-amber-400/[.06] px-2.5 py-1 font-bold text-amber-300">Already has a roulette</span>}
                     </div>
                   )}
-                  <p className="mt-2 text-[12px] leading-5 text-text-dim">Runs that already have a roulette are locked. Void the old one first to make a replacement.</p>
+                  <p className="mt-2 text-[12px] leading-5 text-text-dim">Runs that already have a one-event roulette are locked. Runs in a weekly roulette can still get their own one-event roulette.</p>
                 </div>
               ) : (
                 <div className="mt-3">
@@ -1519,7 +1553,7 @@ export default function LootRoulette({ ctx }) {
                     <>
                       <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="group" aria-label="Pick a week">
                         {weekGroups.slice(0, 10).map(week => {
-                          const free = week.logs.filter(log => !activeAttendanceIds.has(String(log.id))).length
+                          const free = week.logs.filter(log => !activeWeeklyIds.has(String(log.id))).length
                           return (
                             <button
                               key={week.key}
