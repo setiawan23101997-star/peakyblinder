@@ -105,6 +105,27 @@ const LR_STYLES = `
   @keyframes lr-spin { to { rotate: 360deg; } }
   @keyframes lr-pop { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
 
+  /* Winner animation: a slow gold shimmer across the name, soft glow on the tile */
+  .lr-root .lr-win-tile, .lr-modal .lr-win-tile {
+    border-color: rgba(212,175,55,.38);
+    background: linear-gradient(135deg, rgba(212,175,55,.12), rgba(212,175,55,.035));
+    animation: lr-win-glow 3.2s ease-in-out infinite;
+  }
+  .lr-root .lr-win-name, .lr-modal .lr-win-name {
+    font-weight: 800;
+    background: linear-gradient(100deg, #e9c561 0%, #e9c561 38%, #fff6d8 50%, #e9c561 62%, #e9c561 100%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+    animation: lr-shimmer 3.2s linear infinite;
+  }
+  .lr-root .lr-win-item, .lr-modal .lr-win-item { color: #f2cc60; text-shadow: 0 0 12px rgba(242,204,96,.35); }
+  @keyframes lr-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+  @keyframes lr-win-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(212,175,55,0), inset 0 1px 0 rgba(255,255,255,.06); }
+    50%      { box-shadow: 0 0 18px -4px rgba(212,175,55,.45), inset 0 1px 0 rgba(255,255,255,.08); }
+  }
+
   /* History status accent */
   .lr-root .lr-hist { position: relative; overflow: hidden; }
   .lr-root .lr-hist::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--lr-accent, rgba(255,255,255,.12)); }
@@ -422,6 +443,119 @@ function RunTile({ log, checked, disabled = false, onToggle, tag = null }) {
         <span className="block text-[9px] font-semibold uppercase tracking-wide text-text-dim">players</span>
       </span>
     </button>
+  )
+}
+
+/* ── Attendance & chance (shown to every member) ────────────────────────
+   Each run attended counts once. A player's chance = their attendance divided
+   by everyone's attendance, so all chances add up to 100%. Max 1 item each. */
+
+function getTotalRuns(r) {
+  return Array.isArray(r?.attendance_log_ids) && r.attendance_log_ids.length ? r.attendance_log_ids.length : 1
+}
+
+function ticketsOf(p) {
+  return Math.max(1, Number(p?.entries) || 1)
+}
+
+function formatShare(fraction) {
+  const pct = fraction * 100
+  if (pct >= 99.95) return '100%'
+  if (pct > 0 && pct < 0.1) return '<0.1%'
+  return `${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%`
+}
+
+function AttendancePips({ attended, total }) {
+  if (total <= 1) return null
+  if (total > 10) return <span className="text-[11px] font-bold text-text-dim">{attended}/{total}</span>
+  return (
+    <span className="inline-flex items-center gap-[3px]" aria-hidden="true">
+      {Array.from({ length: total }).map((_, i) => (
+        <span key={i} className={`h-1.5 w-1.5 rounded-full ${i < attended ? 'bg-gold-light' : 'bg-white/[.14]'}`} />
+      ))}
+    </span>
+  )
+}
+
+// All players in a simple grid: name, attendance + chance, and the result.
+// Chance comes from attendance: more runs attended = higher chance (all add up to 100%).
+function PlayerChances({ roulette, participants, results = [], currentUserId, showYou = true }) {
+  const totalRuns = getTotalRuns(roulette)
+  const totalAttendance = participants.reduce((sum, p) => sum + ticketsOf(p), 0) || 1
+  const resultByMember = new Map(results.map(r => [String(r.winner_member_id), r]))
+  const rolled = results.length > 0
+  const isLoot = r => r && String(r.item_name || '').toLowerCase() !== 'nothing'
+  const weekly = totalRuns > 1
+
+  const rows = participants
+    .map(p => ({ p, runs: ticketsOf(p), chance: ticketsOf(p) / totalAttendance, result: resultByMember.get(String(p.member_id)) }))
+    .sort((x, y) => y.runs - x.runs || String(x.p.player_name).localeCompare(String(y.p.player_name)))
+  const lootCount = rows.filter(r => isLoot(r.result)).length
+  const nothingCount = rows.filter(r => r.result && !isLoot(r.result)).length
+  const me = currentUserId == null ? null : rows.find(r => String(r.p.member_id) === String(currentUserId))
+
+  if (!participants.length) return null
+  return (
+    <div className="space-y-3">
+      {me && showYou && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-gold/25 bg-gold/[.06] px-4 py-3 text-[14px]">
+          <span className="font-bold text-text-bright">You</span>
+          {weekly && <span className="text-text">attended <span className="font-bold text-text-bright">{me.runs}/{totalRuns}</span> runs</span>}
+          <span className="text-text-dim">→</span>
+          <span className="text-[20px] font-bold text-gold-light">{formatShare(me.chance)}</span>
+          <span className="text-text-dim">chance</span>
+          {rolled && <span className={`ml-auto font-bold ${isLoot(me.result) ? 'text-gold-light' : 'text-text-dim'}`}>{isLoot(me.result) ? `🎁 You won ${me.result.item_name}` : 'Nothing this time'}</span>}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">All players</div>
+          <div className="mt-0.5 text-[12px] text-text-dim">
+            {weekly ? 'The more runs you attend, the higher your chance. Max 1 item each.' : 'Everyone has the same chance. Max 1 item each.'}
+          </div>
+        </div>
+        {rolled && (
+          <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
+            <span className="rounded-full border border-gold/25 bg-gold/[.06] px-2.5 py-1 text-gold-light">{lootCount} loot</span>
+            <span className="rounded-full border border-white/[.08] bg-white/[.03] px-2.5 py-1 text-text-dim">{nothingCount} Nothing</span>
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {rows.map(row => {
+          const won = isLoot(row.result)
+          const mine = me && row === me
+          return (
+            <div
+              key={row.p.member_id}
+              className={`flex min-w-0 items-center justify-between gap-2 rounded-xl border px-3 py-2 ${won ? 'lr-win-tile' : mine ? 'border-gold/25 bg-white/[.03]' : 'border-white/[.06] bg-white/[.02]'}`}
+            >
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5">
+                  <span className={`truncate text-[14px] font-semibold ${won ? 'lr-win-name' : mine ? 'text-gold-light' : 'text-text-bright'}`}>{row.p.player_name}</span>
+                  {mine && <span className="shrink-0 rounded-full bg-gold/[.15] px-1.5 text-[9px] font-bold text-gold-light">YOU</span>}
+                </span>
+                <span className="mt-0.5 block text-[11px] text-text-dim">
+                  {rolled
+                    ? `${weekly ? `${row.runs}/${totalRuns} runs · ` : ''}${formatShare(row.chance)} chance`
+                    : (weekly ? `${row.runs}/${totalRuns} runs` : '1 run')}
+                </span>
+              </span>
+              {rolled ? (
+                <span className={`max-w-[55%] shrink-0 truncate text-right text-[12px] font-bold ${won ? 'lr-win-item' : 'text-text-dim/80'}`}>
+                  {won ? `🎁 ${row.result.item_name}` : row.result ? 'Nothing' : '—'}
+                </span>
+              ) : (
+                <span className="shrink-0 text-[15px] font-bold text-gold-light">{formatShare(row.chance)}</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <div className="text-right text-[11px] text-text-dim">{participants.length} players · chances add up to 100%</div>
+    </div>
   )
 }
 
@@ -1255,6 +1389,9 @@ export default function LootRoulette({ ctx }) {
   const statusAccent = status => status === 'completed' ? 'rgba(52,211,153,.55)' : status === 'void' ? 'rgba(248,113,113,.5)' : 'rgba(212,175,55,.6)'
   const rouletteDateText = r => isWeeklyRoulette(r) && /^\d{4}-\d{2}-\d{2}$/.test(String(r?.event_date || '')) ? formatWeekRange(r.event_date) : formatDate(r?.event_date)
 
+  // Newest roulette still waiting to be rolled (shown to everyone)
+  const upcomingRoulette = useMemo(() => history.find(r => r.status === 'ready' && (r.participants || []).length) || null, [history])
+
   const pageStats = useMemo(() => {
     const live = history.filter(r => r.status !== 'void')
     const lootRows = live.flatMap(r => (r.results || []).filter(row => String(row.item_name || '').toLowerCase() !== 'nothing'))
@@ -1268,6 +1405,10 @@ export default function LootRoulette({ ctx }) {
     }
   }, [history, currentUser?.id])
 
+  const weekTickets = weekPlayers.reduce((sum, p) => sum + p.runs, 0)
+  const ticketsOf = p => Math.max(1, Number(p?.entries) || 1)
+  const totalTickets = participants.reduce((sum, p) => sum + ticketsOf(p), 0)
+  const hasTickets = participants.some(p => ticketsOf(p) > 1)
   const balancePct = createPlayerCount ? Math.min(100, Math.round((Math.min(createUnitCount, createPlayerCount) / createPlayerCount) * 100)) : 0
   const totalLootUnits = rouletteItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
   const revealLocked = Boolean(animationWinner && animationWinner._displayName && animationWinner._displayName === animationWinner.winner_name)
@@ -1305,6 +1446,33 @@ export default function LootRoulette({ ctx }) {
           <StatTile label="Your wins" value={pageStats.mine} />
         </div>
       </header>
+
+      {/* ── Upcoming draw (everyone can see their chance) ───────────── */}
+      {upcomingRoulette && (
+        <section className="lr-glass rounded-[24px] p-4 sm:p-5">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">
+                <span className="h-2 w-2 rounded-full bg-gold shadow-[0_0_8px_rgba(212,175,55,.8)]" aria-hidden="true" />
+                Upcoming draw
+              </div>
+              <h2 className="mt-1 font-spectral text-[22px] font-bold text-text-bright sm:text-[24px]">{upcomingRoulette.event}</h2>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-text-dim">
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${runBadgeClass(displayRunLabel(upcomingRoulette))}`}>{displayRunLabel(upcomingRoulette)}</span>
+                <span>{rouletteDateText(upcomingRoulette)}</span>
+                <span className="text-white/20">•</span>
+                <span>{(upcomingRoulette.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)} items</span>
+                <span className="text-white/20">•</span>
+                <span>{(upcomingRoulette.participants || []).length} players</span>
+              </div>
+            </div>
+            <button type="button" onClick={async () => { await openRoulette(upcomingRoulette.id); setRollPanelOpen(true) }} className={isStaff ? 'btn-gold min-h-10 shrink-0 px-5 text-[13px] font-bold' : 'lr-btn shrink-0'}>
+              {isStaff ? '🎲 Open roll' : 'View draw'}
+            </button>
+          </div>
+          <PlayerChances roulette={upcomingRoulette} participants={upcomingRoulette.participants || []} results={upcomingRoulette.results || []} currentUserId={currentUser?.id} />
+        </section>
+      )}
 
       {/* ── Create ─────────────────────────────────────────────────── */}
       {isStaff && createOpen && (
@@ -1432,16 +1600,19 @@ export default function LootRoulette({ ctx }) {
                 <div className="lr-inset mt-3 rounded-2xl p-3">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <div className="text-[13px] text-text-dim">
-                      <span className="text-[18px] font-bold text-gold-light">{weekPlayers.length}</span> players from <span className="font-semibold text-text-bright">{weekIncludedLogs.length}</span> {weekIncludedLogs.length === 1 ? 'run' : 'runs'}
+                      <span className="text-[18px] font-bold text-gold-light">{weekPlayers.length}</span> players <span className="text-text-dim">from {weekIncludedLogs.length} {weekIncludedLogs.length === 1 ? 'run' : 'runs'}</span>
                     </div>
-                    <div className="text-[11px] text-text-dim">Each player gets one chance</div>
+                    <div className="text-[11px] text-text-dim">More runs attended = higher chance</div>
                   </div>
+                  {weekPlayers.length > 0 && (
+                    <p className="mt-1.5 text-[11px] leading-4 text-text-dim">The number shows how many of these runs each player attended. Each player can win only one item.</p>
+                  )}
                   {weekPlayers.length > 0 && (
                     <div className="mt-2.5 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
                       {weekPlayers.map(p => (
-                        <span key={p.memberId} className="inline-flex items-center gap-1 rounded-full border border-white/[.08] bg-white/[.03] px-2 py-0.5 text-[11px] font-semibold text-text-bright">
+                        <span key={p.memberId} title={`Attended ${p.runs} of ${weekIncludedLogs.length} runs · ${Math.round((p.runs / Math.max(1, weekTickets)) * 1000) / 10}% chance`} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold text-text-bright ${p.runs > 1 ? 'border-gold/20 bg-gold/[.05]' : 'border-white/[.08] bg-white/[.03]'}`}>
                           {p.name}
-                          {p.runs > 1 && <span className="text-[10px] font-bold text-gold-dim">×{p.runs}</span>}
+                          <span className={`text-[10px] font-bold ${p.runs > 1 ? 'text-gold-light' : 'text-text-dim'}`}>{p.runs}/{weekIncludedLogs.length}</span>
                         </span>
                       ))}
                     </div>
@@ -1567,7 +1738,7 @@ export default function LootRoulette({ ctx }) {
                     <div className="mx-auto max-w-2xl py-2 text-center">
                       <div className="text-[11px] font-bold uppercase tracking-[.2em] text-gold-dim">Server-side roll</div>
                       <div className="mt-2 font-spectral text-[30px] font-bold text-text-bright sm:text-[36px]">{roulette.status === 'completed' ? 'Roulette complete' : roulette.status === 'void' ? 'Roulette voided' : 'Ready to roll'}</div>
-                      <div className="mx-auto mt-2 max-w-xl text-[13px] leading-5 text-text-dim">Each loot unit goes to one player. A player can win at most one item. Players without loot get “Nothing”, which isn't animated.</div>
+                      <div className="mx-auto mt-2 max-w-xl text-[13px] leading-5 text-text-dim">Each loot unit goes to one player. A player can win at most one item.{hasTickets ? ' Players who attended more runs have a higher chance.' : ''} Players without loot get “Nothing”, which isn't animated.</div>
                     </div>
                   )}
 
@@ -1638,31 +1809,9 @@ export default function LootRoulette({ ctx }) {
                 </div>
               ) : null}
 
-              <details className="lr-inset mt-5 rounded-2xl" open={participants.length <= 12}>
-                <summary className="cursor-pointer list-none px-4 py-3.5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-[11px] font-bold uppercase tracking-[.16em] text-text-dim">Players</div>
-                      <div className="mt-0.5 text-[12px] text-text-dim">{isWeeklyRoulette(roulette) ? 'Everyone who attended this week, once each.' : 'Everyone from the Attendance run.'}</div>
-                    </div>
-                    <span className="rounded-full border border-gold/20 bg-gold/[.05] px-2.5 py-1 text-[11px] font-bold text-gold-light">{completedParticipants}/{participants.length}</span>
-                  </div>
-                </summary>
-                <div className="border-t border-white/[.06] p-3 sm:p-4">
-                  <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {participants.map(p => {
-                      const result = results.find(r => String(r.winner_member_id) === String(p.member_id))
-                      const nothing = String(result?.item_name || '').toLowerCase() === 'nothing'
-                      return (
-                        <div key={p.member_id} className={`flex min-w-0 items-center justify-between gap-2 rounded-xl border px-3 py-2.5 ${result && !nothing ? 'border-gold/20 bg-gold/[.045]' : 'border-white/[.06] bg-white/[.02]'}`}>
-                          <span className="min-w-0 truncate text-[13px] font-semibold text-text-bright">{p.player_name}</span>
-                          <span className={`max-w-[48%] shrink-0 truncate text-right text-[11px] font-bold ${nothing ? 'text-text-dim' : result ? 'text-gold-light' : 'text-white/35'}`}>{result ? (nothing ? 'Nothing' : result.item_name) : 'Waiting'}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </details>
+              <div className="lr-inset mt-5 rounded-2xl p-3 sm:p-4">
+                <PlayerChances roulette={roulette} participants={participants} results={results} currentUserId={currentUser?.id} />
+              </div>
             </div>
           </section>
         </div>
@@ -1720,6 +1869,24 @@ export default function LootRoulette({ ctx }) {
                       <span className="text-white/20">•</span><span>{playerCount} players</span>
                       <span className="text-white/20">•</span><span>{itemsTotal} items</span>
                     </div>
+                    {(() => {
+                      const me = currentUser?.id == null ? null : (r.participants || []).find(pl => String(pl.member_id) === String(currentUser.id))
+                      if (!me || r.status === 'void') return null
+                      const myChance = ticketsOf(me) / Math.max(1, (r.participants || []).reduce((sum, pl) => sum + ticketsOf(pl), 0))
+                      const myResult = (r.results || []).find(row => String(row.winner_member_id) === String(me.member_id))
+                      const won = myResult && String(myResult.item_name || '').toLowerCase() !== 'nothing'
+                      const runs = getTotalRuns(r)
+                      return (
+                        <div className={`mt-2 inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-2.5 py-1 text-[12px] ${won ? 'border-gold/25 bg-gold/[.06]' : 'border-white/[.08] bg-white/[.025]'}`}>
+                          <span className="font-bold text-text-bright">You</span>
+                          {runs > 1 && <span className="text-text-dim">{Math.max(1, Number(me.entries) || 1)}/{runs} runs</span>}
+                          <span className="text-text-dim">·</span>
+                          <span className="font-bold text-gold-light">{formatShare(myChance)} chance</span>
+                          <span className="text-text-dim">→</span>
+                          <span className={won ? 'font-bold text-gold-light' : 'text-text-dim'}>{won ? `🎁 ${myResult.item_name}` : myResult ? 'Nothing' : 'Not rolled yet'}</span>
+                        </div>
+                      )
+                    })()}
                     {(winnerChips.length > 0 || nothing > 0) && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {winnerChips.slice(0, 8).map(name => <span key={`${r.id}-${name}`} className="rounded-full border border-gold/20 bg-gold/[.05] px-2 py-0.5 text-[11px] font-semibold text-gold-light">{name}</span>)}
@@ -1738,27 +1905,8 @@ export default function LootRoulette({ ctx }) {
                 {expanded && (
                   <div className="border-t border-white/[.06] bg-black/15 p-3 sm:p-4">
                     {r.status === 'void' && <div className="mb-3 rounded-xl border border-red-400/20 bg-red-400/[.04] px-3 py-2.5 text-[12px] text-text-dim">Void reason: <span className="font-semibold text-red-200">{r.void_reason || 'Voided by staff'}</span></div>}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-[11px] font-bold uppercase tracking-[.16em] text-gold-dim">All players</div>
-                      <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
-                        <span className="rounded-full border border-gold/20 bg-gold/[.05] px-2 py-0.5 text-gold-light">{lootCount} loot</span>
-                        <span className="rounded-full border border-white/[.08] bg-white/[.03] px-2 py-0.5 text-text-dim">{nothing} Nothing</span>
-                      </div>
-                    </div>
-                    <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {(r.participants || []).map(player => {
-                        const result = (r.results || []).find(row => String(row.winner_member_id) === String(player.member_id))
-                        const isNothing = String(result?.item_name || '').toLowerCase() === 'nothing'
-                        const isLoot = Boolean(result) && !isNothing
-                        return (
-                          <div key={player.member_id} className={`flex min-h-10 items-center justify-between gap-2 rounded-xl border px-3 py-2 ${isLoot ? 'border-gold/20 bg-gold/[.045]' : 'border-white/[.06] bg-white/[.015]'}`}>
-                            <span className="min-w-0 truncate text-[13px] font-semibold text-text-bright">{player.player_name}</span>
-                            <span className={`max-w-[52%] shrink-0 truncate text-right text-[11px] font-bold ${isLoot ? 'text-gold-light' : isNothing ? 'text-text-dim' : 'text-white/35'}`}>
-                              {isLoot ? `🎁 ${result.item_name}` : isNothing ? 'Nothing' : 'No result'}
-                            </span>
-                          </div>
-                        )
-                      })}
+                    <div>
+                      <PlayerChances roulette={r} participants={r.participants || []} results={r.results || []} currentUserId={currentUser?.id} showYou={false} />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {r.status === 'ready' && <button type="button" onClick={async () => { await openRoulette(r.id); setRollPanelOpen(true) }} className="btn-gold min-h-10 px-4 text-[12px] font-bold">Open roll</button>}
@@ -1825,7 +1973,7 @@ export default function LootRoulette({ ctx }) {
                 {createMode === 'weekly' ? (
                   <>
                     <div className="mt-1 text-[15px] font-bold text-text-bright">{selectedWeek.label} <span className="text-[12px] font-semibold text-text-dim">(Tue–Sat)</span></div>
-                    <div className="mt-0.5 text-[12px] text-text-dim">{weekIncludedLogs.length} {weekIncludedLogs.length === 1 ? 'run' : 'runs'} · <span className="font-semibold text-gold-light">{weekPlayers.length} players</span>, one chance each</div>
+                    <div className="mt-0.5 text-[12px] text-text-dim">{weekIncludedLogs.length} {weekIncludedLogs.length === 1 ? 'run' : 'runs'} · <span className="font-semibold text-gold-light">{weekPlayers.length} players</span> · chance grows with attendance</div>
                     <ul className="mt-2 space-y-1">
                       {weekIncludedLogs.map(log => <li key={log.id} className="truncate text-[12px] text-text-dim">• {log.event} · {log._sessionName} · {log._date}</li>)}
                     </ul>
@@ -1867,7 +2015,12 @@ export default function LootRoulette({ ctx }) {
                 <StatTile label="Players" value={eligibleParticipants.length} />
                 <StatTile label="Loot" value={remainingLootUnits} tone="gold" />
                 <StatTile label="Nothing" value={Math.max(0, eligibleParticipants.length - remainingLootUnits)} />
-              </div>
+                </div>
+                {hasTickets && (
+                  <div className="mt-3 rounded-xl border border-gold/15 bg-gold/[.04] px-3 py-2.5 text-[12px] leading-5 text-text-dim">
+                    Players who attended more runs have a <span className="font-semibold text-gold-light">higher chance</span>. Each player still wins at most one item.
+                  </div>
+                )}
               <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => setConfirmRoll(false)} className="lr-btn">Cancel</button>
                 <button type="button" onClick={spin} className="btn-gold min-h-10 px-5 text-[13px] font-bold">🎲 Start roll</button>
