@@ -68,6 +68,7 @@ const LR_STYLES = `
   .lr-root .lr-run:hover:not(:disabled) { border-color: rgba(212,175,55,.22); }
   .lr-root .lr-run[aria-checked="true"] { border-color: rgba(212,175,55,.24); background: rgba(212,175,55,.045); }
   .lr-root .lr-run:disabled { opacity: .5; cursor: not-allowed; }
+  .lr-root .lr-run.lr-run-sm { gap: 10px; padding: 8px 10px; }
   .lr-root .lr-tick { display: flex; height: 20px; width: 20px; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 6px; border: 1.5px solid rgba(255,255,255,.22); font-size: 12px; font-weight: 900; color: transparent; transition: all .15s ease; }
   .lr-root .lr-run[aria-checked="true"] .lr-tick { border-color: #d4af37; background: #d4af37; color: #1a1206; }
 
@@ -253,12 +254,18 @@ function isoDay(date) {
   return date.toISOString().slice(0, 10)
 }
 
-// Tuesday that starts the Tue–Sat week of this day, or null for Sunday/Monday
+// Tuesday that starts this day's week. Events run Tue–Sat, but Sunday/Monday
+// entries (an Elder logging a run late) still belong to the same week.
 function getWeekStart(day) {
   if (!day) return null
   const weekday = day.getUTCDay() // 0 Sun … 6 Sat
-  if (weekday < 2) return null
-  return new Date(day.getTime() - (weekday - 2) * WEEK_DAY_MS)
+  const sinceTuesday = (weekday - 2 + 7) % 7
+  return new Date(day.getTime() - sinceTuesday * WEEK_DAY_MS)
+}
+
+function isLateEntryDay(log) {
+  const day = getLogCalendarDay(log)
+  return Boolean(day) && day.getUTCDay() < 2 // Sunday or Monday
 }
 
 function formatWeekRange(startIso) {
@@ -380,6 +387,44 @@ function AttendancePicker({ options, value, onChange, activeAttendanceIds }) {
   )
 }
 
+function formatRunDay(log) {
+  const day = getLogCalendarDay(log)
+  if (!day) return log?._date || ''
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' }).format(day)
+}
+
+// Compact tick tile for one Attendance run (weekly mode)
+function RunTile({ log, checked, disabled = false, onToggle, tag = null }) {
+  const run = getRunLabel(log._sessionName)
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onToggle}
+      title={`${log.event} · ${log._sessionName} · ${log._date}`}
+      className="lr-run lr-run-sm"
+    >
+      <span className="lr-tick" aria-hidden="true">✓</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-bold leading-5 text-text-bright">{log.event}</span>
+        <span className="flex items-center gap-1 truncate text-[11px] leading-4 text-text-dim">
+          <span>{formatRunDay(log)}</span>
+          {run !== 'Single Run' && <span>· {run}</span>}
+          {tag === 'late' && <span className="font-bold text-sky-300">· late entry</span>}
+          {tag === 'added' && <span className="font-bold text-gold-light">· added</span>}
+          {tag === 'used' && <span className="font-bold text-emerald-300">· has roulette</span>}
+        </span>
+      </span>
+      <span className="shrink-0 text-right text-[12px] font-bold leading-4 text-text-bright">
+        {log._participants.length}
+        <span className="block text-[9px] font-semibold uppercase tracking-wide text-text-dim">players</span>
+      </span>
+    </button>
+  )
+}
+
 function StatTile({ label, value, tone = 'plain' }) {
   return (
     <div className={`rounded-2xl px-3.5 py-3 ${tone === 'gold' ? 'border border-gold/20 bg-gold/[.05]' : 'lr-inset'}`}>
@@ -436,6 +481,7 @@ export default function LootRoulette({ ctx }) {
   const [createMode, setCreateMode] = useState('single') // 'single' | 'weekly'
   const [selectedWeekKey, setSelectedWeekKey] = useState('')
   const [excludedWeekLogIds, setExcludedWeekLogIds] = useState(() => new Set())
+  const [extraWeekLogIds, setExtraWeekLogIds] = useState(() => new Set())
   const [reducedMotion] = useState(() => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
 
   useEffect(() => {
@@ -470,7 +516,15 @@ export default function LootRoulette({ ctx }) {
     used: activeAttendanceIds.has(String(log.id)),
     included: !activeAttendanceIds.has(String(log.id)) && !excludedWeekLogIds.has(String(log.id)),
   })), [selectedWeek, activeAttendanceIds, excludedWeekLogIds])
-  const weekIncludedLogs = weekRuns.filter(r => r.included).map(r => r.log)
+  // Runs from other weeks that staff added by hand (e.g. logged very late)
+  const otherRuns = useMemo(() => {
+    const inWeek = new Set((selectedWeek?.logs || []).map(log => String(log.id)))
+    return attendanceOptions
+      .filter(log => !inWeek.has(String(log.id)) && !activeAttendanceIds.has(String(log.id)))
+      .slice(0, 40)
+  }, [attendanceOptions, selectedWeek, activeAttendanceIds])
+  const extraLogs = otherRuns.filter(log => extraWeekLogIds.has(String(log.id)))
+  const weekIncludedLogs = [...weekRuns.filter(r => r.included).map(r => r.log), ...extraLogs]
   // One entry per player, however many runs they attended
   const weekPlayers = useMemo(() => {
     const map = new Map()
@@ -487,6 +541,14 @@ export default function LootRoulette({ ctx }) {
     if (selectedWeekKey && weekGroups.some(w => w.key === selectedWeekKey)) return
     setSelectedWeekKey(weekGroups[0].key)
   }, [weekGroups, selectedWeekKey])
+
+  const toggleExtraRun = id => setExtraWeekLogIds(prev => {
+    const next = new Set(prev)
+    const key = String(id)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
 
   const toggleWeekRun = id => setExcludedWeekLogIds(prev => {
     const next = new Set(prev)
@@ -695,6 +757,7 @@ export default function LootRoulette({ ctx }) {
 
       resetCreateForm()
       setExcludedWeekLogIds(new Set())
+      setExtraWeekLogIds(new Set())
       setCreateOpen(false)
       await openRoulette(data.id)
       setRollPanelOpen(true)
@@ -1095,6 +1158,7 @@ export default function LootRoulette({ ctx }) {
       setCreateMode('weekly')
       if (start) setSelectedWeekKey(isoDay(start))
       setExcludedWeekLogIds(new Set())
+      setExtraWeekLogIds(new Set())
     } else {
       setCreateMode('single')
     }
@@ -1282,7 +1346,7 @@ export default function LootRoulette({ ctx }) {
               ) : (
                 <div className="mt-3">
                   {weekGroups.length === 0 ? (
-                    <div className="lr-inset rounded-2xl px-4 py-6 text-center text-[13px] text-text-dim">No Tuesday–Saturday attendance runs yet.</div>
+                    <div className="lr-inset rounded-2xl px-4 py-6 text-center text-[13px] text-text-dim">No attendance runs yet.</div>
                   ) : (
                     <>
                       <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="group" aria-label="Pick a week">
@@ -1293,7 +1357,7 @@ export default function LootRoulette({ ctx }) {
                               key={week.key}
                               type="button"
                               aria-pressed={week.key === selectedWeekKey}
-                              onClick={() => { setSelectedWeekKey(week.key); setExcludedWeekLogIds(new Set()) }}
+                              onClick={() => { setSelectedWeekKey(week.key); setExcludedWeekLogIds(new Set()); setExtraWeekLogIds(new Set()) }}
                               className="lr-week"
                             >
                               <div className="text-[13px] font-bold text-text-bright">{week.label}</div>
@@ -1305,47 +1369,38 @@ export default function LootRoulette({ ctx }) {
                         })}
                       </div>
 
-                      <div className="mt-3 space-y-1.5">
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <span className="text-[12px] text-text-dim">
+                          <span className="font-semibold text-text-bright">{weekRuns.filter(r => r.included).length + extraLogs.length}</span> of {weekRuns.filter(r => !r.used).length + extraLogs.length} runs ticked
+                        </span>
+                        <span className="flex gap-1">
+                          <button type="button" onClick={() => setExcludedWeekLogIds(new Set())} className="rounded-lg px-2 py-1 text-[11px] font-bold text-gold-light hover:bg-gold/[.08]">All</button>
+                          <button type="button" onClick={() => setExcludedWeekLogIds(new Set(weekRuns.map(r => String(r.log.id))))} className="rounded-lg px-2 py-1 text-[11px] font-bold text-text-dim hover:bg-white/[.06] hover:text-text-bright">None</button>
+                        </span>
+                      </div>
+
+                      <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
                         {weekRuns.map(({ log, used, included }) => (
-                          <button
-                            key={log.id}
-                            type="button"
-                            role="checkbox"
-                            aria-checked={included}
-                            disabled={used}
-                            onClick={() => toggleWeekRun(log.id)}
-                            className="lr-run"
-                          >
-                            <span className="lr-tick" aria-hidden="true">✓</span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[13px] font-bold text-text-bright">{log.event}</span>
-                              <span className="mt-0.5 block truncate text-[11px] text-text-dim">{log._sessionName} · {log._date}</span>
-                            </span>
-                            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${used ? 'border-emerald-400/20 bg-emerald-400/[.05] text-emerald-300' : 'border-white/10 bg-white/[.03] text-text-dim'}`}>
-                              {used ? 'Has roulette' : `${log._participants.length} players`}
-                            </span>
-                          </button>
+                          <RunTile key={log.id} log={log} checked={included} disabled={used} onToggle={() => toggleWeekRun(log.id)} tag={used ? 'used' : isLateEntryDay(log) ? 'late' : null} />
+                        ))}
+                        {extraLogs.map(log => (
+                          <RunTile key={`extra-${log.id}`} log={log} checked onToggle={() => toggleExtraRun(log.id)} tag="added" />
                         ))}
                       </div>
 
-                      <div className="lr-inset mt-3 rounded-2xl p-3">
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <div className="text-[13px] text-text-dim">
-                            <span className="text-[18px] font-bold text-gold-light">{weekPlayers.length}</span> players from <span className="font-semibold text-text-bright">{weekIncludedLogs.length}</span> {weekIncludedLogs.length === 1 ? 'run' : 'runs'}
-                          </div>
-                          <div className="text-[11px] text-text-dim">Each player gets one chance</div>
-                        </div>
-                        {weekPlayers.length > 0 && (
-                          <div className="mt-2.5 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
-                            {weekPlayers.map(p => (
-                              <span key={p.memberId} className="inline-flex items-center gap-1 rounded-full border border-white/[.08] bg-white/[.03] px-2 py-0.5 text-[11px] font-semibold text-text-bright">
-                                {p.name}
-                                {p.runs > 1 && <span className="text-[10px] font-bold text-gold-dim">×{p.runs}</span>}
-                              </span>
+                      {otherRuns.length > 0 && (
+                        <details className="lr-inset mt-2 rounded-2xl">
+                          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3.5 py-2.5 text-[12px] font-semibold text-text-dim hover:text-text-bright">
+                            <span>+ Add a run from another week <span className="font-normal">(logged late or off-schedule)</span></span>
+                            <span aria-hidden="true">⌄</span>
+                          </summary>
+                          <div className="grid max-h-64 gap-1.5 overflow-y-auto border-t border-white/[.06] p-2 sm:grid-cols-2">
+                            {otherRuns.filter(log => !extraWeekLogIds.has(String(log.id))).map(log => (
+                              <RunTile key={`other-${log.id}`} log={log} checked={false} onToggle={() => toggleExtraRun(log.id)} />
                             ))}
                           </div>
-                        )}
-                      </div>
+                        </details>
+                      )}
                     </>
                   )}
                 </div>
@@ -1373,6 +1428,26 @@ export default function LootRoulette({ ctx }) {
                 className="lr-field resize-y px-3.5 py-3 text-[14px] leading-6"
               />
               <p className="mt-2 text-[12px] leading-5 text-text-dim">One item per line. Repeat a line for extra copies.</p>
+              {createMode === 'weekly' && weekGroups.length > 0 && (
+                <div className="lr-inset mt-3 rounded-2xl p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <div className="text-[13px] text-text-dim">
+                      <span className="text-[18px] font-bold text-gold-light">{weekPlayers.length}</span> players from <span className="font-semibold text-text-bright">{weekIncludedLogs.length}</span> {weekIncludedLogs.length === 1 ? 'run' : 'runs'}
+                    </div>
+                    <div className="text-[11px] text-text-dim">Each player gets one chance</div>
+                  </div>
+                  {weekPlayers.length > 0 && (
+                    <div className="mt-2.5 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+                      {weekPlayers.map(p => (
+                        <span key={p.memberId} className="inline-flex items-center gap-1 rounded-full border border-white/[.08] bg-white/[.03] px-2 py-0.5 text-[11px] font-semibold text-text-bright">
+                          {p.name}
+                          {p.runs > 1 && <span className="text-[10px] font-bold text-gold-dim">×{p.runs}</span>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
